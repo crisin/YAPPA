@@ -10,8 +10,6 @@ States: **now** (in progress, max. 2) · **next** (planned, ordered) · **later*
 
 - [ ] S0 rest: on the MacBook `cargo xtask setup` + `check` + `build` (.app/.dmg); click
       through `cargo xtask dev` there
-- [ ] Repo to GitHub, private (user, ADR-006): create the repo (proposal `crisin/yappa-b`),
-      `git remote add origin …`, push `main`; CI (`check.yml`, Windows + macOS) goes live
 
 ## Next
 
@@ -88,7 +86,10 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
       kick), structure (channels), operations (event log, min version, kill switch); what
       the control plane cannot do yet is hidden
 - [ ] Lofi round 2 (user): draw reconnect/offline/update banner and lobby radio against the
-      running shell; confirm single click + closed inspector (ADR-004)
+      running shell (detail questions follow established patterns, vision section 12)
+- [ ] Infra for three stages (vision section 12): one compose set for LiveKit + control +
+      Caddy, `home.yml` (mini PC) and new `vps.yml` differ only in `.env`/overrides; VPS is
+      the update host; `docs/homeserver.md` gets a VPS part
 - [ ] Optics round (user, after U3): 2–3 token variants on the running shell, then ADR
 
 ## Later
@@ -123,15 +124,16 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Open questions
 
-- GitHub repo name and visibility (proposal: `crisin/yappa-b`, private — ADR-006).
-- Where the box runs in phase 1: mini PC at home (DS-Lite check) or VPS; same compose.
-- Logo: the cat (2026-10-07) is a "for now" logo of unknown origin — clarify the rights or
-  replace it before the repo goes public.
+- Logo: the cat (2026-10-07) is a "for now" logo of unknown origin, and the repo is public
+  (`crisin/YAPPA`) — clarify the rights or replace it.
 - License: MIT/Apache (no VST3) — same open decision as variant A. Cargo metadata says
   `MIT OR Apache-2.0` provisionally.
 
 ## Done
 
+- [x] Architecture review v1: `docs/01-vision-v1.md`, ADR-004 to 007 accepted, board in
+      milestones M1–M4; repo on GitHub (`crisin/YAPPA`, public, default branch `main`)
+      (2026-10-23)
 - [x] In-app docs: `cargo xtask docs` renders docs/, TASKS.md and CHANGELOG.md into the
       app ("Hilfe" view with Hilfe/Projekt groups, search, in-app links); user help
       `docs/hilfe/` (how it works, glossary); glossary entries as ⓘ tooltips in the debug

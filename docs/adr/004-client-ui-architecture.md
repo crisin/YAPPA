@@ -1,6 +1,6 @@
 # ADR-004: Client UI — one shell, modules in a registry, headless components, settings as a module
 
-Status: proposed (2026-10-23) · becomes accepted with the merge of `task/vision-v1` ·
+Status: accepted (2026-10-23) ·
 builds on ADR-001 (Svelte 5), decides the UI concept `docs/ui/01-ui-system-lofi-v0.md`
 
 ## Context

@@ -1,6 +1,6 @@
 # yAPPA — Vision und Architektur v1
 
-Stand: 2026-10-23 · Status: Vorschlag, wird mit dem Merge von `task/vision-v1` verbindlich ·
+Stand: 2026-10-23 · Status: verbindlich für Phase 1 ·
 Gesamtreview nach dem UI-Konzept (Runde 1)
 
 Dieses Dokument ist die Wahrheit für Phase 1. Wo es von der Planungsbasis
@@ -315,9 +315,15 @@ Regeln, die vorher feststehen:
 Was dafür bewusst nicht gebaut wird: Cloud-Dienste, Verarbeitung auf dem Server, Aufnahme
 ohne REC-Anzeige, Echtzeit-Generierung während des Spiels.
 
-## 12 · Offen für dich
+## 12 · Entschieden mit dem User (2026-10-23)
 
-1. GitHub-Repo-Name und Sichtbarkeit (Vorschlag: `crisin/yappa-b`, privat).
-2. Wo die Box in Phase 1 steht: Mini-PC daheim (DS-Lite-Check!) oder VPS. Beides geht mit
-   demselben Compose.
-3. Lofi-Runde 2: Einzelklick und Inspector-zu bestätigen, Zustände zeichnen.
+1. **Repo:** `github.com/crisin/YAPPA`, öffentlich, Default-Branch `main`. Damit gilt Regel 6
+   aus `CLAUDE.md` (keine Secrets im Repo) ab sofort scharf; das Katzen-Logo bleibt die
+   offene Rechtefrage in `TASKS.md`.
+2. **Boxen:** alle drei Stufen werden gebraucht — lokal (Docker, Entwicklung), Mini-PC daheim
+   und VPS. Ein Compose-Satz für LiveKit + Control-Plane + Caddy, pro Stufe nur eine
+   `.env` und ein Override; der VPS ist der dauerhaft erreichbare Server und Update-Host,
+   der Mini-PC der zweite.
+3. **UI-Detailfragen:** etablierte Muster. Beitreten per Einzelklick (Discord), Inspector
+   standardmäßig zu (Slack, VS Code), `Strg K` für die Palette, `Esc` schließt die oberste
+   Ebene. Lofi-Runde 2 zeichnet nur noch die Zustände gegen die laufende Shell.

@@ -1,6 +1,6 @@
 # ADR-007: `crates/client` holds the non-audio client logic; settings split into engine and app; hotkeys behind a platform trait
 
-Status: proposed (2026-10-23) · becomes accepted with the merge of `task/vision-v1` ·
+Status: accepted (2026-10-23) ·
 amends ADR-003 (settings file, shell responsibilities)
 
 ## Context

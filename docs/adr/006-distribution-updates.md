@@ -1,6 +1,6 @@
-# ADR-006: Updates, channels and remote config come from our own box; the repo goes to GitHub private now
+# ADR-006: Updates, channels and remote config come from our own box; the repo lives on GitHub
 
-Status: proposed (2026-10-23) · becomes accepted with the merge of `task/vision-v1` ·
+Status: accepted (2026-10-23) ·
 amends ADR-000 ("Repo öffentlich, Nightly über GitHub Releases")
 
 ## Context
@@ -33,14 +33,17 @@ private GitHub release does not work as an endpoint.
 - **Release step is `cargo xtask release <channel>`:** version from `Cargo.toml`, changelog
   cut, `tauri build`, sign, write `latest.json`, upload (scp/rsync to the box). First from
   the dev PC, later from CI on every green `main` build (nightly) and on tags (beta/stable).
-- **The repo goes to GitHub now, private.** CI (`check.yml`, Windows + macOS) starts
-  working. Public later, once the logo is cleared or replaced; nothing in the distribution
-  path depends on that any more.
+- **The repo lives on GitHub** (`crisin/YAPPA`, public, default branch `main`; the user's
+  choice, 2026-10-23). CI (`check.yml`, Windows + macOS) runs there. Nothing in the
+  distribution path depends on GitHub; the update host is our box. Being public makes the
+  no-secrets rule binding and leaves the logo rights as the one open item.
 
 ## Consequences
 
-- Needs a domain and the box (home server or VPS) before M4; `infra/livekit/home.yml` gets
-  an `updates` volume and a Caddy route.
+- Three stages, one compose set (user decision 2026-10-23): local dev, mini PC at home,
+  VPS. The VPS is the always-reachable update host; `home.yml` and a new `vps.yml` share
+  the services and differ only in `.env` and overrides; both get an `updates` volume and
+  a Caddy route before M4.
 - `tauri-plugin-updater`, `tauri-plugin-process` (restart) added in D1; the endpoint URL is
   built from `update_base_url` + channel, so moving the box is a config change.
 - GitHub Releases can still mirror stable builds later; they are not the source of truth.

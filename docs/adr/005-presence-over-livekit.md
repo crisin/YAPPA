@@ -1,6 +1,6 @@
 # ADR-005: Presence and live data over a LiveKit presence room; the control plane is HTTP only
 
-Status: proposed (2026-10-23) · becomes accepted with the merge of `task/vision-v1` ·
+Status: accepted (2026-10-23) ·
 amends ADR-000 (Control-Plane: PresenceModule, WebSocket gateway) and the S6 cut in ADR-001
 
 ## Context
