@@ -12,17 +12,12 @@ States: **now** (in progress, max. 2) · **next** (planned, ordered) · **later*
       through `cargo xtask dev` there
 - [ ] Repo to GitHub, private (user, ADR-006): create the repo (proposal `crisin/yappa-b`),
       `git remote add origin …`, push `main`; CI (`check.yml`, Windows + macOS) goes live
-
 ## Next
 
 Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is dependency.
 
 **M1 · Shell** — nightly with the new structure, still pasted invites
 
-- [ ] U0 UI foundation (`docs/ui/02-umsetzungsplan.md`, ADR-004): `bits-ui`,
-      `@lucide/svelte`, `vitest-axe`; `ui-tokens` v1 (widths, type scale, state colors,
-      focus, motion); `api.ts` + mock with the "Die Gang" fixture and scenes
-      (`cargo xtask dev --ui --scene <name>`); `shell.svelte.ts` + module registry with tests
 - [ ] U1 Shell: zones A–G as components (rail, sidebar/stage slots, voice dock, topbar +
       `Strg K` palette, banner slot, inspector); module „Ich“ = settings navigation +
       stage + help, `Esc` returns (no overlay); the test client moves in without losing
@@ -132,6 +127,15 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] U0 UI foundation (ADR-004): `bits-ui` 2.20, `@lucide/svelte`, `vitest-axe` with an
+      axe test on the app; `ui-tokens` v1 (rail/inspector widths, type scale, state colors,
+      focus, overlay, motion); second door `api.ts` + `mockApi.ts` with the "Die Gang"
+      fixture and admin actions; mock scenes `?scene=` / `cargo xtask dev --ui --scene`
+      for engine and API; `shell.svelte.ts` (module registry by role, back navigation,
+      inspector memory, banner priorities, palette commands) with tests; api-types gained
+      `Me`, `PublicConfig`, `Member`, `InviteCode`, `EventEntry`, `PresenceState` +
+      attribute mapping (ADR-005), unused `Presence` removed; `gen-types` cleans stale files
+      (2026-10-23)
 - [x] In-app docs: `cargo xtask docs` renders docs/, TASKS.md and CHANGELOG.md into the
       app ("Hilfe" view with Hilfe/Projekt groups, search, in-app links); user help
       `docs/hilfe/` (how it works, glossary); glossary entries as ⓘ tooltips in the debug

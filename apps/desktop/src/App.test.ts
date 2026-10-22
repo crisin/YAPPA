@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it } from 'vitest';
 import App from './App.svelte';
+import { axe } from './test-a11y';
 import { encodeInvite } from './lib/mockEngine';
 
 const invite = encodeInvite({ url: 'wss://voice.example', token: 'tok' });
@@ -12,6 +13,16 @@ async function join() {
   await fireEvent.click(screen.getByRole('button', { name: 'Beitreten' }));
   await screen.findByRole('heading', { level: 1, name: 'gang' });
 }
+
+describe('App accessibility', () => {
+  it('has no axe violations before and after joining', async () => {
+    const { container } = render(App);
+    await screen.findByRole('option', { name: 'Webcam' });
+    expect(await axe(container)).toHaveNoViolations();
+    await join();
+    expect(await axe(container)).toHaveNoViolations();
+  });
+});
 
 describe('App', () => {
   it('starts with the join card, the logo and the device choice', async () => {
