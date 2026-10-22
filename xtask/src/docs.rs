@@ -30,6 +30,7 @@ const PAGES: &[(&str, &str, Option<&str>)] = &[
     ("projekt", "CHANGELOG.md", None),
     ("projekt", "README.md", Some("Überblick")),
     ("projekt", "docs/00-grobstruktur.md", None),
+    ("projekt", "docs/ui/", None),
     ("projekt", "docs/adr/", None),
     ("projekt", "docs/spikes/", None),
     ("projekt", "docs/dev-setup.md", None),
@@ -181,6 +182,27 @@ fn render(markdown: &str, source: &str, ids: &[(String, String)]) -> Rendered {
                     *dest_url = CowStr::from(rewritten);
                 }
             }
+            // The app carries no image files, so a picture (concept screens in docs/ui)
+            // becomes a `repo:` link with its alt text — or the file name when there is none.
+            Event::Start(Tag::Image {
+                link_type,
+                dest_url,
+                title: img_title,
+                id,
+            }) => {
+                let rewritten = rewrite_link(dest_url, source, ids);
+                let file_name = dest_url.rsplit('/').next().unwrap_or(dest_url).to_string();
+                events[i] = Event::Start(Tag::Link {
+                    link_type: *link_type,
+                    dest_url: CowStr::from(rewritten),
+                    title: img_title.clone(),
+                    id: id.clone(),
+                });
+                if matches!(events.get(i + 1), Some(Event::End(TagEnd::Image))) {
+                    events.insert(i + 1, Event::Text(CowStr::from(file_name)));
+                }
+            }
+            Event::End(TagEnd::Image) => events[i] = Event::End(TagEnd::Link),
             Event::Text(t) | Event::Code(t) => text.push_str(t),
             // Word boundaries only at breaks and block ends — inline ends (emphasis, links,
             // code) must not split "*Laufzeit*." into "Laufzeit .".
@@ -372,6 +394,22 @@ mod tests {
             "https://x.y/z"
         );
         assert_eq!(rewrite_link("#ziele", "README.md", &ids), "#ziele");
+    }
+
+    #[test]
+    fn images_become_repo_links_with_alt_text_or_file_name() {
+        let r = render(
+            "![Shell mit Zonen](img/00-shell.png) und ![](img/01-call.png)",
+            "docs/ui/01-konzept.md",
+            &ids(),
+        );
+        assert!(r
+            .html
+            .contains("<a href=\"repo:docs/ui/img/00-shell.png\">Shell mit Zonen</a>"));
+        assert!(r
+            .html
+            .contains("<a href=\"repo:docs/ui/img/01-call.png\">01-call.png</a>"));
+        assert!(!r.html.contains("<img"));
     }
 
     #[test]

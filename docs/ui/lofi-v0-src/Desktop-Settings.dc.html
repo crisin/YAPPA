@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Settings Einfach und Profi</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#1D4ED8}a:hover{color:#1E3A8A}
+</style>
+</helmet>
+<div style="height: 100vh; min-height: 900px; display: flex; flex-wrap: wrap; background: #F5F5F2; color: #1F1F1D; font-family: Inter, system-ui, sans-serif; font-size: 14px">
+  <nav aria-label="Einstellungen" style="flex: 1 1 260px; max-width: 300px; display: flex; flex-direction: column; gap: 4px; padding: 24px 16px; background: #FAFAF8; border-right: 1px solid #CFCFC8; box-sizing: border-box">
+    <span style="font-weight: 700; font-size: 18px; padding: 0 10px 12px">Einstellungen</span>
+    <div role="group" aria-label="Ansicht" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 10px; background: #E7E7E2; margin-bottom: 16px">
+      <button onClick="{{setEasy}}" aria-pressed="{{easyPressed}}" style="height: 36px; border-radius: 8px; border: 0; background: {{easyBg}}; font: 600 13px Inter, sans-serif; color: #1F1F1D">Einfach</button>
+      <button onClick="{{setPro}}" aria-pressed="{{proPressed}}" style="height: 36px; border-radius: 8px; border: 0; background: {{proBg}}; font: 600 13px Inter, sans-serif; color: #1F1F1D">Profi</button>
+    </div>
+    <sc-for list="{{nav}}" as="n" hint-placeholder-count="5">
+      <sc-if value="{{n.head}}" hint-placeholder-val="{{ false }}">
+        <span style="font: 500 11px 'JetBrains Mono', monospace; color: #5C5C57; letter-spacing: 0.04em; padding: 14px 10px 4px">{{n.label}}</span>
+      </sc-if>
+      <sc-if value="{{n.item}}" hint-placeholder-val="{{ true }}">
+        <button style="height: 38px; padding: 0 10px; border-radius: 8px; border: 0; background: {{n.bg}}; text-align: left; font: {{n.font}}; color: #1F1F1D">{{n.label}}</button>
+      </sc-if>
+    </sc-for>
+    <div style="flex: 1"></div>
+    <a href="Desktop-Call.dc.html" style="height: 40px; display: flex; align-items: center; padding: 0 10px; border-radius: 8px; border: 1px solid #CFCFC8; color: #1F1F1D; text-decoration: none; font-weight: 500">Schließen · Esc</a>
+  </nav>
+
+  <main style="flex: 999 1 560px; min-width: 0; padding: 32px 40px; box-sizing: border-box; overflow: auto">
+    <sc-if value="{{easy}}" hint-placeholder-val="{{ true }}">
+      <div style="max-width: 640px; display: flex; flex-direction: column; gap: 28px">
+        <h1 style="margin: 0; font-size: 26px">Audio und Sprechen</h1>
+        <section style="display: flex; flex-direction: column; gap: 14px">
+          <label style="display: flex; flex-direction: column; gap: 6px; font-weight: 500">Mikrofon
+            <select style="height: 44px; padding: 0 10px; border-radius: 10px; border: 1.5px solid #8A8A84; font: 400 14px Inter, sans-serif; background: #FFFFFF"><option>Headset-Mikrofon</option></select>
+          </label>
+          <div aria-label="Pegel" style="height: 10px; border-radius: 5px; background: #E7E7E2; display: flex"><span style="width: 40%; border-radius: 5px; background: #1D4ED8"></span></div>
+          <label style="display: flex; flex-direction: column; gap: 6px; font-weight: 500">Ausgabe
+            <select style="height: 44px; padding: 0 10px; border-radius: 10px; border: 1.5px solid #8A8A84; font: 400 14px Inter, sans-serif; background: #FFFFFF"><option>Headset</option></select>
+          </label>
+        </section>
+        <section style="display: flex; flex-direction: column; gap: 12px">
+          <span style="font-weight: 600">Sprechen</span>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+            <button style="padding: 14px; border-radius: 12px; border: 2px solid #1D4ED8; background: #FFFFFF; text-align: left; font: inherit; color: #1F1F1D; display: flex; flex-direction: column; gap: 4px"><span style="font-weight: 600">Automatisch</span><span style="font-size: 13px; color: #5C5C57">Sprachaktivierung</span></button>
+            <button style="padding: 14px; border-radius: 12px; border: 1.5px solid #CFCFC8; background: #FFFFFF; text-align: left; font: inherit; color: #1F1F1D; display: flex; flex-direction: column; gap: 4px"><span style="font-weight: 600">Taste halten</span><span style="font-size: 13px; color: #5C5C57">Push-to-Talk</span></button>
+          </div>
+          <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #5C5C57">Empfindlichkeit
+            <input type="range" value="45">
+          </label>
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-radius: 12px; background: #FFFFFF; border: 1px solid #CFCFC8">
+            <span>Taste für Stummschalten</span>
+            <button style="height: 34px; padding: 0 12px; border-radius: 8px; border: 1px solid #CFCFC8; background: #F5F5F2; font: 500 12px 'JetBrains Mono', monospace; color: #1F1F1D">Strg + M</button>
+          </div>
+        </section>
+        <section style="display: flex; flex-direction: column; gap: 12px">
+          <span style="font-weight: 600">Lautstärke</span>
+          <label style="display: flex; align-items: center; gap: 12px; font-size: 13px; color: #5C5C57">Alle anderen <input type="range" value="75" style="flex: 1"></label>
+        </section>
+        <p style="margin: 0; padding: 14px; border-radius: 12px; border: 1.5px dashed #8A8A84; color: #5C5C57; line-height: 1.5">Mehr Kontrolle (EQ, Effekte, Bitrate, Diagnose) gibt es unter „Profi“. Beide Ansichten ändern dieselben Einstellungen.</p>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{pro}}" hint-placeholder-val="{{ false }}">
+      <div style="max-width: 980px; display: flex; flex-direction: column; gap: 24px">
+        <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <h1 style="margin: 0; font-size: 26px">Signalkette</h1>
+            <span style="color: #5C5C57">Live-Pegel pro Stufe. Klick auf eine Stufe öffnet ihre Parameter.</span>
+          </div>
+          <span style="font: 500 12px 'JetBrains Mono', monospace; padding: 6px 10px; border-radius: 6px; background: #FFFFFF; border: 1px solid #CFCFC8">CPU 1,8 % · +4 ms</span>
+        </div>
+        <div style="display: flex; align-items: stretch; gap: 8px; overflow-x: auto; padding-bottom: 6px">
+          <sc-for list="{{chain}}" as="c" hint-placeholder-count="7">
+            <button style="flex: 0 0 116px; min-height: 150px; display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 12px; border: {{c.border}}; background: #FFFFFF; text-align: left; font: inherit; color: #1F1F1D">
+              <span style="font: 500 10px 'JetBrains Mono', monospace; color: #5C5C57">{{c.n}}</span>
+              <span style="font-weight: 600; font-size: 13px">{{c.name}}</span>
+              <span style="flex: 1; display: flex; align-items: flex-end"><span style="width: 100%; height: 8px; border-radius: 4px; background: #E7E7E2; display: flex"><span style="width: {{c.level}}; border-radius: 4px; background: #1D4ED8"></span></span></span>
+              <span style="font-size: 11px; color: #5C5C57">{{c.state}}</span>
+            </button>
+          </sc-for>
+        </div>
+        <section style="display: flex; flex-direction: column; gap: 14px; padding: 20px; border-radius: 14px; background: #FFFFFF; border: 1px solid #CFCFC8">
+          <div style="display: flex; justify-content: space-between; align-items: center">
+            <span style="font-weight: 600">EQ · 5 Bänder</span>
+            <button style="height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid #CFCFC8; background: #F5F5F2; font: 500 12px Inter, sans-serif; color: #1F1F1D">Preset: Headset warm</button>
+          </div>
+          <div style="height: 180px; border-radius: 10px; border: 1px solid #CFCFC8; background: repeating-linear-gradient(0deg, #FFFFFF 0 35px, #EFEFEA 35px 36px); display: flex; align-items: center; justify-content: center; color: #5C5C57; font: 500 12px 'JetBrains Mono', monospace">FREQUENZKURVE + SPEKTRUM</div>
+          <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px">
+            <sc-for list="{{bands}}" as="b" hint-placeholder-count="5">
+              <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #5C5C57">{{b}}<input type="range" value="50"></label>
+            </sc-for>
+          </div>
+        </section>
+      </div>
+    </sc-if>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { mode: 'easy' };
+  }
+  renderVals() {
+    const easy = this.state.mode === 'easy';
+    const item = (label, active) => ({ item: true, head: false, label, bg: active ? '#E7E7E2' : 'transparent', font: (active ? '600' : '400') + ' 14px Inter, sans-serif' });
+    const head = (label) => ({ item: false, head: true, label });
+    const nav = easy
+      ? [item('Audio und Sprechen', true), item('Darstellung', false), item('Benachrichtigungen', false), item('Konto', false)]
+      : [head('AUDIO'), item('Geräte', false), item('Signalkette', true), item('Effekte und VST', false), item('Tasten', false),
+         head('VERBINDUNG'), item('Netzwerk und Bitrate', false), item('Diagnose', false),
+         head('APP'), item('Darstellung und Themes', false), item('Updates und Kanal', false), item('Konto', false)];
+    return {
+      easy,
+      pro: !easy,
+      easyBg: easy ? '#FFFFFF' : 'transparent',
+      proBg: easy ? 'transparent' : '#FFFFFF',
+      easyPressed: easy ? 'true' : 'false',
+      proPressed: easy ? 'false' : 'true',
+      setEasy: () => this.setState({ mode: 'easy' }),
+      setPro: () => this.setState({ mode: 'pro' }),
+      nav,
+      chain: [
+        { n: '01', name: 'Eingang', level: '62%', state: 'Headset', border: '1.5px solid #CFCFC8' },
+        { n: '02', name: 'Rausch­unterdrückung', level: '48%', state: 'an', border: '1.5px solid #CFCFC8' },
+        { n: '03', name: 'Gate / VAD', level: '48%', state: 'offen', border: '1.5px solid #CFCFC8' },
+        { n: '04', name: 'EQ', level: '52%', state: '5 Bänder', border: '2px solid #1D4ED8' },
+        { n: '05', name: 'Kompressor', level: '44%', state: '−3 dB', border: '1.5px solid #CFCFC8' },
+        { n: '06', name: 'Effekte / VST', level: '0%', state: 'aus', border: '1.5px dashed #8A8A84' },
+        { n: '07', name: 'Senden', level: '44%', state: 'Opus 64k', border: '1.5px solid #CFCFC8' }
+      ],
+      bands: ['80 Hz', '250 Hz', '1 kHz', '3 kHz', '8 kHz']
+    };
+  }
+}
+</script>
+</body>
+</html>

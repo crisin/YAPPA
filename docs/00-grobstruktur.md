@@ -24,7 +24,7 @@ yAPPA ersetzt Discord und Steam-Voice für eine feste Gruppe von bis zu 20 Leute
 | Screenshare und Video | Offen | LiveKit kann es, Client-Aufwand unklar |
 | Ende-zu-Ende-Verschlüsselung | Offen | LiveKit-SDKs bringen E2EE mit |
 | macOS-Client offiziell unterstützt | Offen | Build läuft mit, Audio-Pipeline muss auf Mac getestet werden |
-| Mobile-Apps | Nicht-Ziel |  |
+| Mobile-Apps | Später (nach v1) | Lofi-Konzept geparkt in `docs/ui/01-ui-system-lofi-v0.md`; voller Voice-Client braucht Engine-Plattform-Traits für iOS/Android, vorher ADR |
 | Öffentliche Instanz, Multi-Tenant, Federation | Nicht-Ziel | eine Gruppe, eine Instanz |
 | Discord-Parität bei Community-Features | Nicht-Ziel | Rollen-Zoo, Bots, Nitro-Kram |
 | App-Audio streamen (Reason, Ableton) als eigener music-Track | Später | stereo, hohe Bitrate, keine Sprachverarbeitung; Zuhören und Produzieren, kein latenzfreies Jammen; Windows zuerst |

@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Onboarding per Invite</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#1D4ED8}a:hover{color:#1E3A8A}
+</style>
+</helmet>
+<div style="height: 100vh; min-height: 900px; display: flex; align-items: center; justify-content: center; padding: 24px; box-sizing: border-box; background: #EBEBE6; color: #1F1F1D; font-family: Inter, system-ui, sans-serif; font-size: 15px">
+  <div style="width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 24px; padding: 36px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CFCFC8; box-sizing: border-box">
+    <div style="display: flex; align-items: center; gap: 12px">
+      <div style="width: 44px; height: 44px; border-radius: 12px; border: 2px solid #1F1F1D; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 18px">y</div>
+      <div style="display: flex; flex-direction: column">
+        <span style="font-weight: 600">Krille hat dich eingeladen</span>
+        <span style="font-size: 13px; color: #5C5C57">zu „Die Gang“</span>
+      </div>
+    </div>
+
+    <ol aria-label="Schritte" style="list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+      <sc-for list="{{steps}}" as="s" hint-placeholder-count="3">
+        <li style="display: flex; flex-direction: column; gap: 6px">
+          <span style="height: 4px; border-radius: 2px; background: {{s.bar}}"></span>
+          <span style="font-size: 12px; font-weight: {{s.weight}}; color: {{s.color}}">{{s.label}}</span>
+        </li>
+      </sc-for>
+    </ol>
+
+    <sc-if value="{{isName}}" hint-placeholder-val="{{ true }}">
+      <div style="display: flex; flex-direction: column; gap: 16px">
+        <h1 style="margin: 0; font-size: 24px">Wie sollen dich die anderen sehen?</h1>
+        <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500">Anzeigename
+          <input value="Mo" style="height: 44px; padding: 0 12px; border-radius: 10px; border: 1.5px solid #8A8A84; font: 400 15px Inter, sans-serif">
+        </label>
+        <div style="display: flex; align-items: center; gap: 12px">
+          <span style="width: 56px; height: 56px; border-radius: 50%; background: #CFCFC8; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 20px">M</span>
+          <button style="height: 40px; padding: 0 14px; border-radius: 10px; border: 1px solid #CFCFC8; background: #F5F5F2; font: 500 13px Inter, sans-serif; color: #1F1F1D">Bild wählen (optional)</button>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isMic}}" hint-placeholder-val="{{ false }}">
+      <div style="display: flex; flex-direction: column; gap: 16px">
+        <h1 style="margin: 0; font-size: 24px">Sag mal was.</h1>
+        <p style="margin: 0; color: #5C5C57; line-height: 1.5">Wenn der Balken ausschlägt, hören dich die anderen.</p>
+        <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500">Mikrofon
+          <select style="height: 44px; padding: 0 10px; border-radius: 10px; border: 1.5px solid #8A8A84; font: 400 15px Inter, sans-serif; background: #FFFFFF"><option>Headset-Mikrofon (automatisch erkannt)</option></select>
+        </label>
+        <div aria-label="Pegel" style="height: 14px; border-radius: 7px; background: #E7E7E2; display: flex"><span style="width: 58%; border-radius: 7px; background: #1D4ED8"></span></div>
+        <div style="display: flex; gap: 8px">
+          <button style="height: 40px; padding: 0 14px; border-radius: 10px; border: 1px solid #CFCFC8; background: #F5F5F2; font: 500 13px Inter, sans-serif; color: #1F1F1D">Mich selbst anhören</button>
+          <button style="height: 40px; padding: 0 14px; border-radius: 10px; border: 1px solid #CFCFC8; background: #F5F5F2; font: 500 13px Inter, sans-serif; color: #1F1F1D">Testton abspielen</button>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isTalk}}" hint-placeholder-val="{{ false }}">
+      <div style="display: flex; flex-direction: column; gap: 16px">
+        <h1 style="margin: 0; font-size: 24px">Wie willst du reden?</h1>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+          <button onClick="{{pickAuto}}" style="display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 16px; border-radius: 12px; border: {{autoBorder}}; background: #FFFFFF; text-align: left; font: inherit; color: #1F1F1D">
+            <span style="font-weight: 600">Automatisch</span>
+            <span style="font-size: 13px; color: #5C5C57; line-height: 1.4">Mikro geht an, sobald du sprichst. Empfohlen.</span>
+          </button>
+          <button onClick="{{pickPtt}}" style="display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 16px; border-radius: 12px; border: {{pttBorder}}; background: #FFFFFF; text-align: left; font: inherit; color: #1F1F1D">
+            <span style="font-weight: 600">Taste halten</span>
+            <span style="font-size: 13px; color: #5C5C57; line-height: 1.4">Push-to-Talk. Taste wählst du gleich.</span>
+          </button>
+        </div>
+        <span style="font-size: 13px; color: #5C5C57">Lässt sich jederzeit in den Einstellungen ändern.</span>
+      </div>
+    </sc-if>
+
+    <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px">
+      <button onClick="{{back}}" style="height: 44px; padding: 0 16px; border-radius: 10px; border: 0; background: none; font: 500 14px Inter, sans-serif; color: #1F1F1D; visibility: {{backVis}}">Zurück</button>
+      <sc-if value="{{notLast}}" hint-placeholder-val="{{ true }}">
+        <button onClick="{{next}}" style="height: 44px; padding: 0 22px; border-radius: 10px; border: 0; background: #1F1F1D; color: #FFFFFF; font: 600 14px Inter, sans-serif">Weiter</button>
+      </sc-if>
+      <sc-if value="{{isTalk}}" hint-placeholder-val="{{ false }}">
+        <a href="Desktop-Call.dc.html" style="height: 44px; padding: 0 22px; border-radius: 10px; background: #1F1F1D; color: #FFFFFF; font: 600 14px Inter, sans-serif; display: flex; align-items: center; text-decoration: none">Rein in die Lobby</a>
+      </sc-if>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { step: 0, mode: 'auto' };
+  }
+  renderVals() {
+    const step = this.state.step;
+    const labels = ['1 · Name', '2 · Mikro', '3 · Reden'];
+    const on = '2px solid #1D4ED8';
+    const off = '1.5px solid #CFCFC8';
+    return {
+      steps: labels.map((label, i) => ({
+        label,
+        bar: i <= step ? '#1F1F1D' : '#E7E7E2',
+        weight: i === step ? 700 : 500,
+        color: i <= step ? '#1F1F1D' : '#5C5C57'
+      })),
+      isName: step === 0,
+      isMic: step === 1,
+      isTalk: step === 2,
+      notLast: step < 2,
+      backVis: step > 0 ? 'visible' : 'hidden',
+      autoBorder: this.state.mode === 'auto' ? on : off,
+      pttBorder: this.state.mode === 'ptt' ? on : off,
+      pickAuto: () => this.setState({ mode: 'auto' }),
+      pickPtt: () => this.setState({ mode: 'ptt' }),
+      next: () => this.setState({ step: Math.min(2, step + 1) }),
+      back: () => this.setState({ step: Math.max(0, step - 1) })
+    };
+  }
+}
+</script>
+</body>
+</html>

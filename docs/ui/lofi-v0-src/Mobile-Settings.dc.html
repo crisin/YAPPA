@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Mobile Ich und Einstellungen</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#1D4ED8}a:hover{color:#1E3A8A}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; display: flex; flex-direction: column; background: #F5F5F2; color: #1F1F1D; font-family: Inter, system-ui, sans-serif; font-size: 15px; overflow: hidden">
+  <div style="height: 47px; flex-shrink: 0"></div>
+  <header style="height: 56px; flex-shrink: 0; display: flex; align-items: center; padding: 0 16px">
+    <span style="font-weight: 700; font-size: 22px">Ich</span>
+  </header>
+  <div style="flex: 1; overflow: auto; padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 18px">
+    <div style="display: flex; align-items: center; gap: 14px; padding: 14px; border-radius: 16px; background: #FFFFFF; border: 1px solid #CFCFC8">
+      <span style="width: 56px; height: 56px; border-radius: 50%; background: #CFCFC8; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 20px">K</span>
+      <span style="flex: 1; display: flex; flex-direction: column"><span style="font-weight: 600; font-size: 17px">Krille</span><span style="font-size: 13px; color: #5C5C57">Die Gang</span></span>
+      <button style="height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid #CFCFC8; background: #F5F5F2; font: 500 13px Inter, sans-serif; color: #1F1F1D">Bearbeiten</button>
+    </div>
+
+    <section style="display: flex; flex-direction: column; gap: 8px">
+      <span style="font: 500 11px 'JetBrains Mono', monospace; color: #5C5C57; letter-spacing: 0.04em; padding: 0 4px">SPRECHEN</span>
+      <div style="display: flex; flex-direction: column; border-radius: 16px; background: #FFFFFF; border: 1px solid #CFCFC8; overflow: hidden">
+        <div style="display: flex; flex-direction: column; gap: 10px; padding: 14px">
+          <span>Sprechmodus</span>
+          <div role="group" aria-label="Sprechmodus" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 12px; background: #E7E7E2">
+            <button style="height: 40px; border-radius: 9px; border: 0; background: #FFFFFF; font: 600 13px Inter, sans-serif; color: #1F1F1D">Offenes Mikro</button>
+            <button style="height: 40px; border-radius: 9px; border: 0; background: transparent; font: 500 13px Inter, sans-serif; color: #1F1F1D">Halten</button>
+          </div>
+        </div>
+        <label style="display: flex; align-items: center; justify-content: space-between; min-height: 56px; padding: 0 14px; border-top: 1px solid #EFEFEA">Rauschunterdrückung
+          <input type="checkbox" checked style="width: 22px; height: 22px">
+        </label>
+        <label style="display: flex; flex-direction: column; gap: 8px; padding: 14px; border-top: 1px solid #EFEFEA">Lautstärke der anderen
+          <input type="range" value="75">
+        </label>
+      </div>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 8px">
+      <span style="font: 500 11px 'JetBrains Mono', monospace; color: #5C5C57; letter-spacing: 0.04em; padding: 0 4px">APP</span>
+      <div style="display: flex; flex-direction: column; border-radius: 16px; background: #FFFFFF; border: 1px solid #CFCFC8; overflow: hidden">
+        <sc-for list="{{rows}}" as="r" hint-placeholder-count="3">
+          <button style="display: flex; align-items: center; justify-content: space-between; min-height: 56px; padding: 0 14px; border: 0; border-bottom: 1px solid #EFEFEA; background: none; font: inherit; color: #1F1F1D; text-align: left">
+            <span>{{r.label}}</span>
+            <span style="display: flex; align-items: center; gap: 6px; color: #5C5C57; font-size: 14px">{{r.value}}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></span>
+          </button>
+        </sc-for>
+      </div>
+    </section>
+
+    <p style="margin: 0; padding: 14px; border-radius: 14px; border: 1.5px dashed #8A8A84; color: #5C5C57; font-size: 13px; line-height: 1.5">EQ, Effekte, Diagnose und Verwaltung gibt es in der Desktop-App.</p>
+    <span style="font: 500 11px 'JetBrains Mono', monospace; color: #5C5C57; text-align: center">yAPPA 0.4.0 · stable</span>
+  </div>
+  <nav aria-label="Module" style="flex-shrink: 0; height: 84px; box-sizing: border-box; padding: 6px 8px 26px; display: flex; border-top: 1px solid #CFCFC8; background: #FAFAF8">
+    <a href="Mobile-Channels.dc.html" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #5C5C57; text-decoration: none; font-size: 11px">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 10v4M8 6v12M12 3v18M16 7v10M20 10v4"/></svg>Voice
+    </a>
+    <span style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #1F1F1D; font-size: 11px; font-weight: 700">
+      <span style="width: 24px; height: 24px; border-radius: 50%; background: #1F1F1D"></span>Ich
+    </span>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      rows: [
+        { label: 'Darstellung', value: 'Dunkel' },
+        { label: 'Benachrichtigungen', value: 'Nur Erwähnungen' },
+        { label: 'Konto', value: '' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

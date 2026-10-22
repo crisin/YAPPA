@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>System Mobile-Shell</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#1D4ED8}a:hover{color:#1E3A8A}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; display: flex; flex-direction: column; background: #F5F5F2; color: #1F1F1D; font-family: Inter, system-ui, sans-serif; font-size: 15px; overflow: hidden">
+  <div style="height: 47px; flex-shrink: 0"></div>
+  <header style="height: 56px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid #CFCFC8; position: relative">
+    <span style="font-weight: 700; font-size: 20px">Voice</span>
+    <button aria-label="Suchen" style="width: 44px; height: 44px; border-radius: 12px; border: 1px solid #CFCFC8; background: #FFFFFF; display: flex; align-items: center; justify-content: center; color: #1F1F1D"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
+    <span style="position: absolute; top: 16px; left: 90px; width: 24px; height: 24px; border-radius: 50%; background: #B4410C; color: #FFFFFF; font: 700 12px 'JetBrains Mono', monospace; display: flex; align-items: center; justify-content: center">E</span>
+  </header>
+  <div style="margin: 10px 16px 0; height: 40px; flex-shrink: 0; border: 1.5px dashed #8A8A84; border-radius: 8px; display: flex; align-items: center; gap: 8px; padding: 0 10px; color: #5C5C57; font-size: 13px">
+    <span style="width: 24px; height: 24px; border-radius: 50%; background: #B4410C; color: #FFFFFF; font: 700 12px 'JetBrains Mono', monospace; display: flex; align-items: center; justify-content: center; flex-shrink: 0">F</span>
+    System-Banner
+  </div>
+  <div style="flex: 1; margin: 12px 16px; border-radius: 12px; border: 1.5px solid #CFCFC8; background: repeating-linear-gradient(135deg, #FFFFFF 0 10px, #F0F0EC 10px 20px); display: flex; align-items: center; justify-content: center; position: relative">
+    <span style="background: #FFFFFF; padding: 6px 12px; border-radius: 6px; font: 500 12px 'JetBrains Mono', monospace; color: #5C5C57; text-align: center">LISTE → DETAIL<br>Sidebar + Stage als Push-Navigation</span>
+    <span style="position: absolute; top: 12px; left: 12px; width: 24px; height: 24px; border-radius: 50%; background: #B4410C; color: #FFFFFF; font: 700 12px 'JetBrains Mono', monospace; display: flex; align-items: center; justify-content: center">B+C</span>
+  </div>
+  <div style="margin: 0 10px 8px; flex-shrink: 0; height: 64px; border-radius: 14px; background: #1F1F1D; color: #FFFFFF; display: flex; align-items: center; gap: 10px; padding: 0 8px 0 14px; position: relative">
+    <span style="width: 10px; height: 10px; border-radius: 50%; background: #93C5FD; flex-shrink: 0"></span>
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+      <span style="font-weight: 600; font-size: 14px">Raid-Abend</span>
+      <span style="font-size: 12px; color: #D4D4CF">5 Leute · 18 ms</span>
+    </div>
+    <button aria-label="Mikro stummschalten" style="width: 48px; height: 48px; border-radius: 12px; border: 0; background: #FFFFFF; color: #1F1F1D; display: flex; align-items: center; justify-content: center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+    <span style="position: absolute; top: -12px; right: -6px; width: 24px; height: 24px; border-radius: 50%; background: #B4410C; color: #FFFFFF; font: 700 12px 'JetBrains Mono', monospace; display: flex; align-items: center; justify-content: center">D</span>
+  </div>
+  <nav aria-label="Module" style="flex-shrink: 0; height: 84px; box-sizing: border-box; padding: 6px 8px 26px; display: flex; border-top: 1px solid #CFCFC8; background: #FAFAF8; position: relative">
+    <a href="Mobile-Channels.dc.html" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #1F1F1D; text-decoration: none; font-size: 11px; font-weight: 600">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 10v4M8 6v12M12 3v18M16 7v10M20 10v4"/></svg>Voice
+    </a>
+    <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #5C5C57; font-size: 11px">
+      <span style="width: 24px; height: 24px; border-radius: 7px; border: 1.5px dashed #8A8A84; box-sizing: border-box"></span>Hub
+    </div>
+    <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #5C5C57; font-size: 11px">
+      <span style="width: 24px; height: 24px; border-radius: 7px; border: 1.5px dashed #8A8A84; box-sizing: border-box"></span>Mehr
+    </div>
+    <a href="Mobile-Settings.dc.html" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #5C5C57; text-decoration: none; font-size: 11px">
+      <span style="width: 24px; height: 24px; border-radius: 50%; background: #CFCFC8"></span>Ich
+    </a>
+    <span style="position: absolute; top: -12px; left: 12px; width: 24px; height: 24px; border-radius: 50%; background: #B4410C; color: #FFFFFF; font: 700 12px 'JetBrains Mono', monospace; display: flex; align-items: center; justify-content: center">A</span>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
