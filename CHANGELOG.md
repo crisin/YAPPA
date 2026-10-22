@@ -4,6 +4,7 @@ One line per finished task (definition of done). Newest first.
 
 ## Unreleased
 
+- Dependencies: `rustls` 0.23.46 / `rustls-webpki` 0.103.16 and `webrtc-sys-build` 0.3.20 (pulls `zip` 9 instead of 0.6) — clears the RUSTSEC advisories that had turned `cargo deny` red in the gate.
 - Test client: the app joins a room with a pasted invite and carries real voice — new crates `transport` (trait + LiveKit) and `audio-engine` (devices, mixer with per-person volume, levels, automatic rejoin), debug panel with live network and device statistics, structured log files with one-click diagnostics export, `cargo xtask livekit token` prints invites, headless engine example. ADR-003, docs/mittesten.md.
 - Home server (stage 1): `infra/livekit/home.yml` with LiveKit + Caddy/TLS, keys from `.env`, `cargo xtask livekit token <name>` for join tokens, `yappa-poc --token`; German step-by-step guide in docs/homeserver.md (FRITZ!Box, Linux VM).
 - S1 PoC: `yappa-poc` (scratch crate `crates/spike-s1`) — cpal ↔ LiveKit Rust SDK, click latency, packet loss, reconnect; result in docs/spikes/s1-poc.md. Windows builds now use the static C runtime (`.cargo/config.toml`), needed by libwebrtc.
