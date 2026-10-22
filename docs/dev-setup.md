@@ -68,6 +68,10 @@ prebuilt libwebrtc is built that way and the linker refuses a mix (LNK2038). The
 downloads libwebrtc (a few hundred MB) into `target/`; if that step fails once with "access
 denied" while moving the extracted files, run the build again.
 
+macOS links with `-ObjC` (also in `.cargo/config.toml`): libwebrtc ships Objective-C
+categories, and without the flag every binary that links LiveKit aborts at load time with
+"unrecognized selector".
+
 ### Trying the app against the local server
 
 ```bash
