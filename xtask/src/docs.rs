@@ -29,6 +29,7 @@ const PAGES: &[(&str, &str, Option<&str>)] = &[
     ("projekt", "TASKS.md", Some("Status")),
     ("projekt", "CHANGELOG.md", None),
     ("projekt", "README.md", Some("Überblick")),
+    ("projekt", "docs/01-vision-v1.md", None),
     ("projekt", "docs/00-grobstruktur.md", None),
     ("projekt", "docs/ui/", None),
     ("projekt", "docs/adr/", None),

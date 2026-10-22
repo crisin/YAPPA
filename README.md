@@ -20,7 +20,10 @@ Why and what follows from it: [ADR-001](docs/adr/001-variante-b-stack.md).
 
 ## Docs
 
+- [docs/01-vision-v1.md](docs/01-vision-v1.md) — vision and architecture for phase 1 (German);
+  wins over the baseline where they differ
 - [docs/00-grobstruktur.md](docs/00-grobstruktur.md) — the planning baseline (German, ADR-000)
+- [docs/ui/](docs/ui/01-ui-system-lofi-v0.md) — UI concept (lofi) and implementation plan (German)
 - [docs/adr/](docs/adr/README.md) — architecture decisions
 - [docs/spikes/](docs/spikes/README.md) — spike goals and results
 - [docs/dev-setup.md](docs/dev-setup.md) — tooling, tests, Claude Code setup
