@@ -8,9 +8,13 @@ App Hub board), but a Rust-first stack and developed directly with Claude Code, 
 hub. Do not copy code between the two repos unasked — they are meant to be compared.
 
 **Read before architectural work:**
-1. [`docs/00-grobstruktur.md`](docs/00-grobstruktur.md) — planning baseline (German), ADR-000.
-2. [`docs/adr/001-variante-b-stack.md`](docs/adr/001-variante-b-stack.md) — where this
+1. [`docs/01-vision-v1.md`](docs/01-vision-v1.md) — vision and architecture for phase 1
+   (German). Wins over everything below where they differ.
+2. [`docs/00-grobstruktur.md`](docs/00-grobstruktur.md) — planning baseline (German), ADR-000.
+3. [`docs/adr/001-variante-b-stack.md`](docs/adr/001-variante-b-stack.md) — where this
    variant deviates. ADR-001 wins over ADR-000 where they differ.
+4. [`docs/adr/`](docs/adr/README.md) 004–007: UI architecture, presence over LiveKit,
+   distribution, client core and settings split.
 
 ## Architecture in one breath
 
@@ -18,22 +22,28 @@ hub. Do not copy code between the two repos unasked — they are meant to be com
   voice, settings, in-app help. **All audio processing is native Rust** in the engine; the
   webview only sees levels, switches and settings.
 - **Control plane** (`crates/control`, Rust: axum + sqlx + SQLite): invites/identity,
-  channels, LiveKit tokens, presence from webhooks, a tiny bootstrap/emergency admin page.
-  Runs next to LiveKit in the same `docker compose`. Never in the voice path — a running call
-  survives a control-plane restart (long-lived tokens, client cache).
-- **Media plane** (self-hosted LiveKit): routes the Opus streams. UDP direct, TURN fallback.
+  channels, LiveKit tokens, remote config (min version, kill switch), event log from
+  webhooks, updates served by Caddy next to it. Runs next to LiveKit in the same
+  `docker compose`. HTTP only, never in a live path — a running call and the presence view
+  survive a control-plane restart (long-lived tokens, client cache).
+- **Media plane** (self-hosted LiveKit): routes the Opus streams (one room per channel) and
+  carries presence: every client sits in the room `presence` and publishes its state as
+  participant attributes (ADR-005). UDP direct, TURN fallback.
 
 ## Repo layout (target — built up by the S0 tasks)
 
 ```
 apps/desktop/            Tauri 2 shell (window, tray, hotkeys, updater) + Svelte 5 UI
   src/                   UI — talks only engine-protocol + api-types (generated TS)
-  src-tauri/             Rust shell, embeds crates/audio-engine
-crates/engine-protocol/  commands, events, settings schema; versioned; TS via ts-rs
-crates/api-types/        client <-> control-plane DTOs; TS via ts-rs
+  src-tauri/             Rust shell: wires crates/client + crates/audio-engine + platform-*
+crates/engine-protocol/  commands, events, audio settings schema; versioned; TS via ts-rs
+crates/api-types/        client <-> control-plane DTOs, presence attributes, config; TS via ts-rs
 crates/dsp/              pure DSP blocks (biquad EQ, gate, compressor, effects) — no I/O
-crates/audio-engine/     sources, pipeline, mixer, output, platform traits — no Tauri, no LiveKit
-crates/transport/        Transport trait + LiveKit implementation, reconnect, publish options
+crates/denoise/          Denoiser trait + DeepFilterNet / RNNoise (model loading is I/O, so not dsp)
+crates/audio-engine/     sources, pipeline, mixer, output — no Tauri, no LiveKit, no HTTP
+crates/transport/        LiveKit: voice session (Transport trait) + PresenceLink — no DSP, no UI
+crates/client/           non-audio client logic: API client, session/keyring, presence, app
+                         settings, update check — no Tauri, no audio (ADR-007)
 crates/control/          control-plane server binary (axum, sqlx/SQLite, migrations)
 crates/platform-windows/, crates/platform-macos/   one implementation per OS behind traits
 crates/plugin-host/      CLAP/VST3 (phase 3)
@@ -49,8 +59,9 @@ TASKS.md                 the board of this variant
 ## Rules
 
 1. **Layering is the rule, not the folder structure.** `dsp` knows no I/O, `audio-engine`
-   knows no network and no Tauri, `transport` knows no DSP, `control` knows no audio. Every
-   seam is a contract crate with tests; no side imports the other directly.
+   knows no network and no Tauri, `transport` knows no DSP and no UI, `client` knows no
+   audio, `control` knows no audio. Every seam is a contract crate with tests; no side
+   imports the other directly.
 2. **Real-time audio thread:** no allocations, no locks (use `rtrb`), no logging in the
    callback.
 3. **Windows is the reference platform.** macOS gets what comes along. Platform code lives

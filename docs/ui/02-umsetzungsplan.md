@@ -2,6 +2,12 @@
 
 Stand: 2026-10-23 · Status: Vorschlag zur Review · Grundlage: [UI-System v0](01-ui-system-lofi-v0.md)
 
+> Nachtrag vom selben Tag: Die Gesamtreview ([Vision v1](../01-vision-v1.md), ADR-004 bis
+> 007) hat drei Dinge hier geändert: Settings sind das Modul „Ich“ statt eines Overlays,
+> Presence kommt aus einem LiveKit-Presence-Raum statt per Stream von der Control-Plane, und
+> die Nicht-Audio-Logik des Clients liegt in `crates/client` (Paket C1). Die Pakete unten
+> sind darauf angepasst; die Meilenstein-Reihenfolge steht in `TASKS.md`.
+
 Der Plan übersetzt das Lofi-Konzept in Arbeitspakete für `TASKS.md`. Er beantwortet drei
 Fragen: Was lässt sich heute bauen, was hängt am Control-Plane (S6) oder an der Engine, und
 in welcher Reihenfolge entsteht daraus eine App, die die Gang in jedem Nightly benutzen kann?
@@ -33,7 +39,8 @@ Wenn S6 fertig ist, wird nur die Tür ausgetauscht, nicht die UI.
 | Zwei Türen | Neben `engine.ts` (engine-protocol) kommt `api.ts` (api-types): `Api`-Interface, Tauri-Implementierung, Mock mit Fixture „Die Gang“. Die UI kennt keine andere Datenquelle. | Regel 1 aus `CLAUDE.md` (UI spricht nur engine-protocol und api-types). Mock macht Channels, Admin und Onboarding vor S6 baubar und testbar. |
 | HTTP über die Rust-Shell | Der Webview ruft nie direkt `fetch` auf den Control-Plane. Tauri-Commands (`api_*`) reden HTTP; das Session-Token liegt im OS-Keychain, nie im Webview. | `api-types` sagt „kept in the OS keychain by the client“. Ein Ort für Token, Retry und Mindestversion. |
 | Modul-Registry | Ein Modul ist ein Objekt: `id`, Label, Icon, Rolle, Sidebar-Komponente, Stage-Komponente, Befehle für die Palette. Die Shell rendert die Registry, kennt kein Modul beim Namen. | Skalierungsregel des Konzepts: neues Feature = neuer Eintrag, Shell unverändert. Testbar ohne Rendering. |
-| Shell-Zustand | `shell.svelte.ts`: aktives Modul, Inspector (auf/zu, Inhalt), Banner-Queue mit Priorität, Palette, Settings-Overlay. Getrennt von `Session` (Engine) und vom Modulzustand. | Voice-Dock und Banner gehören der Shell, nicht dem Voice-Modul. |
+| Shell-Zustand | `shell.svelte.ts`: aktives Modul, Inspector (auf/zu, Inhalt), Banner-Queue mit Priorität, Palette. Getrennt von `Session` (Engine) und vom Modulzustand. | Voice-Dock und Banner gehören der Shell, nicht dem Voice-Modul. |
+| Settings als Modul | Einstellungen und Hilfe sind das Modul „Ich“ (Rail unten): Sidebar = Navigation mit Einfach/Profi, Stage = Bereich, `Esc` zurück. Kein Vollbild-Overlay. | Mute muss im Call immer erreichbar sein; das Dock bleibt sichtbar (ADR-004). |
 | Komponenten | Bits UI (headless, Svelte 5) für Command, Dialog, Select, Slider, Tabs, Tooltip; Icons aus Lucide. Beide MIT. Entscheidung als ADR-004 mit Lizenz, Bundle-Größe und Tauri-Check. | Tastatur und Screenreader für Palette und Dialoge selbst zu bauen kostet mehr als es bringt. Styling bleibt zu 100 % bei den Tokens. |
 | Einfach/Profi | Eine Eigenschaft der Settings (`view: simple \| pro`), nicht der Module. Beide Ansichten schreiben dasselbe Schema. | Konzept, Abschnitt 1 und Grobstruktur. |
 | Barrierefreiheit prüfbar | `vitest-axe` im UI-Test; jeder Screen hat mindestens einen Test, der Rollen, Labels und Tastaturpfad prüft. | Die Leitplanken aus dem Konzept „gelten ab jetzt“ und sollen nicht an Disziplin hängen. |
@@ -73,8 +80,9 @@ mit Mock-Daten fertig werden.
 ### U1 · Shell (M, braucht U0)
 
 Zonen A bis G als Komponenten: `Rail`, `Sidebar`-Slot, `Stage`-Slot, `VoiceDock`, `Topbar` mit
-Breadcrumb und Suchfeld, `Banner`, `Inspector`, `CommandPalette` (`Strg K`), `SettingsOverlay`
-(Vollbild, `Esc`). Der Test-Client zieht um, nichts geht verloren:
+Breadcrumb und Suchfeld, `Banner`, `Inspector`, `CommandPalette` (`Strg K`) und das Modul
+„Ich“ (Sidebar = Settings-Navigation und Hilfe, Stage = Bereich, `Esc` zurück). Der
+Test-Client zieht um, nichts geht verloren:
 
 | heute | morgen |
 |---|---|
@@ -95,8 +103,8 @@ Ergebnis: ein Nightly mit der neuen Struktur, den die Gang sofort nutzen kann.
 - Sidebar: Channel-Baum mit Personen darunter, Zustand als Text (stumm, PTT, abwesend),
   Zähler, Beitreten per Klick und Enter, „Beitreten“ beim Hover.
 - Stage: Personen-Kacheln (Ring für „spricht“, gestrichelt für stumm, Modus als Text),
-  Aktionsleiste unten mit Soundboard und App-Audio (ausgegraut mit Tooltip „kommt später“,
-  so lange die Engine es nicht kann; Plattformregel aus `CLAUDE.md`).
+  Aktionsleiste unten; Soundboard und App-Audio erscheinen erst, wenn die Engine die
+  Fähigkeit meldet (Plattformregel aus `CLAUDE.md`: fehlende Implementierung blendet aus).
 - Inspector „Person“: Lautstärke für mich, lokal stumm (beides gibt es in der Engine), später
   Rolle und Kick für Admins.
 - Topbar: Breadcrumb „Voice / Channel“, Zähler, „Einladen“ für Admins (bis U5 kopiert es die
@@ -105,8 +113,9 @@ Ergebnis: ein Nightly mit der neuen Struktur, den die Gang sofort nutzen kann.
 
 ### U3 · Settings Einfach und Profi (M, braucht U1; Protokolländerung)
 
-Settings-Schema v2 in `engine-protocol` mit Migration v1 → v2: `view`, `ptt_key`, `hotkeys`,
-`notifications`, `update_channel`, Jitter-Puffer-Ziel, Ausgabelautstärke. `cargo xtask
+Zwei Schemas (ADR-007): `engine-protocol::Settings` v2 nur noch Audio und Senden
+(Migration v1 → v2, `theme` wandert aus, `output_gain_db` kommt dazu) und `AppSettings` in
+`crates/client` (`view`, `theme`, Hotkeys, Benachrichtigungen, Update-Kanal). `cargo xtask
 gen-types`, Snapshot der Defaults.
 
 - Einfach: Audio und Sprechen (Gerät, Live-Pegel, Sprechmodus in Alltagssprache, PTT-Taste),
@@ -125,9 +134,10 @@ Invite-Links aus U5.
 
 ### U5 · Control-Plane anbinden (M, braucht S6)
 
-Tauri-Seite der `Api`: HTTP-Client, Session-Token im Keychain, Mindestversion → Banner,
-Presence-Stream → Channel-Baum, Voice-Token je Channel → `Join`. Invite-Link statt
-eingefügter Einladung (Deep Link `yappa://invite/<code>` plus Einfügen als Fallback).
+Tauri-Seite der `Api` aus `crates/client` (Paket C1): HTTP-Client, Session-Token im
+Schlüsselbund, Mindestversion → Banner, Presence aus dem LiveKit-Presence-Raum →
+Channel-Baum (ADR-005), Voice-Token je Channel → `Join`. Invite-Link statt eingefügter
+Einladung (Deep Link `yappa://invite/<code>` plus Einfügen als Fallback).
 `docs/mittesten.md` wird dafür umgeschrieben.
 
 ### U6 · Admin-Modul (M, braucht U5 und die Admin-Endpunkte aus S6)
@@ -154,6 +164,7 @@ schon reserviert:
 | Soundboard | Inspector „Soundboard“ (Suche, Grid, Hotkeys, Sound hinzufügen, Lautstärke im eigenen Stream) |
 | App-Audio | Breite Kachel in der Stage, „App-Audio teilen“ aktiv, nur Windows |
 | Lobby-Radio | Leere Stage allein im Channel |
+| Session-Radio (Phase 3, Vision Abschnitt 11) | REC-Zeichen in Dock und auf den Kacheln (Presence-Attribut `rec`), Radio-Bibliothek im Lobby-Radio |
 
 ## 5 · Lücken in den Verträgen
 
@@ -172,8 +183,9 @@ Settings-Schema.
 
 **api-types**
 
-- `Presence` existiert; es fehlt der Stream (SSE oder WebSocket) und `Member { user,
-  client: ClientInfo, last_seen }` für die Admin-Tabelle.
+- Presence kommt nicht per HTTP, sondern aus dem Presence-Raum (ADR-005):
+  `PresenceAttributes` als Konstanten in `api-types`, `Presence { channel_id, user_ids }`
+  fliegt raus. Für die Admin-Tabelle fehlt `Member { user, client: ClientInfo, last_seen }`.
 - Einladungen (`Invite` ist heute die eingefügte Einladung, der Invite-Link braucht
   `InviteCode { code, created_by, expires_at, used_by }`), Rollen ändern, Kick, Channels
   anlegen und sortieren, Server und Failover, Ereignis-Log, Mindestversion und Kill-Switch.
@@ -194,7 +206,8 @@ Settings-Schema.
 
 1. **U0 + U1** sofort, parallel zur Mac-Prüfung und zum ersten Abend mit der Gang. Reine UI,
    keine Abhängigkeit, und das nächste Nightly hat die Shell.
-2. **S6** als nächster Spike, mit dem Zuschnitt aus Abschnitt 5 (Lesen zuerst, Admin danach).
+2. **S6** mit dem Zuschnitt aus ADR-005 (nur HTTP; Lesen zuerst, Admin danach), dann
+   **C1** `crates/client`.
 3. **U2** gegen Mock, sobald U1 im `main` ist. Lofi-Runde 2 (Zustände, Lobby-Radio) läuft
    daneben beim User.
 4. **U3** nach U2. Danach Optik-Runde (Token-Varianten) beim User.

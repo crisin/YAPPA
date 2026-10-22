@@ -2,6 +2,11 @@
 
 Stand: 2026-10-23 · Status: Entwurf, Runde 1 · Fidelity: Lofi (Graustufen, keine Optik-Entscheidung)
 
+> Review vom selben Tag ([Vision v1](../01-vision-v1.md), [ADR-004](../adr/004-client-ui-architecture.md)):
+> Einstellungen werden das Modul „Ich“ statt eines Vollbild-Overlays, Soundboard- und
+> App-Audio-Plätze bleiben ausgeblendet, bis die Engine sie kann, Beitreten per Einzelklick,
+> Inspector standardmäßig zu. Der Rest gilt wie hier beschrieben.
+
 Ziel dieser Runde: Struktur, Navigation und Usability der UI festlegen, bevor irgendetwas
 gestaltet wird. Die App soll später deutlich mehr können als Voice (Hub, Chat, Minigames,
 Tools). Deshalb muss das System mit neuen Features wachsen, ohne dass die Grundstruktur
