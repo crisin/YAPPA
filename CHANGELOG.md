@@ -4,6 +4,7 @@ One line per finished task (definition of done). Newest first.
 
 ## Unreleased
 
+- UI concept v0 (lofi: shell with module rail, context sidebar, stage, voice dock, topbar + command palette, banner slot, inspector; call screen, onboarding, settings Einfach/Profi, admin; mobile parked) in `docs/ui/`, plus the implementation plan `docs/ui/02-umsetzungsplan.md` — work packages U0–U7 on the board. Mobile apps moved from non-goal to "later" in the planning doc. The in-app help now also renders `docs/ui/`.
 - In-app help: the "Hilfe" button shows the repo's docs inside the app — tester guide, "So funktioniert yAPPA", glossary (new `docs/hilfe/`), and the project side (status = TASKS.md, changelog, ADRs, spikes, dev setup, home server). Rendered at build time by `cargo xtask docs` into a generated, committed JSON; search, links between pages, web links in the system browser. Glossary entries double as ⓘ tooltips in the debug panel and on labels.
 - Dependencies: `rustls` 0.23.46 / `rustls-webpki` 0.103.16 and `webrtc-sys-build` 0.3.20 (pulls `zip` 9 instead of 0.6) — clears the RUSTSEC advisories that had turned `cargo deny` red in the gate.
 - Test client: the app joins a room with a pasted invite and carries real voice — new crates `transport` (trait + LiveKit) and `audio-engine` (devices, mixer with per-person volume, levels, automatic rejoin), debug panel with live network and device statistics, structured log files with one-click diagnostics export, `cargo xtask livekit token` prints invites, headless engine example. ADR-003, docs/mittesten.md.

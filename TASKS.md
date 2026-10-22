@@ -13,6 +13,13 @@ States: **now** (in progress, max. 2) · **next** (planned, ordered) · **later*
 
 ## Next
 
+- [ ] U0 UI foundation (`docs/ui/02-umsetzungsplan.md`): ADR-004 Bits UI + Lucide,
+      `ui-tokens` v1 (widths, type scale, state colors, focus, motion), `api.ts` + mock with
+      the "Die Gang" fixture, `shell.svelte.ts` + module registry with tests, `vitest-axe`
+- [ ] U1 Shell: zones A–G as components (rail, sidebar/stage slots, voice dock, topbar +
+      `Strg K` palette, banner slot, inspector, settings overlay with `Esc`); the test client
+      moves in without losing anything; reconnect/offline in dock and banner → first
+      nightly with the new structure
 - [ ] First evening with the gang (user): home server up (`docs/homeserver.md`), installer
       + invites out (`docs/mittesten.md`), collect diagnostics files; write down what broke
 - [ ] Homeserver walkthrough (user, hands-on): follow `docs/homeserver.md` on the mini PC
@@ -22,11 +29,35 @@ States: **now** (in progress, max. 2) · **next** (planned, ordered) · **later*
       Wi-Fi switch, speech by ear at 5/10/20 % loss, speakers for the AEC question; spike on
       the MacBook → add to `docs/spikes/s1-poc.md`
 - [ ] S6: Control plane in Rust — axum + sqlx/SQLite, invite login, token issuing, webhook
-      presence → `docs/spikes/s6-control.md`
+      presence → `docs/spikes/s6-control.md`; cut as in the UI plan, section 5: read
+      endpoints + presence stream first (for U5), admin endpoints after (for U6)
+- [ ] U2 Voice module, call screen: channel tree with people, person tiles (states as
+      text), join on click/Enter, person inspector (volume, local mute), action bar with
+      Soundboard/App-Audio greyed out until the engine has them; against the mock until U5
+- [ ] Lofi round 2 (user): decide the open questions (plan section 3 has recommendations),
+      draw reconnect/offline/update banner and lobby radio against the running shell
+- [ ] U3 Settings Einfach/Profi: settings schema v2 + migration (`view`, PTT key, hotkeys,
+      notifications, update channel, jitter target, output volume), both views, signal
+      chain as stages (only input/send real until S2), diagnosis = debug panel
 - [ ] S2: Offline DSP chain WAV → DeepFilterNet → gate → EQ → WAV, latency + CPU per block
 - [ ] S3: Global PTT with a fullscreen game on Windows, tray, autostart
 
 ## Later
+
+- [ ] Optics round (user, after U3): 2–3 token variants on the running shell, then ADR
+- [ ] U5 Control plane in the client (after S6): `Api` on the Tauri side, session token in
+      the keychain, presence stream → channel tree, voice token per channel → join, invite
+      link (`yappa://invite/<code>`) instead of pasted invite; rewrite `docs/mittesten.md`
+- [ ] U4 Onboarding: name → microphone (component from U3) → speaking mode → lobby;
+      against the mock after U3, real with U5
+- [ ] U6 Admin module (after U5 + S6 admin endpoints): people (members with client version,
+      invites, roles), structure (channels), operations (server/failover, event log,
+      updates/kill switch); missing endpoints hide the item
+- [ ] U7 System states with the updater: update ready, minimum version, kill switch in the
+      banner slot; update channel in Profi
+- [ ] Engine-driven UI parts land with their engine task (plan section 4): dock shows
+      gate/PTT state (S3), signal chain live levels need `Event::StageLevels` (S2),
+      soundboard inspector, app-audio tile, lobby radio
 
 - [ ] Engine follow-ups from the test client (ADR-003, realtime review 2026-10-10):
       drift compensation instead of jumping at the high-water mark; resampling for devices
@@ -44,6 +75,9 @@ States: **now** (in progress, max. 2) · **next** (planned, ordered) · **later*
 
 ## Open questions
 
+- UI round 1 (2026-10-23, `docs/ui/01-ui-system-lofi-v0.md`): join on single or double
+  click; inspector closed by default; the plan recommends single click + Enter and closed
+  (`docs/ui/02-umsetzungsplan.md`, section 3) — the user decides in lofi round 2.
 - Remote: stays local for now (2026-10-07); the user moves it to GitHub later. CI
   (`.github/workflows/check.yml`) starts working then.
 - Logo: the cat (2026-10-07) is a "for now" logo of unknown origin — clarify the rights or

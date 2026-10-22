@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Mobile Channels</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#1D4ED8}a:hover{color:#1E3A8A}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; display: flex; flex-direction: column; background: #F5F5F2; color: #1F1F1D; font-family: Inter, system-ui, sans-serif; font-size: 15px; overflow: hidden">
+  <div style="height: 47px; flex-shrink: 0"></div>
+  <header style="height: 56px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 16px">
+    <div style="display: flex; flex-direction: column">
+      <span style="font-weight: 700; font-size: 22px">Voice</span>
+      <span style="font-size: 12px; color: #5C5C57">Die Gang · 8 online</span>
+    </div>
+    <button aria-label="Suchen" style="width: 44px; height: 44px; border-radius: 12px; border: 1px solid #CFCFC8; background: #FFFFFF; display: flex; align-items: center; justify-content: center; color: #1F1F1D"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
+  </header>
+  <div style="flex: 1; overflow: auto; padding: 8px 16px 12px; display: flex; flex-direction: column; gap: 10px">
+    <sc-for list="{{channels}}" as="c" hint-placeholder-count="4">
+      <div style="display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: 16px; background: #FFFFFF; border: {{c.border}}">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px">
+          <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+            <span style="font-weight: 600; font-size: 16px">{{c.name}}</span>
+            <span style="font-size: 13px; color: #5C5C57">{{c.who}}</span>
+          </div>
+          <sc-if value="{{c.joined}}" hint-placeholder-val="{{ false }}">
+            <span style="font: 600 12px Inter, sans-serif; color: #1D4ED8">Du bist hier</span>
+          </sc-if>
+          <sc-if value="{{c.canJoin}}" hint-placeholder-val="{{ true }}">
+            <button style="height: 44px; padding: 0 16px; border-radius: 12px; border: 0; background: #1F1F1D; color: #FFFFFF; font: 600 14px Inter, sans-serif; flex-shrink: 0">Beitreten</button>
+          </sc-if>
+        </div>
+        <sc-if value="{{c.hasPeople}}" hint-placeholder-val="{{ true }}">
+          <div style="display: flex; gap: 6px">
+            <sc-for list="{{c.people}}" as="p" hint-placeholder-count="3">
+              <span style="width: 32px; height: 32px; border-radius: 50%; background: #CFCFC8; box-shadow: {{p.ring}}; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600">{{p.i}}</span>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+    </sc-for>
+  </div>
+  <a href="Mobile-Call.dc.html" style="margin: 0 10px 8px; flex-shrink: 0; height: 64px; border-radius: 14px; background: #1F1F1D; color: #FFFFFF; display: flex; align-items: center; gap: 10px; padding: 0 8px 0 14px; text-decoration: none">
+    <span style="width: 10px; height: 10px; border-radius: 50%; background: #93C5FD; flex-shrink: 0"></span>
+    <span style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+      <span style="font-weight: 600; font-size: 14px">Raid-Abend</span>
+      <span style="font-size: 12px; color: #D4D4CF">Ben spricht · 18 ms</span>
+    </span>
+    <span aria-label="Mikro stummschalten" style="width: 48px; height: 48px; border-radius: 12px; background: #FFFFFF; color: #1F1F1D; display: flex; align-items: center; justify-content: center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span>
+  </a>
+  <nav aria-label="Module" style="flex-shrink: 0; height: 84px; box-sizing: border-box; padding: 6px 8px 26px; display: flex; border-top: 1px solid #CFCFC8; background: #FAFAF8">
+    <span style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #1F1F1D; font-size: 11px; font-weight: 700">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 10v4M8 6v12M12 3v18M16 7v10M20 10v4"/></svg>Voice
+    </span>
+    <a href="Mobile-Settings.dc.html" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #5C5C57; text-decoration: none; font-size: 11px">
+      <span style="width: 24px; height: 24px; border-radius: 50%; background: #CFCFC8"></span>Ich
+    </a>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const speak = '0 0 0 2px #FFFFFF, 0 0 0 4px #1D4ED8';
+    const ppl = (s, active) => s.split('').map((i, n) => ({ i, ring: active === n ? speak : 'none' }));
+    return {
+      channels: [
+        { name: 'Raid-Abend', who: 'Krille, Ben, Sasha, Tim, Lea', joined: true, canJoin: false, hasPeople: true, people: ppl('KBSTL', 1), border: '2px solid #1F1F1D' },
+        { name: 'Lobby', who: 'Mo, Jule', joined: false, canJoin: true, hasPeople: true, people: ppl('MJ', -1), border: '1px solid #CFCFC8' },
+        { name: 'Musik-Session', who: 'leer', joined: false, canJoin: true, hasPeople: false, people: [], border: '1px solid #CFCFC8' },
+        { name: 'AFK', who: 'Rico', joined: false, canJoin: true, hasPeople: true, people: ppl('R', -1), border: '1px solid #CFCFC8' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>System Desktop-Shell</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#1D4ED8}a:hover{color:#1E3A8A}
+</style>
+</helmet>
+<div style="height: 100vh; min-height: 900px; display: flex; flex-wrap: wrap; background: #F5F5F2; color: #1F1F1D; font-family: Inter, system-ui, sans-serif; font-size: 14px">
+
+  <div style="flex: 999 1 760px; min-width: 0; display: flex; border-right: 1px solid #CFCFC8">
+
+    <nav aria-label="Module" style="width: 76px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px 0; background: #EBEBE6; border-right: 1px solid #CFCFC8; position: relative">
+      <div style="width: 44px; height: 44px; border-radius: 12px; border: 2px solid #1F1F1D; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 18px">y</div>
+      <div style="width: 36px; height: 1px; background: #CFCFC8"></div>
+      <button aria-label="Voice" style="width: 60px; display: flex; flex-direction: column; align-items: center; gap: 4px; border: 0; background: none; padding: 0; color: #1F1F1D; font: inherit; cursor: pointer">
+        <span style="width: 48px; height: 48px; border-radius: 14px; background: #1F1F1D; color: #FFFFFF; display: flex; align-items: center; justify-content: center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 10v4M8 6v12M12 3v18M16 7v10M20 10v4"/></svg></span>
+        <span style="font-size: 11px; font-weight: 600">Voice</span>
+      </button>
+      <div style="width: 60px; display: flex; flex-direction: column; align-items: center; gap: 4px; color: #5C5C57">
+        <span style="width: 46px; height: 46px; border-radius: 14px; border: 1.5px dashed #8A8A84"></span>
+        <span style="font-size: 11px">Hub</span>
+      </div>
+      <div style="width: 60px; display: flex; flex-direction: column; align-items: center; gap: 4px; color: #5C5C57">
+        <span style="width: 46px; height: 46px; border-radius: 14px; border: 1.5px dashed #8A8A84"></span>
+        <span style="font-size: 11px">Games</span>
+      </div>
+      <div style="width: 60px; display: flex; flex-direction: column; align-items: center; gap: 4px; color: #5C5C57">
+        <span style="width: 46px; height: 46px; border-radius: 14px; border: 1.5px dashed #8A8A84"></span>
+        <span style="font-size: 11px">Tools</span>
+      </div>
+      <div style="flex: 1"></div>
+      <button aria-label="Admin" style="width: 60px; display: flex; flex-direction: column; align-items: center; gap: 4px; border: 0; background: none; padding: 0; color: #1F1F1D; font: inherit">
+        <span style="width: 46px; height: 46px; border-radius: 14px; border: 1.5px solid #8A8A84; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6l-8-3z"/></svg></span>
+        <span style="font-size: 11px">Admin</span>
+      </button>
+      <button aria-label="Ich: Profil und Einstellungen" style="width: 60px; display: flex; flex-direction: column; align-items: center; gap: 4px; border: 0; background: none; padding: 0; color: #1F1F1D; font: inherit">
+        <span style="width: 44px; height: 44px; border-radius: 50%; background: #CFCFC8; display: flex; align-items: center; justify-content: center; font-weight: 600">K</span>
+        <span style="font-size: 11px">Ich</span>
+      </button>
+      <span style="position: absolute; top: 6px; right: -12px; width: 24px; height: 24px; border-radius: 50%; background: #B4410C; color: #FFFFFF; font: 700 12px 'JetBrains Mono', monospace; display: flex; align-items: center; justify-content: center; z-index: 2">A</span>
+    </nav>
+
+    <aside style="width: 260px; flex-shrink: 0; display: flex; flex-direction: column; background: #FAFAF8; border-right: 1px solid #CFCFC8; position: relative">
+      <button style="height: 56px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border: 0; border-bottom: 1px solid #CFCFC8; background: none; font: 600 15px Inter, sans-serif; color: #1F1F1D; text-align: left">
+        <span>Die Gang</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <div style="flex: 1; padding: 14px 12px; display: flex; flex-direction: column; gap: 10px">
+        <div style="font: 500 11px 'JetBrains Mono', monospace; color: #5C5C57; letter-spacing: 0.04em">MODUL-SPEZIFISCHER INHALT</div>
+        <div style="height: 30px; border-radius: 8px; background: #E7E7E2"></div>
+        <div style="height: 30px; border-radius: 8px; background: #E7E7E2; width: 85%"></div>
+        <div style="height: 30px; border-radius: 8px; background: #E7E7E2; width: 70%"></div>
+        <div style="height: 30px; border-radius: 8px; background: #E7E7E2"></div>
+        <div style="height: 30px; border-radius: 8px; background: #E7E7E2; width: 60%"></div>
+      </div>
+      <div style="margin: 10px; padding: 12px; border-radius: 12px; border: 2px solid #1F1F1D; background: #FFFFFF; display: flex; flex-direction: column; gap: 10px; position: relative">
+        <div style="display: flex; justify-content: space-between; align-items: center">
+          <div style="display: flex; flex-direction: column; gap: 2px">
+            <span style="font-weight: 600; font-size: 13px">Verbunden · Raid-Abend</span>
+            <span style="font-size: 12px; color: #5C5C57">18 ms · gut</span>
+          </div>
+          <span style="width: 10px; height: 10px; border-radius: 50%; background: #1D4ED8"></span>
+        </div>
+        <div style="display: flex; gap: 6px">
+          <button aria-label="Mikro stummschalten" style="flex: 1; height: 36px; border-radius: 8px; border: 1px solid #CFCFC8; background: #F5F5F2; display: flex; align-items: center; justify-content: center; color: #1F1F1D"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+          <button aria-label="Taub schalten" style="flex: 1; height: 36px; border-radius: 8px; border: 1px solid #CFCFC8; background: #F5F5F2; display: flex; align-items: center; justify-content: center; color: #1F1F1D"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1v-6h3zM3 19a2 2 0 0 0 2 2h1v-6H3z"/></svg></button>
+          <button style="flex: 1.4; height: 36px; border-radius: 8px; border: 0; background: #1F1F1D; color: #FFFFFF; font: 600 12px Inter, sans-serif">Verlassen</button>
+        </div>
+        <span style="position: absolute; top: -12px; right: -12px; width: 24px; height: 24px; border-radius: 50%; background: #B4410C; color: #FFFFFF; font: 700 12px 'JetBrains Mono', monospace; display: flex; align-items: center; justify-content: center">D</span>
+      </div>
+      <span style="position: absolute; top: 16px; right: 34px; width: 24px; height: 24px; border-radius: 50%; background: #B4410C; color: #FFFFFF; font: 700 12px 'JetBrains Mono', monospace; display: flex; align-items: center; justify-content: center">B</span>
+    </aside>
+
+    <main style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+      <header style="height: 56px; display: flex; align-items: center; gap: 16px; padding: 0 20px; border-bottom: 1px solid #CFCFC8; background: #FAFAF8; position: relative">
+        <span style="font-weight: 600">Voice</span>
+        <span style="color: #5C5C57">/</span>
+        <span style="color: #5C5C57">Raid-Abend</span>
+        <div style="flex: 1"></div>
+        <label style="display: flex; align-items: center; gap: 8px; width: 300px; height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #CFCFC8; background: #FFFFFF; color: #5C5C57; font-size: 13px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input placeholder="Suchen oder springen …" style="flex: 1; border: 0; outline: 0; font: inherit; background: none; color: #1F1F1D; min-width: 0">
+          <span style="font: 500 11px 'JetBrains Mono', monospace; border: 1px solid #CFCFC8; border-radius: 4px; padding: 1px 5px">Strg K</span>
+        </label>
+        <span style="position: absolute; top: 16px; left: 140px; width: 24px; height: 24px; border-radius: 50%; background: #B4410C; color: #FFFFFF; font: 700 12px 'JetBrains Mono', monospace; display: flex; align-items: center; justify-content: center">E</span>
+      </header>
+      <div style="margin: 12px 20px 0; height: 40px; border: 1.5px dashed #8A8A84; border-radius: 8px; display: flex; align-items: center; gap: 10px; padding: 0 12px; color: #5C5C57; font-size: 13px">
+        <span style="width: 24px; height: 24px; border-radius: 50%; background: #B4410C; color: #FFFFFF; font: 700 12px 'JetBrains Mono', monospace; display: flex; align-items: center; justify-content: center">F</span>
+        System-Banner: Update bereit · Verbindung wird wiederhergestellt · Mindestversion
+      </div>
+      <div style="flex: 1; display: flex; gap: 16px; padding: 16px 20px 20px; min-height: 0">
+        <section style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+          <div style="flex: 1; border-radius: 12px; border: 1.5px solid #CFCFC8; background: repeating-linear-gradient(135deg, #FFFFFF 0 10px, #F0F0EC 10px 20px); display: flex; align-items: center; justify-content: center; position: relative">
+            <span style="background: #FFFFFF; padding: 6px 12px; border-radius: 6px; font: 500 12px 'JetBrains Mono', monospace; color: #5C5C57">STAGE · Inhalt des aktiven Moduls</span>
+            <span style="position: absolute; top: 12px; left: 12px; width: 24px; height: 24px; border-radius: 50%; background: #B4410C; color: #FFFFFF; font: 700 12px 'JetBrains Mono', monospace; display: flex; align-items: center; justify-content: center">C</span>
+          </div>
+          <div style="height: 52px; border-radius: 12px; border: 1px solid #CFCFC8; background: #FFFFFF; display: flex; align-items: center; justify-content: center; gap: 8px">
+            <span style="height: 34px; width: 120px; border-radius: 8px; background: #E7E7E2"></span>
+            <span style="height: 34px; width: 120px; border-radius: 8px; background: #E7E7E2"></span>
+            <span style="height: 34px; width: 34px; border-radius: 8px; background: #E7E7E2"></span>
+            <span style="font: 500 11px 'JetBrains Mono', monospace; color: #5C5C57; margin-left: 8px">Modul-Aktionen</span>
+          </div>
+        </section>
+        <aside style="width: 220px; flex-shrink: 0; border-radius: 12px; border: 1.5px dashed #8A8A84; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: #5C5C57; font-size: 13px; text-align: center; padding: 16px; position: relative">
+          <span style="font: 500 12px 'JetBrains Mono', monospace">INSPECTOR</span>
+          <span>optional, einklappbar</span>
+          <span style="position: absolute; top: 12px; left: 12px; width: 24px; height: 24px; border-radius: 50%; background: #B4410C; color: #FFFFFF; font: 700 12px 'JetBrains Mono', monospace; display: flex; align-items: center; justify-content: center">G</span>
+        </aside>
+      </div>
+    </main>
+  </div>
+
+  <section aria-label="Regeln" style="flex: 1 1 340px; min-width: 0; padding: 32px 28px; display: flex; flex-direction: column; gap: 18px; background: #FFFFFF; overflow: auto">
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <span style="font: 500 11px 'JetBrains Mono', monospace; color: #B4410C; letter-spacing: 0.06em">SHELL-SYSTEM v0</span>
+      <h1 style="margin: 0; font-size: 26px; line-height: 1.15">Eine Shell, viele Module</h1>
+      <p style="margin: 0; color: #5C5C57; line-height: 1.5">Neue Features kommen als Modul in die Shell. Die Shell selbst ändert sich nicht.</p>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 12px; line-height: 1.45">
+      <div style="display: flex; gap: 10px"><span style="flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; background: #B4410C; color: #FFFFFF; font: 700 11px 'JetBrains Mono', monospace; display: flex; align-items: center; justify-content: center">A</span><div><strong>Modul-Rail.</strong> Eine Ebene: Voice, später Hub, Games, Tools. Icon plus Label, nie nur Icon. Ab 7 Modulen: anpinnen und „Mehr“.</div></div>
+      <div style="display: flex; gap: 10px"><span style="flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; background: #B4410C; color: #FFFFFF; font: 700 11px 'JetBrains Mono', monospace; display: flex; align-items: center; justify-content: center">B</span><div><strong>Kontext-Sidebar.</strong> Gehört dem Modul. Oben der Space („Die Gang“); der Umschalter wird erst aktiv, wenn es mehr als einen Server gibt.</div></div>
+      <div style="display: flex; gap: 10px"><span style="flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; background: #B4410C; color: #FFFFFF; font: 700 11px 'JetBrains Mono', monospace; display: flex; align-items: center; justify-content: center">C</span><div><strong>Stage.</strong> Inhalt plus eine Aktionsleiste. Primäre Aktionen stehen immer unten in der Stage.</div></div>
+      <div style="display: flex; gap: 10px"><span style="flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; background: #B4410C; color: #FFFFFF; font: 700 11px 'JetBrains Mono', monospace; display: flex; align-items: center; justify-content: center">D</span><div><strong>Voice-Dock.</strong> Gehört der Shell, nicht dem Voice-Modul. Der Call läuft weiter, egal welches Modul offen ist.</div></div>
+      <div style="display: flex; gap: 10px"><span style="flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; background: #B4410C; color: #FFFFFF; font: 700 11px 'JetBrains Mono', monospace; display: flex; align-items: center; justify-content: center">E</span><div><strong>Topbar und Befehlspalette.</strong> Breadcrumb plus Strg K: jeder Channel, jede Person, jede Einstellung, jede Aktion. So skaliert die Navigation für Profis.</div></div>
+      <div style="display: flex; gap: 10px"><span style="flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; background: #B4410C; color: #FFFFFF; font: 700 11px 'JetBrains Mono', monospace; display: flex; align-items: center; justify-content: center">F</span><div><strong>System-Banner.</strong> Ein Slot für alles, was die App betrifft. Maximal einer gleichzeitig, nach Priorität.</div></div>
+      <div style="display: flex; gap: 10px"><span style="flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; background: #B4410C; color: #FFFFFF; font: 700 11px 'JetBrains Mono', monospace; display: flex; align-items: center; justify-content: center">G</span><div><strong>Inspector.</strong> Details und Werkzeuge zur Auswahl (Soundboard, Person, Channel). Nie Pflicht für einen Flow.</div></div>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

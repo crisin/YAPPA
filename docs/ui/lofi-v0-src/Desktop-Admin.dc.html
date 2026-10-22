@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Admin Mitglieder</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#1D4ED8}a:hover{color:#1E3A8A}
+</style>
+</helmet>
+<div style="height: 100vh; min-height: 900px; display: flex; flex-wrap: wrap; background: #F5F5F2; color: #1F1F1D; font-family: Inter, system-ui, sans-serif; font-size: 14px">
+
+  <nav aria-label="Module" style="width: 76px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px 0; background: #EBEBE6; border-right: 1px solid #CFCFC8">
+    <div style="width: 44px; height: 44px; border-radius: 12px; border: 2px solid #1F1F1D; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 18px">y</div>
+    <div style="width: 36px; height: 1px; background: #CFCFC8"></div>
+    <a href="Desktop-Call.dc.html" aria-label="Voice" style="width: 60px; display: flex; flex-direction: column; align-items: center; gap: 4px; color: #1F1F1D; text-decoration: none">
+      <span style="width: 46px; height: 46px; border-radius: 14px; border: 1.5px solid #8A8A84; display: flex; align-items: center; justify-content: center; position: relative"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 10v4M8 6v12M12 3v18M16 7v10M20 10v4"/></svg><span style="position: absolute; top: -3px; right: -3px; width: 10px; height: 10px; border-radius: 50%; background: #1D4ED8; border: 2px solid #EBEBE6"></span></span>
+      <span style="font-size: 11px">Voice</span>
+    </a>
+    <div style="flex: 1"></div>
+    <div style="width: 60px; display: flex; flex-direction: column; align-items: center; gap: 4px">
+      <span style="width: 48px; height: 48px; border-radius: 14px; background: #1F1F1D; color: #FFFFFF; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6l-8-3z"/></svg></span>
+      <span style="font-size: 11px; font-weight: 600">Admin</span>
+    </div>
+    <a href="Desktop-Settings.dc.html" aria-label="Ich: Profil und Einstellungen" style="width: 60px; display: flex; flex-direction: column; align-items: center; gap: 4px; color: #1F1F1D; text-decoration: none">
+      <span style="width: 44px; height: 44px; border-radius: 50%; background: #CFCFC8; display: flex; align-items: center; justify-content: center; font-weight: 600">K</span>
+      <span style="font-size: 11px">Ich</span>
+    </a>
+  </nav>
+
+  <aside style="width: 260px; flex-shrink: 0; display: flex; flex-direction: column; background: #FAFAF8; border-right: 1px solid #CFCFC8">
+    <div style="height: 56px; display: flex; align-items: center; padding: 0 16px; border-bottom: 1px solid #CFCFC8; font-weight: 600; font-size: 15px">Verwaltung</div>
+    <div style="flex: 1; padding: 12px 10px; display: flex; flex-direction: column; gap: 2px">
+      <sc-for list="{{nav}}" as="n" hint-placeholder-count="7">
+        <sc-if value="{{n.head}}" hint-placeholder-val="{{ false }}">
+          <span style="font: 500 11px 'JetBrains Mono', monospace; color: #5C5C57; letter-spacing: 0.04em; padding: 12px 10px 4px">{{n.label}}</span>
+        </sc-if>
+        <sc-if value="{{n.item}}" hint-placeholder-val="{{ true }}">
+          <button style="height: 36px; padding: 0 10px; border-radius: 8px; border: 0; background: {{n.bg}}; text-align: left; font: {{n.font}}; color: #1F1F1D">{{n.label}}</button>
+        </sc-if>
+      </sc-for>
+    </div>
+    <div style="margin: 10px; padding: 12px; border-radius: 12px; border: 2px solid #1F1F1D; background: #FFFFFF; display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; flex-direction: column; gap: 2px">
+        <span style="font-weight: 600; font-size: 13px">Verbunden · Raid-Abend</span>
+        <span style="font-size: 12px; color: #5C5C57">18 ms · Call läuft weiter</span>
+      </div>
+      <div style="display: flex; gap: 6px">
+        <button aria-label="Mikro stummschalten" style="flex: 1; height: 36px; border-radius: 8px; border: 1px solid #CFCFC8; background: #F5F5F2; display: flex; align-items: center; justify-content: center; color: #1F1F1D"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+        <button aria-label="Taub schalten" style="flex: 1; height: 36px; border-radius: 8px; border: 1px solid #CFCFC8; background: #F5F5F2; display: flex; align-items: center; justify-content: center; color: #1F1F1D"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1v-6h3zM3 19a2 2 0 0 0 2 2h1v-6H3z"/></svg></button>
+        <button style="flex: 1.4; height: 36px; border-radius: 8px; border: 0; background: #1F1F1D; color: #FFFFFF; font: 600 12px Inter, sans-serif">Verlassen</button>
+      </div>
+    </div>
+  </aside>
+
+  <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column">
+    <header style="height: 56px; display: flex; align-items: center; gap: 12px; padding: 0 24px; border-bottom: 1px solid #CFCFC8; background: #FAFAF8">
+      <span style="font-weight: 600">Admin</span><span style="color: #5C5C57">/</span><span style="color: #5C5C57">Mitglieder</span>
+      <div style="flex: 1"></div>
+      <label style="display: flex; align-items: center; gap: 8px; width: 260px; height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #CFCFC8; background: #FFFFFF; color: #5C5C57; font-size: 13px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input placeholder="Suchen oder springen …" style="flex: 1; border: 0; outline: 0; font: inherit; background: none; min-width: 0">
+        <span style="font: 500 11px 'JetBrains Mono', monospace; border: 1px solid #CFCFC8; border-radius: 4px; padding: 1px 5px">Strg K</span>
+      </label>
+    </header>
+    <div style="flex: 1; padding: 24px; display: flex; flex-direction: column; gap: 16px; min-height: 0">
+      <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap">
+        <h1 style="margin: 0; font-size: 24px; flex: 1">Mitglieder</h1>
+        <label style="display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #CFCFC8; background: #FFFFFF; font-size: 13px; color: #5C5C57">
+          <input placeholder="Filtern nach Name, Rolle, Version" style="width: 220px; border: 0; outline: 0; font: inherit; background: none">
+        </label>
+        <button style="height: 40px; padding: 0 16px; border-radius: 10px; border: 0; background: #1F1F1D; color: #FFFFFF; font: 600 13px Inter, sans-serif">Einladung erstellen</button>
+      </div>
+      <div style="overflow-x: auto; border-radius: 12px; border: 1px solid #CFCFC8; background: #FFFFFF">
+        <table style="width: 100%; border-collapse: collapse; font-size: 13px; min-width: 720px">
+          <thead>
+            <tr style="text-align: left; color: #5C5C57; font: 500 11px 'JetBrains Mono', monospace; letter-spacing: 0.04em">
+              <th style="padding: 12px 16px; border-bottom: 1px solid #CFCFC8">NAME</th>
+              <th style="padding: 12px 16px; border-bottom: 1px solid #CFCFC8">ROLLE</th>
+              <th style="padding: 12px 16px; border-bottom: 1px solid #CFCFC8">CLIENT</th>
+              <th style="padding: 12px 16px; border-bottom: 1px solid #CFCFC8">STATUS</th>
+              <th style="padding: 12px 16px; border-bottom: 1px solid #CFCFC8"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden">Aktionen</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            <sc-for list="{{members}}" as="m" hint-placeholder-count="6">
+              <tr>
+                <td style="padding: 10px 16px; border-bottom: 1px solid #EFEFEA"><span style="display: flex; align-items: center; gap: 10px"><span style="width: 28px; height: 28px; border-radius: 50%; background: #CFCFC8; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600">{{m.i}}</span>{{m.name}}</span></td>
+                <td style="padding: 10px 16px; border-bottom: 1px solid #EFEFEA">{{m.role}}</td>
+                <td style="padding: 10px 16px; border-bottom: 1px solid #EFEFEA; font-family: 'JetBrains Mono', monospace; font-size: 12px">{{m.ver}}</td>
+                <td style="padding: 10px 16px; border-bottom: 1px solid #EFEFEA; color: #5C5C57">{{m.status}}</td>
+                <td style="padding: 10px 16px; border-bottom: 1px solid #EFEFEA; text-align: right"><button aria-label="Aktionen für {{m.name}}" style="width: 32px; height: 32px; border-radius: 8px; border: 1px solid #CFCFC8; background: #F5F5F2; font: 700 14px Inter, sans-serif; color: #1F1F1D">···</button></td>
+              </tr>
+            </sc-for>
+          </tbody>
+        </table>
+      </div>
+      <p style="margin: 0; color: #5C5C57; font-size: 13px">Rollen, Kicken und Versionen pro Person stecken hinter „···“. Kill-Switch und Mindestversion unter Betrieb.</p>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const item = (label, active) => ({ item: true, head: false, label, bg: active ? '#E7E7E2' : 'transparent', font: (active ? '600' : '400') + ' 14px Inter, sans-serif' });
+    const head = (label) => ({ item: false, head: true, label });
+    return {
+      nav: [
+        head('LEUTE'), item('Mitglieder', true), item('Einladungen', false), item('Rollen', false),
+        head('STRUKTUR'), item('Channels', false), item('Soundboard-Sounds', false),
+        head('BETRIEB'), item('Server und Failover', false), item('Ereignis-Log', false), item('Updates und Kill-Switch', false)
+      ],
+      members: [
+        { i: 'K', name: 'Krille', role: 'Admin', ver: 'nightly 0.4.2', status: 'im Call' },
+        { i: 'B', name: 'Ben', role: 'Mitglied', ver: 'beta 0.4.1', status: 'im Call' },
+        { i: 'S', name: 'Sasha', role: 'Mitglied', ver: 'stable 0.4.0', status: 'im Call' },
+        { i: 'M', name: 'Mo', role: 'Mitglied', ver: 'stable 0.4.0', status: 'Lobby' },
+        { i: 'R', name: 'Rico', role: 'Mitglied', ver: 'stable 0.3.9', status: 'veraltet · abwesend' },
+        { i: 'J', name: 'Jule', role: 'Moderator', ver: 'stable 0.4.0', status: 'Lobby' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

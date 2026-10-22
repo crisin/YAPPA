@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Desktop im Call</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#1D4ED8}a:hover{color:#1E3A8A}
+</style>
+</helmet>
+<div style="height: 100vh; min-height: 900px; display: flex; flex-wrap: wrap; background: #F5F5F2; color: #1F1F1D; font-family: Inter, system-ui, sans-serif; font-size: 14px">
+
+  <nav aria-label="Module" style="width: 76px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px 0; background: #EBEBE6; border-right: 1px solid #CFCFC8">
+    <div style="width: 44px; height: 44px; border-radius: 12px; border: 2px solid #1F1F1D; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 18px">y</div>
+    <div style="width: 36px; height: 1px; background: #CFCFC8"></div>
+    <button aria-label="Voice" style="width: 60px; display: flex; flex-direction: column; align-items: center; gap: 4px; border: 0; background: none; padding: 0; color: #1F1F1D; font: inherit">
+      <span style="width: 48px; height: 48px; border-radius: 14px; background: #1F1F1D; color: #FFFFFF; display: flex; align-items: center; justify-content: center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 10v4M8 6v12M12 3v18M16 7v10M20 10v4"/></svg></span>
+      <span style="font-size: 11px; font-weight: 600">Voice</span>
+    </button>
+    <div style="flex: 1"></div>
+    <a href="Desktop-Admin.dc.html" aria-label="Admin" style="width: 60px; display: flex; flex-direction: column; align-items: center; gap: 4px; color: #1F1F1D; text-decoration: none">
+      <span style="width: 46px; height: 46px; border-radius: 14px; border: 1.5px solid #8A8A84; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6l-8-3z"/></svg></span>
+      <span style="font-size: 11px">Admin</span>
+    </a>
+    <a href="Desktop-Settings.dc.html" aria-label="Ich: Profil und Einstellungen" style="width: 60px; display: flex; flex-direction: column; align-items: center; gap: 4px; color: #1F1F1D; text-decoration: none">
+      <span style="width: 44px; height: 44px; border-radius: 50%; background: #CFCFC8; display: flex; align-items: center; justify-content: center; font-weight: 600">K</span>
+      <span style="font-size: 11px">Ich</span>
+    </a>
+  </nav>
+
+  <aside style="width: 280px; flex-shrink: 0; display: flex; flex-direction: column; background: #FAFAF8; border-right: 1px solid #CFCFC8">
+    <div style="height: 56px; display: flex; align-items: center; padding: 0 16px; border-bottom: 1px solid #CFCFC8; font-weight: 600; font-size: 15px">Die Gang</div>
+    <div style="flex: 1; overflow: auto; padding: 12px 10px; display: flex; flex-direction: column; gap: 4px">
+      <div style="font: 500 11px 'JetBrains Mono', monospace; color: #5C5C57; letter-spacing: 0.04em; padding: 4px 8px">VOICE-CHANNELS</div>
+      <sc-for list="{{channels}}" as="ch" hint-placeholder-count="4">
+        <div style="display: flex; flex-direction: column; border-radius: 10px; background: {{ch.bg}}; border: {{ch.border}}">
+          <div style="display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 10px">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg>
+            <span style="flex: 1; font-weight: {{ch.weight}}">{{ch.name}}</span>
+            <sc-if value="{{ch.hover}}" hint-placeholder-val="{{ false }}">
+              <button style="height: 28px; padding: 0 10px; border-radius: 6px; border: 0; background: #1F1F1D; color: #FFFFFF; font: 600 12px Inter, sans-serif">Beitreten</button>
+            </sc-if>
+            <span style="font-size: 12px; color: #5C5C57">{{ch.count}}</span>
+          </div>
+          <sc-for list="{{ch.users}}" as="u" hint-placeholder-count="2">
+            <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px 0 34px; font-size: 13px">
+              <span style="width: 22px; height: 22px; border-radius: 50%; background: #CFCFC8; box-shadow: {{u.ring}}; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600">{{u.i}}</span>
+              <span style="flex: 1">{{u.name}}</span>
+              <span style="font-size: 11px; color: #5C5C57">{{u.tag}}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-for>
+    </div>
+    <div style="margin: 10px; padding: 12px; border-radius: 12px; border: 2px solid #1F1F1D; background: #FFFFFF; display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; justify-content: space-between; align-items: center">
+        <div style="display: flex; flex-direction: column; gap: 2px">
+          <span style="font-weight: 600; font-size: 13px">Verbunden · Raid-Abend</span>
+          <span style="font-size: 12px; color: #5C5C57">18 ms · Sprachaktivierung</span>
+        </div>
+        <button aria-label="Verbindungsdetails" style="display: flex; align-items: flex-end; gap: 2px; height: 20px; border: 0; background: none; padding: 0">
+          <span style="width: 4px; height: 6px; background: #1D4ED8"></span><span style="width: 4px; height: 10px; background: #1D4ED8"></span><span style="width: 4px; height: 14px; background: #1D4ED8"></span><span style="width: 4px; height: 18px; background: #CFCFC8"></span>
+        </button>
+      </div>
+      <div aria-label="Eigener Pegel" style="height: 6px; border-radius: 3px; background: #E7E7E2; display: flex">
+        <span style="width: 46%; border-radius: 3px; background: #1D4ED8"></span>
+        <span style="width: 2px; margin-left: 14%; background: #1F1F1D"></span>
+      </div>
+      <div style="display: flex; gap: 6px">
+        <button aria-label="Mikro stummschalten" style="flex: 1; height: 36px; border-radius: 8px; border: 1px solid #CFCFC8; background: #F5F5F2; display: flex; align-items: center; justify-content: center; color: #1F1F1D"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+        <button aria-label="Taub schalten" style="flex: 1; height: 36px; border-radius: 8px; border: 1px solid #CFCFC8; background: #F5F5F2; display: flex; align-items: center; justify-content: center; color: #1F1F1D"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1v-6h3zM3 19a2 2 0 0 0 2 2h1v-6H3z"/></svg></button>
+        <button style="flex: 1.4; height: 36px; border-radius: 8px; border: 0; background: #1F1F1D; color: #FFFFFF; font: 600 12px Inter, sans-serif">Verlassen</button>
+      </div>
+    </div>
+  </aside>
+
+  <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column">
+    <header style="height: 56px; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-bottom: 1px solid #CFCFC8; background: #FAFAF8">
+      <span style="font-weight: 600; font-size: 16px">Raid-Abend</span>
+      <span style="font-size: 13px; color: #5C5C57">5 Leute · 1 App-Stream</span>
+      <div style="flex: 1"></div>
+      <button style="height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #CFCFC8; background: #FFFFFF; font: 500 13px Inter, sans-serif; color: #1F1F1D">Einladen</button>
+      <label style="display: flex; align-items: center; gap: 8px; width: 260px; height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #CFCFC8; background: #FFFFFF; color: #5C5C57; font-size: 13px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input placeholder="Suchen oder springen …" style="flex: 1; border: 0; outline: 0; font: inherit; background: none; min-width: 0">
+        <span style="font: 500 11px 'JetBrains Mono', monospace; border: 1px solid #CFCFC8; border-radius: 4px; padding: 1px 5px">Strg K</span>
+      </label>
+    </header>
+
+    <div style="flex: 1; display: flex; gap: 16px; padding: 16px 20px 20px; min-height: 0">
+      <section style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+        <div style="flex: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); grid-auto-rows: 180px; gap: 12px; align-content: start">
+          <sc-for list="{{people}}" as="p" hint-placeholder-count="5">
+            <div style="border-radius: 14px; background: #FFFFFF; border: {{p.border}}; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; position: relative">
+              <span style="width: 72px; height: 72px; border-radius: 50%; background: #CFCFC8; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 600">{{p.i}}</span>
+              <span style="font-weight: 600">{{p.name}}</span>
+              <span style="font-size: 12px; color: #5C5C57">{{p.tag}}</span>
+            </div>
+          </sc-for>
+          <div style="grid-column: span 2; border-radius: 14px; background: #FFFFFF; border: 1.5px solid #CFCFC8; display: flex; flex-direction: column; gap: 12px; padding: 16px; box-sizing: border-box">
+            <div style="display: flex; align-items: center; gap: 10px">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+              <div style="flex: 1; display: flex; flex-direction: column">
+                <span style="font-weight: 600">Ableton Live</span>
+                <span style="font-size: 12px; color: #5C5C57">App-Audio · geteilt von Krille</span>
+              </div>
+              <span style="font: 500 11px 'JetBrains Mono', monospace; border: 1px solid #CFCFC8; border-radius: 4px; padding: 2px 6px">STEREO</span>
+            </div>
+            <div style="flex: 1; border-radius: 8px; background: repeating-linear-gradient(90deg, #E7E7E2 0 3px, #FFFFFF 3px 7px)"></div>
+            <label style="display: flex; align-items: center; gap: 10px; font-size: 12px; color: #5C5C57">Für mich
+              <input type="range" value="70" style="flex: 1">
+            </label>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: center; gap: 8px; padding: 8px; border-radius: 12px; border: 1px solid #CFCFC8; background: #FFFFFF">
+          <button style="display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 8px; border: 0; background: #1F1F1D; color: #FFFFFF; font: 600 13px Inter, sans-serif">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>Soundboard
+          </button>
+          <button style="display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 8px; border: 1px solid #CFCFC8; background: #F5F5F2; color: #1F1F1D; font: 600 13px Inter, sans-serif">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>App-Audio teilen
+          </button>
+          <button aria-label="Weitere Aktionen" style="width: 40px; height: 40px; border-radius: 8px; border: 1px solid #CFCFC8; background: #F5F5F2; font: 700 16px Inter, sans-serif; color: #1F1F1D">···</button>
+        </div>
+      </section>
+
+      <aside aria-label="Soundboard" style="width: 280px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: 12px; border: 1px solid #CFCFC8; background: #FFFFFF; box-sizing: border-box">
+        <div style="display: flex; align-items: center; justify-content: space-between">
+          <span style="font-weight: 600">Soundboard</span>
+          <button aria-label="Inspector schließen" style="width: 32px; height: 32px; border-radius: 8px; border: 0; background: #F5F5F2; color: #1F1F1D"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+        </div>
+        <label style="display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border-radius: 8px; border: 1px solid #CFCFC8; font-size: 13px; color: #5C5C57">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input placeholder="Sound suchen" style="flex: 1; border: 0; outline: 0; font: inherit; background: none; min-width: 0">
+        </label>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+          <sc-for list="{{sounds}}" as="s" hint-placeholder-count="8">
+            <button style="height: 56px; border-radius: 10px; border: 1px solid #CFCFC8; background: #F5F5F2; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; padding: 0 10px; font: 500 13px Inter, sans-serif; color: #1F1F1D">
+              <span>{{s.name}}</span>
+              <span style="font: 500 10px 'JetBrains Mono', monospace; color: #5C5C57">{{s.key}}</span>
+            </button>
+          </sc-for>
+        </div>
+        <button style="height: 40px; border-radius: 10px; border: 1.5px dashed #8A8A84; background: none; font: 500 13px Inter, sans-serif; color: #1F1F1D">+ Sound hinzufügen</button>
+        <div style="flex: 1"></div>
+        <label style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #5C5C57">Lautstärke im eigenen Stream
+          <input type="range" value="60">
+        </label>
+        <span style="font-size: 12px; color: #5C5C57; line-height: 1.4">Sounds laufen über deinen eigenen Audio-Stream.</span>
+      </aside>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const speak = '0 0 0 2px #FAFAF8, 0 0 0 4px #1D4ED8';
+    const u = (i, name, tag, speaking) => ({ i, name, tag, ring: speaking ? speak : 'none' });
+    const plain = { bg: 'transparent', border: '1px solid transparent', weight: 500, hover: false };
+    return {
+      channels: [
+        { ...plain, name: 'Lobby', count: '2', hover: true, users: [u('M', 'Mo', '', false), u('J', 'Jule', 'stumm', false)] },
+        { name: 'Raid-Abend', count: '5', bg: '#FFFFFF', border: '1px solid #CFCFC8', weight: 700, hover: false, users: [
+          u('K', 'Krille (du)', '', false), u('B', 'Ben', '', true), u('S', 'Sasha', '', false), u('T', 'Tim', 'stumm', false), u('L', 'Lea', 'PTT', false)
+        ] },
+        { ...plain, name: 'Musik-Session', count: '0', users: [] },
+        { ...plain, name: 'AFK', count: '1', users: [u('R', 'Rico', 'abwesend', false)] }
+      ],
+      people: [
+        { i: 'B', name: 'Ben', tag: 'spricht', border: '3px solid #1D4ED8' },
+        { i: 'K', name: 'Krille (du)', tag: 'Sprachaktivierung', border: '1.5px solid #CFCFC8' },
+        { i: 'S', name: 'Sasha', tag: ' ', border: '1.5px solid #CFCFC8' },
+        { i: 'T', name: 'Tim', tag: 'stumm', border: '1.5px dashed #8A8A84' },
+        { i: 'L', name: 'Lea', tag: 'Push-to-Talk', border: '1.5px solid #CFCFC8' }
+      ],
+      sounds: [1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({ name: 'Sound ' + n, key: n <= 4 ? 'Strg+' + n : '–' }))
+    };
+  }
+}
+</script>
+</body>
+</html>
