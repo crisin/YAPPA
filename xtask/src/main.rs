@@ -36,9 +36,15 @@ const DESKTOP: &str = "apps/desktop";
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let flag = |f: &str| args.iter().any(|a| a == f);
+    let value = |f: &str| {
+        args.iter()
+            .position(|a| a == f)
+            .and_then(|i| args.get(i + 1))
+            .cloned()
+    };
     let root = repo_root();
     let result = match args.first().map(String::as_str) {
-        Some("dev") => dev(&root, flag("--ui")),
+        Some("dev") => dev(&root, flag("--ui"), value("--scene").as_deref()),
         Some("build") => build(&root, flag("--debug")),
         Some("setup") => tools::setup(&root),
         Some("doctor") => tools::doctor(&root),
@@ -118,12 +124,22 @@ fn check(root: &Path, ci: bool, fast: bool) -> Result {
     Ok(())
 }
 
-fn dev(root: &Path, ui_only: bool) -> Result {
+/// `scene` (browser mode only) opens the UI in one of the mock scenes of
+/// `apps/desktop/src/lib/scene.ts`: `cargo xtask dev --ui --scene reconnect`.
+fn dev(root: &Path, ui_only: bool, scene: Option<&str>) -> Result {
     ensure_node_modules(root, false)?;
     tokens::generate(root)?;
     docs::generate(root)?;
-    let script = if ui_only { "dev" } else { "app:dev" };
-    npm(&root.join(DESKTOP), &["run", script])
+    let desktop = root.join(DESKTOP);
+    match (ui_only, scene) {
+        (false, Some(_)) => Err("--scene only works with --ui (the app has a real engine)".into()),
+        (false, None) => npm(&desktop, &["run", "app:dev"]),
+        (true, None) => npm(&desktop, &["run", "dev"]),
+        (true, Some(scene)) => {
+            let open = format!("/?scene={scene}");
+            npm(&desktop, &["run", "dev", "--", "--open", &open])
+        }
+    }
 }
 
 /// Release build + installers. Tauri runs `npm run build` (Vite) first and writes the
@@ -173,7 +189,18 @@ fn test(root: &Path) -> Result {
     step("vitest", || npm(&root.join(DESKTOP), &["run", "test"]))
 }
 
+/// ts-rs only writes what exists in Rust; a type that was removed would stay behind as a
+/// stale file. So the folder is emptied of `.ts` files first and regenerated completely.
 fn gen_types(root: &Path) -> Result {
+    let dir = root.join(GENERATED[0]);
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("ts") {
+                std::fs::remove_file(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+            }
+        }
+    }
     let args = [
         "test",
         "-p",
@@ -183,7 +210,7 @@ fn gen_types(root: &Path) -> Result {
         "export_",
     ];
     cargo(root, &args)?;
-    println!("types written to apps/desktop/src/lib/types");
+    println!("types written to {}", GENERATED[0]);
     Ok(())
 }
 

@@ -17,10 +17,6 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 **M1 · Shell** — nightly with the new structure, still pasted invites
 
-- [ ] U0 UI foundation (`docs/ui/02-umsetzungsplan.md`, ADR-004): `bits-ui`,
-      `@lucide/svelte`, `vitest-axe`; `ui-tokens` v1 (widths, type scale, state colors,
-      focus, motion); `api.ts` + mock with the "Die Gang" fixture and scenes
-      (`cargo xtask dev --ui --scene <name>`); `shell.svelte.ts` + module registry with tests
 - [ ] U1 Shell: zones A–G as components (rail, sidebar/stage slots, voice dock, topbar +
       `Strg K` palette, banner slot, inspector); module „Ich“ = settings navigation +
       stage + help, `Esc` returns (no overlay); the test client moves in without losing
@@ -131,6 +127,15 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] U0 UI foundation (ADR-004): `bits-ui` 2.20, `@lucide/svelte`, `vitest-axe` with an
+      axe test on the app; `ui-tokens` v1 (rail/inspector widths, type scale, state colors,
+      focus, overlay, motion); second door `api.ts` + `mockApi.ts` with the "Die Gang"
+      fixture and admin actions; mock scenes `?scene=` / `cargo xtask dev --ui --scene`
+      for engine and API; `shell.svelte.ts` (module registry by role, back navigation,
+      inspector memory, banner priorities, palette commands) with tests; api-types gained
+      `Me`, `PublicConfig`, `Member`, `InviteCode`, `EventEntry`, `PresenceState` +
+      attribute mapping (ADR-005), unused `Presence` removed; `gen-types` cleans stale files
+      (2026-10-23)
 - [x] Architecture review v1: `docs/01-vision-v1.md`, ADR-004 to 007 accepted, board in
       milestones M1–M4; repo on GitHub (`crisin/YAPPA`, public, default branch `main`)
       (2026-10-23)

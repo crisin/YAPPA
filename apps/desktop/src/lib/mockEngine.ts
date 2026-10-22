@@ -8,6 +8,7 @@ import type { Participant } from './types/Participant';
 import type { Settings } from './types/Settings';
 import type { Stats } from './types/Stats';
 import defaultSettings from './types/defaultSettings.json';
+import { DEFAULT_SCENE, type Scene } from './scene';
 
 // Generated from `Settings::default()` in engine-protocol — the mock cannot drift from Rust.
 const defaults = defaultSettings as Settings;
@@ -46,7 +47,11 @@ function decodeInvite(text: string): Invite {
   }
 }
 
-export function createMockEngine(): Engine {
+/**
+ * `scene` (see `scene.ts`) picks the trouble: `reconnect` loses the link every few seconds,
+ * `offline` cannot join at all. Every other scene behaves like a healthy room.
+ */
+export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
   const handlers = new Set<(event: Event) => void>();
   const settings: Settings = structuredClone(defaults);
   let connected = false;
@@ -106,6 +111,11 @@ export function createMockEngine(): Engine {
       peers: connected ? [{ identity: 'anna', levelDb: -30 + 12 * wave, speaking: wave > 0 }] : [],
     });
     if (ticks % 10 === 0) emit({ type: 'stats', stats: stats() });
+    // A flaky link: gone for two seconds out of every five.
+    if (scene === 'reconnect' && connected) {
+      if (ticks % 50 === 30) emit({ type: 'connection', state: 'reconnecting' });
+      if (ticks % 50 === 0) emit({ type: 'connection', state: 'connected' });
+    }
   };
 
   const handle = (command: Command) => {
@@ -113,6 +123,11 @@ export function createMockEngine(): Engine {
       case 'join':
         emit({ type: 'connection', state: 'connecting' });
         log(`joining ${command.url}`);
+        if (scene === 'offline') {
+          emit({ type: 'error', message: 'Der Server antwortet nicht.' });
+          emit({ type: 'connection', state: 'disconnected' });
+          break;
+        }
         connected = true;
         emit({ type: 'joined', room: 'gang', identity: 'ich' });
         emit({ type: 'participants', participants: structuredClone(others) });

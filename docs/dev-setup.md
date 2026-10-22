@@ -41,7 +41,8 @@ Docker, `lk` and `gh` come from the OS package manager (winget / brew).
 | Command | Does |
 | --- | --- |
 | `cargo xtask dev` | desktop app with hot reload (`tauri dev`) |
-| `cargo xtask dev --ui` | UI only in the browser on :1420, engine mocked |
+| `cargo xtask dev --ui` | UI only in the browser on :1420, engine and control plane mocked |
+| `cargo xtask dev --ui --scene <name>` | same, opened in a mock scene: `call` (default), `lobby`, `member`, `reconnect`, `offline`, `update` — see `apps/desktop/src/lib/scene.ts`; also `?scene=<name>` in the URL |
 | `cargo xtask build` | production build: release profile (thin LTO, stripped) + installers, lists them with size |
 | `cargo xtask build --debug` | installer from the debug profile |
 | `cargo xtask check` | the gate: fmt, tokens, docs, prettier, svelte-check, clippy `-D warnings`, nextest + doctests, vitest, cargo-deny |
@@ -131,6 +132,7 @@ put the Wikipedia link and the longer explanation below it.
 | Property | proptest | `crates/*/tests/` | invariants over random input: filters stay stable, no NaN |
 | Snapshot | insta | `crates/*/tests/snapshots/` | frequency responses, tables, serialized formats — rounded so Windows/macOS agree |
 | Contract | ts-rs export tests | engine-protocol, api-types | Rust is the source of truth; TS + default settings are generated and committed, CI fails on drift |
+| Accessibility | vitest-axe (axe-core in jsdom) | in the UI tests | `expect(await axe(container)).toHaveNoViolations()` on every screen — labels, roles, names; contrast is checked by eye, jsdom has no layout |
 | Benchmark | criterion | `crates/*/benches/` | anything in the send chain; budget DSP < 5 ms per 10 ms block |
 | UI | vitest + Testing Library (jsdom) | `apps/desktop/src/**/*.test.ts` | components and `lib/engine.ts` in browser mode; `Help`/`Info` against the generated docs |
 | Offline audio | WAV in → WAV out (S2) | `crates/audio-engine/tests/` | the whole chain without audio devices, headless in CI |

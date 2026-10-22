@@ -9,6 +9,7 @@ import type { Invite } from './types/Invite';
 import type { LogEntry } from './types/LogEntry';
 import type { Settings } from './types/Settings';
 import { createMockEngine } from './mockEngine';
+import { sceneFromUrl } from './scene';
 
 export interface AppInfo {
   version: string;
@@ -46,4 +47,4 @@ const tauriEngine: Engine = {
   openUrl: (url) => invoke<void>('open_url', { url }),
 };
 
-export const engine: Engine = isTauri() ? tauriEngine : createMockEngine();
+export const engine: Engine = isTauri() ? tauriEngine : createMockEngine(sceneFromUrl());

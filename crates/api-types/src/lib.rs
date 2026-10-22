@@ -2,9 +2,12 @@
 //!
 //! The control plane (`crates/control`, spike S6) and the desktop client both depend on this
 //! crate; the client's TypeScript side is generated with `cargo xtask gen-types`. Changes are
-//! additive only, so an N-1 client keeps working (planning doc, "Kompatibilität").
+//! additive only once a server exists, so an N-1 client keeps working (planning doc,
+//! "Kompatibilität"). Presence is not an HTTP resource: it lives in a LiveKit room as
+//! participant attributes (ADR-005), and [`PresenceState`] is the shape of those attributes.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use ts_rs::TS;
 
 /// Bumped only on breaking changes; the server answers N-1 compatibly.
@@ -40,13 +43,82 @@ pub struct ClientInfo {
     pub platform: String,
 }
 
+/// Answer of `POST /auth/invite`.
 #[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct Session {
     pub user: User,
-    /// Bearer token for later requests; kept in the OS keychain by the client.
+    /// Bearer token for later requests; kept in the OS credential store by the client.
     pub session_token: String,
+    /// Token for the presence room (ADR-005).
+    pub presence: VoiceToken,
+}
+
+/// Answer of `GET /me`: who I am plus a fresh presence-room token for this start.
+#[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Me {
+    pub user: User,
+    pub presence: VoiceToken,
+}
+
+/// `GET /config`, readable without a session: what every client must know before it talks
+/// to anything else (ADR-006).
+#[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PublicConfig {
+    pub api_version: u32,
+    /// Clients below this app version are refused a token and shown the update banner.
+    pub min_version: String,
+    /// Kill switch: exact app versions that must leave the call and update.
+    pub killed_versions: Vec<String>,
+    /// `<base>/<channel>/latest.json` is the updater manifest.
+    pub update_base_url: String,
+    pub livekit_ws_url: String,
+}
+
+/// A member as the admin sees them.
+#[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Member {
+    pub user: User,
+    /// What their client reported at the last login; `None` before the first login.
+    pub client: Option<ClientInfo>,
+    /// RFC 3339, last request seen by the control plane.
+    pub last_seen: Option<String>,
+}
+
+/// An invite link's code, as the admin manages it (`yappa://invite/<code>`).
+#[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct InviteCode {
+    pub code: String,
+    pub created_by: String,
+    /// RFC 3339.
+    pub created_at: String,
+    pub expires_at: String,
+    /// User id once redeemed; a code works once.
+    pub used_by: Option<String>,
+}
+
+/// One line of the admin's event log (`GET /events`): joins, leaves, reconnects, kicks,
+/// updates — from LiveKit webhooks and the control plane's own actions.
+#[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct EventEntry {
+    /// RFC 3339.
+    pub time: String,
+    /// Stable machine-readable kind, e.g. `joined`, `left`, `kicked`, `invite_redeemed`.
+    pub kind: String,
+    pub user_id: Option<String>,
+    pub channel_id: Option<String>,
+    pub message: String,
 }
 
 #[derive(Serialize, Deserialize, TS, Debug, Clone, Copy, PartialEq, Eq)]
@@ -159,13 +231,90 @@ impl Invite {
     }
 }
 
-/// Who sits where; pushed to clients, built from LiveKit webhooks + heartbeats.
-#[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq)]
+/// How a person's microphone goes on air; shown on their tile.
+#[derive(Serialize, Deserialize, TS, Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
-pub struct Presence {
-    pub channel_id: String,
-    pub user_ids: Vec<String>,
+pub enum TalkMode {
+    #[default]
+    Vad,
+    Ptt,
+    Open,
+}
+
+impl TalkMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Vad => "vad",
+            Self::Ptt => "ptt",
+            Self::Open => "open",
+        }
+    }
+
+    /// Unknown or missing values fall back to the default rather than failing: an older
+    /// client must still be able to show a newer one.
+    pub fn parse(text: Option<&str>) -> Self {
+        match text {
+            Some("ptt") => Self::Ptt,
+            Some("open") => Self::Open,
+            _ => Self::Vad,
+        }
+    }
+}
+
+/// A client's state in the presence room, carried as LiveKit participant attributes
+/// (ADR-005). Identity = user id, participant name = display name; this is the rest.
+#[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PresenceState {
+    /// The voice channel they sit in, `None` = in the lobby view, nowhere.
+    pub channel_id: Option<String>,
+    /// `<update channel> <version>`, e.g. `nightly 0.4.2`.
+    pub app: String,
+    pub talk: TalkMode,
+    pub away: bool,
+}
+
+impl PresenceState {
+    pub const KEY_CHANNEL: &'static str = "channel";
+    pub const KEY_APP: &'static str = "app";
+    pub const KEY_TALK: &'static str = "talk";
+    pub const KEY_AWAY: &'static str = "away";
+
+    /// Attributes to send with `set_attributes`. Every key is always present: an empty
+    /// value deletes the key on the server, which is how "no channel" and "not away" are
+    /// expressed without a second round trip.
+    pub fn to_attributes(&self) -> HashMap<String, String> {
+        HashMap::from([
+            (
+                Self::KEY_CHANNEL.to_string(),
+                self.channel_id.clone().unwrap_or_default(),
+            ),
+            (Self::KEY_APP.to_string(), self.app.clone()),
+            (Self::KEY_TALK.to_string(), self.talk.as_str().to_string()),
+            (
+                Self::KEY_AWAY.to_string(),
+                if self.away { "1" } else { "" }.to_string(),
+            ),
+        ])
+    }
+
+    /// Tolerant on purpose: missing keys are defaults, unknown values are ignored.
+    pub fn from_attributes(attributes: &HashMap<String, String>) -> Self {
+        let get = |key: &str| {
+            attributes
+                .get(key)
+                .map(String::as_str)
+                .filter(|v| !v.is_empty())
+        };
+        Self {
+            channel_id: get(Self::KEY_CHANNEL).map(str::to_string),
+            app: get(Self::KEY_APP).unwrap_or_default().to_string(),
+            talk: TalkMode::parse(get(Self::KEY_TALK)),
+            away: get(Self::KEY_AWAY).is_some(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -187,6 +336,38 @@ mod tests {
     #[test]
     fn role_serializes_lowercase() {
         assert_eq!(serde_json::to_string(&Role::Admin).unwrap(), "\"admin\"");
+    }
+
+    #[test]
+    fn presence_round_trips_through_attributes() {
+        let state = PresenceState {
+            channel_id: Some("raid".into()),
+            app: "nightly 0.4.2".into(),
+            talk: TalkMode::Ptt,
+            away: true,
+        };
+        let attributes = state.to_attributes();
+        assert_eq!(attributes["channel"], "raid");
+        assert_eq!(attributes["talk"], "ptt");
+        assert_eq!(attributes["away"], "1");
+        assert_eq!(PresenceState::from_attributes(&attributes), state);
+    }
+
+    #[test]
+    fn presence_clears_with_empty_values_and_tolerates_unknown_ones() {
+        let cleared = PresenceState::default().to_attributes();
+        // Empty = delete on the server; every key is sent so nothing stale survives.
+        assert_eq!(cleared["channel"], "");
+        assert_eq!(cleared["away"], "");
+        assert_eq!(cleared.len(), 4);
+        let odd = HashMap::from([
+            ("channel".to_string(), String::new()),
+            ("talk".to_string(), "telepathy".to_string()),
+        ]);
+        let state = PresenceState::from_attributes(&odd);
+        assert_eq!(state.channel_id, None);
+        assert_eq!(state.talk, TalkMode::Vad);
+        assert!(!state.away);
     }
 
     #[test]
