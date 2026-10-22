@@ -3,6 +3,7 @@
   // devices, and what the engine logged. The same numbers go into the log file once per
   // second, so "it crackled around nine" can be looked up afterwards.
   import type { AppInfo } from './engine';
+  import Info from './Info.svelte';
   import type { Session } from './session.svelte';
   import type { DeviceStats } from './types/DeviceStats';
 
@@ -15,7 +16,8 @@
     reconnecting: 'verbinde neu',
   } as const;
 
-  type Row = { label: string; value: string; warn?: boolean };
+  /** `term` = glossary slug (docs/hilfe/glossar.md) shown as ⓘ next to the label. */
+  type Row = { label: string; value: string; warn?: boolean; term?: string };
 
   const fixed = (n: number, digits = 1) => n.toFixed(digits).replace('.', ',');
   const net = $derived(session.stats?.network ?? null);
@@ -27,30 +29,44 @@
             label: 'Laufzeit zum Server',
             value: `${fixed(net.rttMs, 0)} ms`,
             warn: net.rttMs > 150,
+            term: 'laufzeit-zum-server',
           },
           {
             label: 'Paketverlust Empfang',
             value: `${fixed(net.lossPercentRecent)} %`,
             warn: net.lossPercentRecent > 5,
+            term: 'paketverlust',
           },
           {
             label: 'Paketverlust Senden',
             value: `${fixed(net.uplinkLossPercent)} %`,
             warn: net.uplinkLossPercent > 5,
+            term: 'paketverlust',
           },
           {
             label: 'Ersetzte Samples',
             value: `${fixed(net.concealedPercentRecent)} % (gesamt ${fixed(net.concealedPercentTotal)} %)`,
             warn: net.concealedPercentRecent > 2,
+            term: 'ersetzte-samples',
           },
-          { label: 'Jitter', value: `${fixed(net.jitterMs, 0)} ms`, warn: net.jitterMs > 30 },
+          {
+            label: 'Jitter',
+            value: `${fixed(net.jitterMs, 0)} ms`,
+            warn: net.jitterMs > 30,
+            term: 'jitter',
+          },
           {
             label: 'Jitterbuffer',
             value: `${fixed(net.jitterBufferMs, 0)} ms`,
             warn: net.jitterBufferMs > 120,
+            term: 'jitterbuffer',
           },
-          { label: 'Senderate', value: `${fixed(net.sendKbpsRecent, 0)} kbit/s` },
-          { label: 'Codec', value: net.sendCodec || '–' },
+          {
+            label: 'Senderate',
+            value: `${fixed(net.sendKbpsRecent, 0)} kbit/s`,
+            term: 'senderate',
+          },
+          { label: 'Codec', value: net.sendCodec || '–', term: 'codec' },
           {
             label: 'Pakete',
             value: `${net.packetsSent} gesendet · ${net.packetsReceived} empfangen · ${net.packetsLost} verloren`,
@@ -64,9 +80,13 @@
     const ms = fixed((device.callbackFrames / device.sampleRate) * 1000);
     return [
       { label: 'Gerät', value: device.name },
-      { label: 'Format', value: `${device.sampleRate} Hz · ${device.channels} Kanäle` },
-      { label: 'Puffer', value: `${device.callbackFrames} Frames (${ms} ms)` },
-      { label: xrunLabel, value: String(device.xruns), warn: device.xruns > 0 },
+      {
+        label: 'Format',
+        value: `${device.sampleRate} Hz · ${device.channels} Kanäle`,
+        term: 'abtastrate',
+      },
+      { label: 'Puffer', value: `${device.callbackFrames} Frames (${ms} ms)`, term: 'puffer' },
+      { label: xrunLabel, value: String(device.xruns), warn: device.xruns > 0, term: 'aussetzer' },
     ];
   }
 
@@ -117,7 +137,9 @@
 {#snippet rows(list: Row[])}
   <dl>
     {#each list as row (row.label)}
-      <dt>{row.label}</dt>
+      <dt>
+        {row.label}{#if row.term}<Info term={row.term} />{/if}
+      </dt>
       <dd class:warn={row.warn}>{row.value}</dd>
     {/each}
   </dl>

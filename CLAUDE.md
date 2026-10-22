@@ -15,8 +15,8 @@ hub. Do not copy code between the two repos unasked — they are meant to be com
 ## Architecture in one breath
 
 - **Desktop client** (`apps/desktop`, Tauri 2 + Svelte 5 + Vite + TS): login, channels,
-  voice, settings. **All audio processing is native Rust** in the engine; the webview only
-  sees levels, switches and settings.
+  voice, settings, in-app help. **All audio processing is native Rust** in the engine; the
+  webview only sees levels, switches and settings.
 - **Control plane** (`crates/control`, Rust: axum + sqlx + SQLite): invites/identity,
   channels, LiveKit tokens, presence from webhooks, a tiny bootstrap/emergency admin page.
   Runs next to LiveKit in the same `docker compose`. Never in the voice path — a running call
@@ -41,6 +41,8 @@ xtask/                   repo tasks: check, livekit, gen-types, …  (`cargo xta
 ui-tokens/               design tokens + themes as JSON -> CSS variables
 infra/livekit/           compose files dev/home/vps (LiveKit + control + Caddy), livekit.yaml
 docs/adr/, docs/spikes/  decisions and spike results
+docs/hilfe/              user help (German) + glossary = tooltip source; all docs/ and TASKS/
+                         CHANGELOG are rendered into the app by `cargo xtask docs`
 TASKS.md                 the board of this variant
 ```
 
@@ -92,6 +94,7 @@ cargo xtask check --fast   # quick subset (also the git pre-commit hook)
 cargo xtask test           # Rust (nextest + doctests) + UI (vitest) only
 cargo xtask gen-types      # after changing engine-protocol / api-types
 cargo xtask tokens         # after changing ui-tokens/
+cargo xtask docs           # after changing docs/, TASKS.md, CHANGELOG.md (in-app help)
 cargo insta review         # after an intended snapshot change
 cargo xtask bench          # DSP cost per 10 ms block (send-chain changes: before/after)
 cargo xtask dev           # the desktop app (hot reload); --ui = browser only, engine mocked
@@ -101,8 +104,8 @@ cargo xtask build         # production build + installers (target/release/bundle
 Which test for what: unit tests next to the code; `proptest` for invariants; `insta`
 snapshots (rounded, platform-stable) for responses and tables; `criterion` benches for the
 send chain; vitest + Testing Library for UI. Generated files (`apps/desktop/src/lib/types/*`
-incl. `defaultSettings.json`, `tokens.css`) are written by xtask and committed — never edit
-them; Claude Code is denied write access to them.
+incl. `defaultSettings.json`, `tokens.css`, `docs/content.json`) are written by xtask and
+committed — never edit them; Claude Code is denied write access to them.
 
 Claude Code setup in `.claude/`: a SessionStart hook prints the current tasks, a PostToolUse
 hook formats edited files, skills `task` / `adr` / `spike`, agent `realtime-reviewer` (run it

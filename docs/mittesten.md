@@ -27,7 +27,8 @@ Echounterdrückung gibt es noch nicht.
 | Regler bei einer Person | Diese Person für dich lauter oder leiser machen. |
 | Hörbar / Stumm für mich | Diese eine Person nur für dich stummschalten. |
 | Verlassen | Raum verlassen. |
-| Debug | Blendet rechts die Messwerte ein (siehe unten). |
+| Debug | Blendet rechts die Messwerte ein (siehe unten). Ein ⓘ neben einem Wert erklärt ihn. |
+| Hilfe | Diese Anleitung, „So funktioniert yAPPA“ und ein Glossar – direkt in der App, auch ohne Verbindung. |
 
 ## Wenn etwas komisch klingt
 

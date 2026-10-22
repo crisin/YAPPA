@@ -84,4 +84,27 @@ describe('App', () => {
     await fireEvent.click(within(panel).getByRole('button', { name: 'Diagnose-Datei speichern' }));
     expect(await within(panel).findByText(/Gespeichert:/)).toBeInTheDocument();
   });
+
+  it('opens the help in place of the room and closes it again', async () => {
+    render(App);
+    await join();
+    await fireEvent.click(screen.getByRole('button', { name: 'Hilfe' }));
+    expect(screen.getByRole('heading', { level: 1, name: 'Mittesten' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 1, name: 'gang' })).not.toBeInTheDocument();
+    await fireEvent.click(screen.getByRole('button', { name: 'Hilfe' }));
+    expect(screen.getByRole('heading', { level: 1, name: 'gang' })).toBeInTheDocument();
+  });
+
+  it('explains a debug value with a tooltip that leads into the glossary', async () => {
+    render(App);
+    await join();
+    await fireEvent.click(screen.getByRole('button', { name: 'Debug' }));
+    await fireEvent.click(
+      await screen.findByRole('button', { name: 'Erklärung: Jitter' }, { timeout: 3000 }),
+    );
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Jitter');
+    await fireEvent.click(screen.getByRole('button', { name: 'Mehr im Glossar' }));
+    expect(screen.getByRole('heading', { level: 1, name: 'Glossar' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Hilfe' })).toHaveAttribute('aria-pressed', 'true');
+  });
 });

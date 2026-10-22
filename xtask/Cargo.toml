@@ -1,6 +1,6 @@
 [package]
 name = "xtask"
-description = "Repo tasks: cargo xtask check | gen-types | tokens"
+description = "Repo tasks: cargo xtask check | gen-types | tokens | docs"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,7 +10,10 @@ publish.workspace = true
 # Token signing only (`cargo xtask livekit token`) — no WebRTC in here.
 livekit-api = { version = "0.8", default-features = false, features = ["access-token"] }
 api-types.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+# `cargo xtask docs`: markdown from the repo -> the in-app help.
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 
 [lints]
 workspace = true

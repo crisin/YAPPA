@@ -173,5 +173,10 @@ export function createMockEngine(): Engine {
       }
     },
     exportLogs: () => Promise.resolve('(Browser-Modus: keine Logdatei)'),
+    openUrl(url) {
+      // In a browser the browser is the system browser; in tests there is none.
+      window.open?.(url, '_blank', 'noopener');
+      return Promise.resolve();
+    },
   };
 }

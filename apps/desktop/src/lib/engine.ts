@@ -31,6 +31,8 @@ export interface Engine {
   decodeInvite(text: string): Promise<Invite>;
   /** Writes the diagnostics file and resolves with its path. */
   exportLogs(): Promise<string>;
+  /** Opens a web link (http/https only) in the system browser. */
+  openUrl(url: string): Promise<void>;
 }
 
 const tauriEngine: Engine = {
@@ -41,6 +43,7 @@ const tauriEngine: Engine = {
   recentLogs: () => invoke<LogEntry[]>('recent_logs'),
   decodeInvite: (text) => invoke<Invite>('decode_invite', { text }),
   exportLogs: () => invoke<string>('export_logs'),
+  openUrl: (url) => invoke<void>('open_url', { url }),
 };
 
 export const engine: Engine = isTauri() ? tauriEngine : createMockEngine();

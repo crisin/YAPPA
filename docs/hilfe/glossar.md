@@ -1,0 +1,193 @@
+# Glossar
+
+Begriffe, die in yAPPA auftauchen – vor allem im Debug-Bereich. Jeder Eintrag beginnt mit
+einem Satz, der auch als Erklärung hinter dem ⓘ in der App erscheint. Wer es genauer wissen
+will, findet darunter einen Link, meist zu Wikipedia.
+
+## Latenz
+
+Die Zeit, die dein Wort braucht, bis es beim anderen aus dem Kopfhörer kommt. Ziel in
+yAPPA: 70 bis 120 Millisekunden von Mund zu Ohr.
+
+Ab etwa 150 ms reden sich Leute ins Wort, weil die Pausen länger wirken, als sie sind. Die
+Latenz setzt sich zusammen aus Mikrofonpuffer, Codec, Weg zum Server und zurück,
+Jitterbuffer und Ausgabepuffer – jeder Teil ein paar Millisekunden.
+
+Mehr dazu: [Latenz (Wikipedia)](https://de.wikipedia.org/wiki/Latenz_(Technik))
+
+## Laufzeit zum Server
+
+Wie lange ein Paket zum Server und wieder zurück braucht („Round Trip Time“, RTT). Unter
+50 ms ist gut, über 150 ms merkt man es.
+
+Die Laufzeit hängt fast nur von der Strecke und dem Anschluss ab, nicht von yAPPA. Per
+WLAN kommen oft 10 bis 30 ms Schwankung dazu – ein Kabel ist die einfachste Verbesserung.
+
+Mehr dazu: [Paketumlaufzeit (Wikipedia)](https://de.wikipedia.org/wiki/Paketumlaufzeit)
+
+## Jitter
+
+Wie unregelmäßig die Pakete ankommen. Große Schwankungen zwingen den Jitterbuffer, mehr zu
+puffern – das kostet Latenz.
+
+Jitter entsteht durch WLAN, volle Leitungen oder einen beschäftigten Router. Ein Wert unter
+10 ms ist unauffällig, ab 30 ms ist er im Debug-Bereich orange.
+
+Mehr dazu: [Jitter (Wikipedia)](https://de.wikipedia.org/wiki/Jitter)
+
+## Jitterbuffer
+
+Ein kleiner Vorrat an empfangenen Paketen, der Schwankungen ausgleicht, damit die Wiedergabe
+nicht stockt. Je unruhiger das Netz, desto größer wird er – und desto mehr Latenz.
+
+Der Jitterbuffer stellt sich selbst ein. Ein dauerhaft hoher Wert (über 120 ms) heißt: das
+Netz ist unruhig, nicht die App.
+
+Mehr dazu: [Jitterbuffer (Wikipedia)](https://de.wikipedia.org/wiki/Jitterbuffer)
+
+## Paketverlust
+
+Der Anteil der Pakete, die unterwegs verloren gehen. Bis etwa 2 % fängt der Codec das ab,
+ab 5 % hört man Aussetzer oder eine Roboterstimme.
+
+yAPPA schickt wichtige Teile doppelt (siehe RED), sodass einzelne verlorene Pakete nicht
+auffallen. Paketverlust „Empfang“ betrifft, was bei dir ankommt; „Senden“ betrifft, was
+von dir beim Server ankommt.
+
+Mehr dazu: [Paketverlust (Wikipedia)](https://de.wikipedia.org/wiki/Paketverlust)
+
+## Ersetzte Samples
+
+Der Anteil der Tonstücke, die der Empfänger erfunden hat, weil das echte Paket fehlte oder
+zu spät kam („Packet Loss Concealment“). Kurz unauffällig, dauerhaft über 2 % hörbar.
+
+Der Decoder schätzt aus dem letzten Stück, wie es weitergeht. Das klappt bei einem
+verlorenen Paket gut und bei mehreren hintereinander immer schlechter – daher die
+Roboterstimme bei viel Paketverlust.
+
+Mehr dazu: [Packet Loss Concealment (Wikipedia, englisch)](https://en.wikipedia.org/wiki/Packet_loss_concealment)
+
+## Codec
+
+Das Verfahren, das Sprache für den Versand klein macht und beim Empfänger wieder auspackt.
+yAPPA benutzt Opus, den Standard für Sprache im Internet.
+
+Opus braucht bei 48 kHz Abtastrate 32 bis 64 kbit/s pro Person und verkraftet
+Paketverlust vergleichsweise gut; yAPPA erlaubt bis 64 kbit/s. Im Debug-Bereich steht unter „Codec“, womit gerade
+gesendet wird.
+
+Mehr dazu: [Opus (Wikipedia)](<https://de.wikipedia.org/wiki/Opus_(Audioformat)>)
+
+## Senderate
+
+Wie viele Kilobit pro Sekunde dein Mikrofon gerade an den Server schickt. Opus läuft mit
+bis zu 64 kbit/s, die Redundanz (RED) kommt obendrauf.
+
+Die Senderate ist so klein, dass sie selbst neben einem Spiel oder Stream nicht ins Gewicht
+fällt. Mehr Bitrate heißt bessere Klangqualität, aber auch mehr Daten pro Paket.
+
+Mehr dazu: [Bitrate (Wikipedia)](https://de.wikipedia.org/wiki/Bitrate)
+
+## RED
+
+„Redundant Encoding“: jedes Paket enthält zusätzlich eine Kopie des vorherigen. Geht eines
+verloren, steckt sein Inhalt im nächsten. Kostet etwas Bandbreite, rettet viele Aussetzer.
+
+RED ist der Grund, warum die Senderate höher ist als die reine Opus-Bitrate. Es hilft bei
+vereinzelten Verlusten; bei einer kaputten Leitung hilft es nicht.
+
+Mehr dazu: [RFC 2198 (englisch)](https://www.rfc-editor.org/rfc/rfc2198)
+
+## Abtastrate
+
+Wie oft pro Sekunde der Ton gemessen wird. yAPPA arbeitet mit 48 000 Hz – das Gerät muss in
+den Windows-Soundeinstellungen auch auf 48 000 Hz stehen.
+
+Alles im Sprachweg (Mikrofon, Codec, Server, Ausgabe) läuft mit derselben Abtastrate, damit
+nichts umgerechnet werden muss. Eine Umrechnung („Resampling“) ist für später geplant.
+
+Mehr dazu: [Abtastrate (Wikipedia)](https://de.wikipedia.org/wiki/Abtastrate)
+
+## Puffer
+
+Die Portion Ton, die die Soundkarte auf einmal liefert oder abholt – angegeben in Frames und
+Millisekunden. Kleiner Puffer: weniger Latenz, aber eher Aussetzer.
+
+yAPPA verarbeitet den Ton in Stücken von 10 ms; welche Portion das Gerät liefert, steht im
+Debug-Bereich. Manche Treiber geben nur 20 oder 30 ms – das ist in Ordnung, nur eben etwas
+mehr Latenz.
+
+Mehr dazu: [Puffer (Wikipedia)](<https://de.wikipedia.org/wiki/Puffer_(Informatik)>)
+
+## Aussetzer
+
+Die Soundkarte wollte Ton, und keiner lag bereit (oder umgekehrt: Ton kam, und keiner holte
+ihn ab). Jeder Aussetzer ist ein Knacken oder ein kurzes Loch.
+
+Ursachen sind meist ein überlasteter Rechner, ein USB-Gerät an einem schwachen Anschluss
+oder ein Treiber im Energiesparmodus. Ein paar beim Start sind normal; wenn sie während des
+Gesprächs weiterzählen, bitte melden.
+
+Mehr dazu: [Pufferunterlauf (Wikipedia)](https://de.wikipedia.org/wiki/Pufferunterlauf)
+
+## Pegel
+
+Wie laut ein Signal ist, in Dezibel relativ zum Maximum (dBFS). 0 dB ist das lauteste
+Mögliche, –60 dB ist fast Stille. Beim Sprechen sind –20 bis –10 dB ein guter Bereich.
+
+Der Balken in yAPPA zeigt den Pegel nach dem Mikrofon, also das, was die anderen hören. Mit
+dem Regler bei einer Person änderst du nur, wie laut sie bei dir ankommt.
+
+Mehr dazu: [dBFS (Wikipedia)](https://de.wikipedia.org/wiki/DBFS)
+
+## Server
+
+Der Rechner, über den die Sprache aller läuft. Er mischt nicht, sondern verteilt: jede
+Stimme kommt einzeln bei dir an, und du stellst sie selbst ein.
+
+yAPPA benutzt dafür LiveKit, einen selbst gehosteten Medienserver, der bei einem von uns zu
+Hause oder auf einem Mietserver läuft. So bleibt alles in unserer Hand – keine Firma hört
+mit.
+
+Mehr dazu: [Selective Forwarding Unit (Wikipedia, englisch)](https://en.wikipedia.org/wiki/Selective_forwarding_unit)
+
+## Einladung
+
+Eine lange Textzeile, die mit `yappa1.` beginnt. Sie enthält die Adresse des Servers und
+deinen persönlichen Zugang. Nicht weitergeben – sie ist dein Schlüssel.
+
+Technisch steckt darin ein signierter Token mit deinem Namen und einer Laufzeit. Dieselbe
+Einladung auf zwei Rechnern gleichzeitig geht nicht; der zuerst verbundene fliegt raus.
+
+Mehr dazu: [JSON Web Token (Wikipedia)](https://de.wikipedia.org/wiki/JSON_Web_Token)
+
+## Echo
+
+Wenn jemand Lautsprecher statt Kopfhörer benutzt, nimmt sein Mikrofon die anderen mit auf –
+und alle hören sich selbst mit Verzögerung. Eine Echounterdrückung gibt es in yAPPA noch
+nicht.
+
+Deshalb: Headset. Die Echounterdrückung („AEC“) steht auf der Liste, ist aber schwierig, ohne
+Sprachqualität zu verlieren.
+
+Mehr dazu: [Echokompensation (Wikipedia)](https://de.wikipedia.org/wiki/Echokompensation)
+
+## Push-to-Talk
+
+Das Mikrofon ist nur offen, solange eine Taste gedrückt ist. Noch nicht in yAPPA – zurzeit
+ist das Mikrofon immer offen, solange es nicht stummgeschaltet ist.
+
+Geplant ist eine globale Taste, die auch funktioniert, wenn ein Spiel im Vollbild läuft.
+Dazu kommt eine Sprachaktivierung mit einstellbarer Schwelle als Alternative.
+
+Mehr dazu: [Push-to-talk (Wikipedia)](https://de.wikipedia.org/wiki/Push-to-talk)
+
+## Rauschunterdrückung
+
+Entfernt Lüfter, Tastatur und Straßenlärm aus dem Mikrofonsignal, bevor es gesendet wird.
+Noch nicht in yAPPA – kommt mit der DSP-Kette.
+
+Vorgesehen ist DeepFilterNet, ein neuronales Netz, das in Echtzeit auf der CPU läuft. Es
+soll sich abschalten lassen, falls es die Stimme verfärbt.
+
+Mehr dazu: [Rauschunterdrückung (Wikipedia)](https://de.wikipedia.org/wiki/Rauschunterdrückung)

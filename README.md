@@ -26,6 +26,8 @@ Why and what follows from it: [ADR-001](docs/adr/001-variante-b-stack.md).
 - [docs/dev-setup.md](docs/dev-setup.md) — tooling, tests, Claude Code setup
 - [docs/homeserver.md](docs/homeserver.md) — LiveKit on a home server behind a FRITZ!Box (German)
 - [docs/mittesten.md](docs/mittesten.md) — for testers: install, join, report a problem (German)
+- [docs/hilfe/](docs/hilfe/glossar.md) — user help and glossary (German); everything in `docs/`,
+  `TASKS.md` and `CHANGELOG.md` is also readable inside the app ("Hilfe" button)
 - [TASKS.md](TASKS.md) — what is being worked on
 - [CHANGELOG.md](CHANGELOG.md) · [CLAUDE.md](CLAUDE.md) — rules for coding agents
 

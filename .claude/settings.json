@@ -48,6 +48,8 @@
       "Write(apps/desktop/src/lib/types/**)",
       "Edit(apps/desktop/src/lib/tokens.css)",
       "Write(apps/desktop/src/lib/tokens.css)",
+      "Edit(apps/desktop/src/lib/docs/**)",
+      "Write(apps/desktop/src/lib/docs/**)",
       "Read(.env)",
       "Read(.env.*)"
     ]
