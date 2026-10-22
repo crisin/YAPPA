@@ -44,12 +44,13 @@ Docker, `lk` and `gh` come from the OS package manager (winget / brew).
 | `cargo xtask dev --ui` | UI only in the browser on :1420, engine mocked |
 | `cargo xtask build` | production build: release profile (thin LTO, stripped) + installers, lists them with size |
 | `cargo xtask build --debug` | installer from the debug profile |
-| `cargo xtask check` | the gate: fmt, tokens, prettier, svelte-check, clippy `-D warnings`, nextest + doctests, vitest, cargo-deny |
-| `cargo xtask check --fast` | pre-commit subset: fmt, tokens, prettier, clippy |
+| `cargo xtask check` | the gate: fmt, tokens, docs, prettier, svelte-check, clippy `-D warnings`, nextest + doctests, vitest, cargo-deny |
+| `cargo xtask check --fast` | pre-commit subset: fmt, tokens, docs, prettier, clippy |
 | `cargo xtask check --ci` | full + `npm ci` + fails if generated files are not committed |
 | `cargo xtask test` | Rust + UI tests only |
 | `cargo xtask gen-types` | Rust contracts → `apps/desktop/src/lib/types` (TS + `defaultSettings.json`) |
 | `cargo xtask tokens` | `ui-tokens/` → `apps/desktop/src/lib/tokens.css` |
+| `cargo xtask docs` | `docs/`, `TASKS.md`, `CHANGELOG.md` → `apps/desktop/src/lib/docs/content.json` — the in-app help (see below) |
 | `cargo xtask bench` | criterion: DSP cost per 10 ms block |
 | `cargo xtask coverage` | line coverage, opens the HTML report |
 | `cargo xtask doctor` / `setup` | see above |
@@ -100,6 +101,28 @@ symbols. The app version has one source: `[workspace.package] version` in `Cargo
 Git hooks (`.githooks`, activated by `setup` via `core.hooksPath`): **pre-commit** runs
 `check --fast`, **pre-push** the full `check`.
 
+## In-app help — docs from the repo
+
+The app carries its own documentation: `cargo xtask docs` (part of `check`, `dev` and
+`build`) renders markdown with `pulldown-cmark` into `apps/desktop/src/lib/docs/content.json`
+(generated, committed, drift fails `check --ci`). Two groups in the "Hilfe" view:
+
+- **Hilfe** (for the gang, German): `docs/mittesten.md`, `docs/hilfe/so-funktioniert-es.md`,
+  `docs/hilfe/glossar.md`.
+- **Projekt**: `TASKS.md` (as "Status"), `CHANGELOG.md`, `README.md`, the planning doc,
+  every file in `docs/adr/` and `docs/spikes/` (README first — a new ADR or spike shows up
+  by itself), `docs/dev-setup.md`, `docs/homeserver.md`, `CLAUDE.md`.
+
+The page list lives in `xtask/src/docs.rs` (`PAGES`). Links between these files become
+in-app navigation, web links open in the system browser (`open_url` command, http/https
+only), other relative links are shown but not clickable.
+
+**Glossary = tooltips.** Every `##` heading in `docs/hilfe/glossar.md` is a term; its first
+paragraph is the one-sentence explanation behind an ⓘ (`<Info term="jitter" />`, slug of the
+heading: lowercase, umlauts transliterated, `-` for everything else). `Info.test.ts` fails
+on a `term` the glossary does not define. Write the first paragraph so it stands alone;
+put the Wikipedia link and the longer explanation below it.
+
 ## Tests — which kind for what
 
 | Kind | Tool | Where | Use for |
@@ -109,7 +132,7 @@ Git hooks (`.githooks`, activated by `setup` via `core.hooksPath`): **pre-commit
 | Snapshot | insta | `crates/*/tests/snapshots/` | frequency responses, tables, serialized formats — rounded so Windows/macOS agree |
 | Contract | ts-rs export tests | engine-protocol, api-types | Rust is the source of truth; TS + default settings are generated and committed, CI fails on drift |
 | Benchmark | criterion | `crates/*/benches/` | anything in the send chain; budget DSP < 5 ms per 10 ms block |
-| UI | vitest + Testing Library (jsdom) | `apps/desktop/src/**/*.test.ts` | components and `lib/engine.ts` in browser mode |
+| UI | vitest + Testing Library (jsdom) | `apps/desktop/src/**/*.test.ts` | components and `lib/engine.ts` in browser mode; `Help`/`Info` against the generated docs |
 | Offline audio | WAV in → WAV out (S2) | `crates/audio-engine/tests/` | the whole chain without audio devices, headless in CI |
 | Integration | LiveKit in Docker (S1) | `crates/transport/tests/` | connect, publish, reconnect |
 
@@ -124,7 +147,8 @@ Checked in under `.claude/`, so it works the same on both machines:
     diff, log, switch, add, commit) — no prompts for the daily loop.
   - *ask*: `git push/merge/rebase/reset`, `cargo add`, `npm install` — anything that
     publishes, rewrites, or adds dependencies.
-  - *deny*: editing generated files (`src/lib/types/**`, `tokens.css`), reading `.env*`.
+  - *deny*: editing generated files (`src/lib/types/**`, `tokens.css`, `docs/**`), reading
+    `.env*`.
   - *env*: no ANSI colors in tool output (`CARGO_TERM_COLOR=never`, `NO_COLOR=1`).
   - *hooks*: **SessionStart** prints branch + "Now"/"Next" from `TASKS.md` into the
     session's context; **PostToolUse** formats every edited file (rustfmt / prettier) via

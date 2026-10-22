@@ -7,6 +7,9 @@
   import { engine, type AppInfo } from './lib/engine';
   import { Session } from './lib/session.svelte';
   import DebugPanel from './lib/DebugPanel.svelte';
+  import Help from './lib/Help.svelte';
+  import Info from './lib/Info.svelte';
+  import { help } from './lib/helpState.svelte';
   import JoinCard from './lib/JoinCard.svelte';
   import Meter from './lib/Meter.svelte';
   import Participants from './lib/Participants.svelte';
@@ -73,7 +76,7 @@
   <nav class="side" aria-label="Geräte">
     <header><img src={logo} alt="" width="28" height="28" />yAPPA</header>
 
-    <label for="input">Mikrofon</label>
+    <div class="label"><label for="input">Mikrofon</label><Info term="pegel" /></div>
     <select
       id="input"
       value={deviceValue(session.settings?.inputDevice)}
@@ -112,7 +115,9 @@
       </div>
     {/if}
 
-    {#if session.inRoom && session.connection !== 'connecting'}
+    {#if help.open}
+      <Help />
+    {:else if session.inRoom && session.connection !== 'connecting'}
       <h1>{session.room ?? 'Raum'}</h1>
       <Participants {session} />
     {:else}
@@ -141,6 +146,7 @@
       {/if}
     </div>
     <div class="group end">
+      <button aria-pressed={help.open} onclick={() => help.toggle()}>Hilfe</button>
       <button aria-pressed={debug} onclick={toggleDebug}>Debug</button>
       <button onclick={() => (theme = theme === 'dark' ? 'light' : 'dark')}>Theme</button>
       <span class="meta">
@@ -183,6 +189,16 @@
 
   .side header img {
     border-radius: var(--radius-md);
+  }
+
+  .side .label {
+    display: flex;
+    align-items: center;
+    margin-top: var(--space-3);
+  }
+
+  .side .label label {
+    margin-top: 0;
   }
 
   .side label {

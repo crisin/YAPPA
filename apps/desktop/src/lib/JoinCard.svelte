@@ -1,6 +1,7 @@
 <script lang="ts">
   // Shown while not in a room: paste the invite, join. The control plane (S6) will replace
   // the pasted text with a login; the engine command behind the button stays the same.
+  import Info from './Info.svelte';
   import type { Session } from './session.svelte';
 
   let { session }: { session: Session } = $props();
@@ -14,7 +15,7 @@
 
 <form class="card" onsubmit={submit}>
   <h1>Beitreten</h1>
-  <label for="invite">Einladung</label>
+  <div class="label"><label for="invite">Einladung</label><Info term="einladung" /></div>
   <textarea
     id="invite"
     rows="4"
@@ -46,6 +47,11 @@
   h1 {
     margin: 0 0 var(--space-2);
     font-size: var(--font-size-lg);
+  }
+
+  .label {
+    display: flex;
+    align-items: center;
   }
 
   label {

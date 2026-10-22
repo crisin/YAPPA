@@ -9,12 +9,14 @@
 //!   test               Rust tests (nextest + doctests) and UI tests (vitest)
 //!   gen-types          engine-protocol + api-types -> apps/desktop/src/lib/types
 //!   tokens             ui-tokens/*.json -> apps/desktop/src/lib/tokens.css
+//!   docs               docs/, TASKS.md, CHANGELOG.md -> apps/desktop/src/lib/docs (in-app help)
 //!   bench              criterion benchmarks (DSP cost per 10 ms block)
 //!   livekit [cmd]      local LiveKit server in Docker: up | down | logs | loss <%> | cut <s>;
 //!                      token <name> = join token for one person
 //!   coverage           line coverage as HTML (target/llvm-cov/html)
 //!   hook <name>        entry points for Claude Code hooks (see .claude/settings.json)
 
+mod docs;
 mod hook;
 mod livekit;
 mod tokens;
@@ -27,6 +29,7 @@ use std::process::{Command, ExitCode};
 const GENERATED: &[&str] = &[
     "apps/desktop/src/lib/types",
     "apps/desktop/src/lib/tokens.css",
+    "apps/desktop/src/lib/docs",
 ];
 const DESKTOP: &str = "apps/desktop";
 
@@ -43,6 +46,7 @@ fn main() -> ExitCode {
         Some("test") => test(&root),
         Some("gen-types") => gen_types(&root),
         Some("tokens") => tokens::generate(&root),
+        Some("docs") => docs::generate(&root),
         Some("bench") => cargo(&root, &["bench", "-p", "dsp"]),
         Some("coverage") => coverage(&root),
         Some("livekit") => livekit::run(&root, &args[1..]),
@@ -50,7 +54,7 @@ fn main() -> ExitCode {
         _ => {
             eprintln!(
                 "usage: cargo xtask <dev [--ui] | build [--debug] | setup | doctor \
-                 | check [--fast|--ci] | test | gen-types | tokens | bench | coverage \
+                 | check [--fast|--ci] | test | gen-types | tokens | docs | bench | coverage \
                  | livekit [up|down|logs|loss <%>|cut <s>|token <name>] | hook <post-edit|session-start>>"
             );
             return ExitCode::from(2);
@@ -74,7 +78,7 @@ fn repo_root() -> PathBuf {
 
 type Result<T = ()> = std::result::Result<T, String>;
 
-/// The gate. Full: everything CI runs. `fast` (git pre-commit): formatting, tokens and clippy
+/// The gate. Full: everything CI runs. `fast` (git pre-commit): formatting, tokens, docs and clippy
 /// only — the tests run on pre-push.
 fn check(root: &Path, ci: bool, fast: bool) -> Result {
     tools::require(&["cargo-nextest", "cargo-deny"])?;
@@ -82,6 +86,7 @@ fn check(root: &Path, ci: bool, fast: bool) -> Result {
         cargo(root, &["fmt", "--all", "--check"])
     })?;
     step("tokens", || tokens::generate(root))?;
+    step("docs", || docs::generate(root))?;
     ensure_node_modules(root, ci)?;
     let desktop = root.join(DESKTOP);
     step("prettier --check", || {
@@ -116,6 +121,7 @@ fn check(root: &Path, ci: bool, fast: bool) -> Result {
 fn dev(root: &Path, ui_only: bool) -> Result {
     ensure_node_modules(root, false)?;
     tokens::generate(root)?;
+    docs::generate(root)?;
     let script = if ui_only { "dev" } else { "app:dev" };
     npm(&root.join(DESKTOP), &["run", script])
 }
@@ -125,6 +131,7 @@ fn dev(root: &Path, ui_only: bool) -> Result {
 fn build(root: &Path, debug: bool) -> Result {
     ensure_node_modules(root, false)?;
     tokens::generate(root)?;
+    docs::generate(root)?;
     let script = if debug {
         "app:build:debug"
     } else {

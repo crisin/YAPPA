@@ -53,6 +53,10 @@ States: **now** (in progress, max. 2) · **next** (planned, ordered) · **later*
 
 ## Done
 
+- [x] In-app docs: `cargo xtask docs` renders docs/, TASKS.md and CHANGELOG.md into the
+      app ("Hilfe" view with Hilfe/Projekt groups, search, in-app links); user help
+      `docs/hilfe/` (how it works, glossary); glossary entries as ⓘ tooltips in the debug
+      panel and on labels; web links via `open_url` (2026-10-23)
 - [x] Test client: `crates/transport` (trait + LiveKit), `crates/audio-engine` (devices,
       pump, 24-slot mixer, levels, rejoin), shell with logging and diagnostics export, UI
       with invite join, participants, per-person volume, debug panel; headless example;

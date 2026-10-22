@@ -109,6 +109,16 @@ fn export_logs(handle: tauri::AppHandle, app: tauri::State<'_, App>) -> Result<S
     Ok(path.display().to_string())
 }
 
+/// Links in the in-app help open in the system browser. Only web addresses: the webview
+/// must never be able to start a program or open a file through this.
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err(format!("not a web address: {url}"));
+    }
+    tauri_plugin_opener::open_url(&url, None::<&str>).map_err(|e| e.to_string())
+}
+
 fn write_diagnostics(
     path: &Path,
     settings: Option<&Settings>,
@@ -227,7 +237,8 @@ pub fn run() {
             engine_command,
             recent_logs,
             decode_invite,
-            export_logs
+            export_logs,
+            open_url
         ])
         .build(tauri::generate_context!())
         .expect("error while starting yAPPA")

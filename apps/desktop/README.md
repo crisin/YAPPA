@@ -29,9 +29,12 @@ src/
   lib/engine.ts       the only door to the engine (Tauri invoke, browser mock)
   lib/types/          GENERATED from Rust (cargo xtask gen-types) — do not edit
   lib/tokens.css      GENERATED from ui-tokens/ (cargo xtask tokens) — do not edit
+  lib/docs/           GENERATED from docs/, TASKS.md, CHANGELOG.md (cargo xtask docs) — do not edit
+  lib/Help.svelte     in-app help: pages from lib/docs, search, links; lib/Info.svelte = ⓘ tooltips
   **/*.test.ts        vitest
 src-tauri/
-  src/lib.rs          Tauri commands: engine_info, get_settings, engine_command (stub until S1)
+  src/lib.rs          Tauri commands: app_info, get_settings, engine_command, recent_logs,
+                      decode_invite, export_logs, open_url (help links → system browser)
   tauri.conf.json     window, CSP, bundle (version comes from the workspace Cargo.toml)
   capabilities/       Tauri permissions (core only)
   icons/              app icons, generated from icons/source.png (1024 px):
