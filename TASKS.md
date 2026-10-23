@@ -30,11 +30,8 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
       `yappa-poc measure --acoustic`; second machine in the LAN: cable pulled at the PC,
       Wi-Fi switch, speech by ear at 5/10/20 % loss; spike on the MacBook → add to
       `docs/spikes/s1-poc.md`
-- [ ] E0 Engine prep (realtime review 2026-10-23, vision section 5.1): f32 capture ring,
-      quantize at send; pump busy time in `Stats`; FTZ/DAZ on the pump; `crates/denoise`
-      with the `Denoiser` trait; master stage with limiter in the mixer; capture channel
-      choice; `AppInfo` into engine-protocol; cushion coupled to the callback size
-- [ ] S2 DSP chain offline: WAV → denoiser → gate → EQ → compressor → WAV; DeepFilterNet-LL
+- [ ] S2 DSP chain offline (creates `crates/denoise` with the `Denoiser` trait, moved here
+      from E0): WAV → denoiser → gate → EQ → compressor → WAV; DeepFilterNet-LL
       (git dependency, tract) vs RNNoise (`nnnoiseless`); DFN stays default only if the
       chain adds ≤ 25 ms and ≤ 5 ms CPU per 10 ms block → `docs/spikes/s2-dsp.md`
 - [ ] E1 Chain in the pump: denoiser, gate/VAD with hold and hysteresis, EQ, compressor;
@@ -109,6 +106,15 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] E0 Engine prep (realtime review 2026-10-23): capture ring and pump in f32, quantised
+      to 16 bit only at the transport; the capture callback writes one chunk per callback;
+      input channel choice (`input_channel`) and master volume (`output_gain_db`) as
+      additive settings; `dsp::Limiter` at the end of the mix instead of a hard clamp;
+      biquad state flushed below 1e-20 (denormals) without processor flags; pump busy time
+      in `Stats` and the diagnosis; mixer bench; `AppInfo` generated from engine-protocol.
+      Measured before/after (Ryzen 7 7700X, release): mixer 20 speakers 10.17 → 10.76 µs,
+      EQ 5.32 → 5.35 µs, limiter 0.83 µs, pump mean 7.8 → 9.8 µs (max 46 → 62 µs, SDK
+      noise). Cushion was already tied to the callback size (2026-10-23)
 - [x] U5 Bind the client: `tauriApi.ts` (the door in the app: `api_*`, `voice_join`,
       `voice_leave`, `presence` event; admin answers "not yet" until U6), deep link
       `yappa://invite/…` via `tauri-plugin-deep-link` + `tauri-plugin-single-instance`

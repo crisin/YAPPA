@@ -16,4 +16,13 @@ vadThresholdDb: number, vadHoldMs: number, denoiser: DenoiserKind, highPassHz: n
 /**
  * Voice track bitrate; the baseline asks for 64–96 kbps with RED, no DTX.
  */
-voiceBitrateKbps: number, };
+voiceBitrateKbps: number, 
+/**
+ * Which input channel of the microphone device carries the voice (0 = first). A mic on
+ * input 2 of a two-channel interface is channel 1. Clamped to what the device has.
+ */
+inputChannel: number, 
+/**
+ * Master volume of everything I hear, dB; a limiter keeps the sum below clipping.
+ */
+outputGainDb: number, };

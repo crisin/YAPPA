@@ -4,6 +4,7 @@
 //! atomics. [`MixerControl`] is everything else: handing rings to speakers, volume, mute,
 //! levels. The number of speakers is fixed up front so the callback never allocates.
 
+use dsp::Limiter;
 use rtrb::{Consumer, Producer, RingBuffer};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering::Relaxed};
@@ -33,9 +34,15 @@ struct Slot {
     level: AtomicU32,
 }
 
+/// The limiter at the end of the mix: 1 dB below full scale, recovers within 80 ms.
+const CEILING_DB: f32 = -1.0;
+const RELEASE_MS: f32 = 80.0;
+
 #[derive(Default)]
 struct Shared {
     slots: [Slot; SLOTS],
+    /// Master gain (linear, `f32` bits); 0 bits = not set yet = unity.
+    master: AtomicU32,
     deafened: AtomicBool,
     underruns: AtomicU32,
     skips: AtomicU32,
@@ -74,6 +81,7 @@ pub struct MixerRt {
     shared: Arc<Shared>,
     rings: Vec<Consumer<i16>>,
     playing: [bool; SLOTS],
+    limiter: Limiter,
 }
 
 pub fn mixer() -> (Arc<MixerControl>, MixerRt) {
@@ -99,13 +107,16 @@ pub fn mixer() -> (Arc<MixerControl>, MixerRt) {
         shared,
         rings,
         playing: [false; SLOTS],
+        limiter: Limiter::new(transport::SAMPLE_RATE as f32, CEILING_DB, RELEASE_MS),
     };
     (control, rt)
 }
 
 impl MixerRt {
-    /// Adds every speaker into `out` (mono, -1..1), which must come in zeroed, and clamps
-    /// the sum. Real-time safe: no allocation, no lock, no system call.
+    /// Adds every speaker into `out` (mono, -1..1), which must come in zeroed, applies the
+    /// master volume and limits the sum below clipping — 19 people laughing at once used to
+    /// clip hard (realtime review 2026-10-23, item c). Real-time safe: no allocation, no
+    /// lock, no system call.
     pub fn render(&mut self, out: &mut [f32]) {
         let wanted = out.len();
         let deafened = self.shared.deafened.load(Relaxed);
@@ -145,9 +156,16 @@ impl MixerRt {
                 self.shared.underruns.fetch_add(1, Relaxed);
             }
         }
-        for o in out.iter_mut() {
-            *o = o.clamp(-1.0, 1.0);
+        let master = match self.shared.master.load(Relaxed) {
+            0 => 1.0,
+            bits => f32::from_bits(bits),
+        };
+        if master != 1.0 {
+            for o in out.iter_mut() {
+                *o *= master;
+            }
         }
+        self.limiter.process(out);
     }
 }
 
@@ -190,6 +208,14 @@ impl MixerControl {
                 .store(mix.gain.to_bits(), Relaxed);
             self.shared.slots[index].muted.store(mix.muted, Relaxed);
         }
+    }
+
+    /// Master volume of the whole mix, dB.
+    pub fn set_master_db(&self, db: f32) {
+        let gain = dsp::db_to_gain(db);
+        // 0 bits mean "unity" to the callback; a gain of exactly 0.0 cannot be asked for
+        // (the settings allow down to -30 dB).
+        self.shared.master.store(gain.to_bits(), Relaxed);
     }
 
     pub fn set_deafened(&self, deafened: bool) {
@@ -292,7 +318,7 @@ mod tests {
     }
 
     #[test]
-    fn speakers_are_summed_with_their_gain_and_the_sum_is_clamped() {
+    fn speakers_are_summed_with_their_gain_and_the_sum_is_limited() {
         let (control, mut rt) = mixer();
         control.set_peer("ben", |m| m.gain = 0.5);
         let mut anna = control.speaker("anna").unwrap();
@@ -306,7 +332,26 @@ mod tests {
             .iter()
             .all(|s| (*s - 0.75).abs() < 1e-3));
         control.set_peer("ben", |m| m.gain = 4.0);
-        assert!(render(&mut rt, BLOCK).iter().all(|s| *s == 1.0), "clamped");
+        let ceiling = dsp::db_to_gain(CEILING_DB);
+        assert!(
+            render(&mut rt, BLOCK)
+                .iter()
+                .all(|s| (*s - ceiling).abs() < 1e-4),
+            "held at the limiter's ceiling, not clipped"
+        );
+    }
+
+    #[test]
+    fn the_master_volume_scales_the_whole_mix() {
+        let (control, mut rt) = mixer();
+        let mut anna = control.speaker("anna").unwrap();
+        render(&mut rt, BLOCK);
+        for _ in 0..3 {
+            anna.frame(&[HALF; BLOCK]);
+        }
+        control.set_master_db(-6.0);
+        let out = render(&mut rt, BLOCK);
+        assert!(out.iter().all(|s| (*s - 0.25).abs() < 2e-3), "{}", out[0]);
     }
 
     #[test]

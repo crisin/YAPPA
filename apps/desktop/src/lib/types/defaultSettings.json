@@ -16,5 +16,7 @@
     "releaseMs": 120.0,
     "makeupDb": 3.0
   },
-  "voiceBitrateKbps": 80
+  "voiceBitrateKbps": 80,
+  "inputChannel": 0,
+  "outputGainDb": 0.0
 }

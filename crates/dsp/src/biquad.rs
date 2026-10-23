@@ -66,6 +66,9 @@ impl Coefficients {
     }
 }
 
+/// State below this is set to zero after a block.
+const DENORMAL_FLOOR: f32 = 1e-20;
+
 #[derive(Debug, Clone)]
 pub struct Biquad {
     c: Coefficients,
@@ -105,6 +108,16 @@ impl Biquad {
     pub fn process(&mut self, block: &mut [f32]) {
         for s in block.iter_mut() {
             *s = self.process_sample(*s);
+        }
+        // After a gate closes the state decays towards zero and would sit in the denormal
+        // range, where every multiplication costs many times more. Flushing it once per
+        // block is inaudible (≈ -400 dBFS) and needs no processor flags (realtime review
+        // 2026-10-23, item f).
+        if self.z1.abs() < DENORMAL_FLOOR {
+            self.z1 = 0.0;
+        }
+        if self.z2.abs() < DENORMAL_FLOOR {
+            self.z2 = 0.0;
         }
     }
 }
@@ -157,6 +170,19 @@ mod tests {
             measured_gain_db(pk(6.0), 100.0).abs() < 0.2,
             "flat far away"
         );
+    }
+
+    #[test]
+    fn silence_after_a_signal_leaves_no_denormal_state() {
+        let mut f = Biquad::new(BiquadKind::Peaking { gain_db: 6.0 }, SR, 200.0, 4.0);
+        f.process(&mut sine(200.0, 4_800));
+        // A fresh block of silence every time: `process` writes its output in place.
+        for _ in 0..2_000 {
+            f.process(&mut [0.0f32; 480]);
+        }
+        // Without the flush the state settles at about -4.6e-43 — a denormal for good.
+        assert!(f.z1 == 0.0 || f.z1.is_normal(), "z1 = {:e}", f.z1);
+        assert!(f.z2 == 0.0 || f.z2.is_normal(), "z2 = {:e}", f.z2);
     }
 
     #[test]

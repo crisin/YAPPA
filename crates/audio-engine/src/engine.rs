@@ -90,6 +90,7 @@ pub fn spawn(
 ) -> EngineHandle {
     let (tx, rx) = mpsc::channel();
     let (mixer, mixer_rt) = mixer();
+    mixer.set_master_db(settings.output_gain_db);
     let events = tx.clone();
     transport.attach(
         Box::new(move |event| {
@@ -165,7 +166,7 @@ struct Engine {
     capture: Option<OpenDevice>,
     playout: Option<OpenDevice>,
     pump: Arc<PumpShared>,
-    ring_tx: mpsc::Sender<Consumer<i16>>,
+    ring_tx: mpsc::Sender<Consumer<f32>>,
 
     state: ConnectionState,
     /// Where the user wants to be: url and token of the last `Join`, until `Leave`.
@@ -334,8 +335,11 @@ impl Engine {
             return;
         }
         let old = std::mem::replace(&mut *self.settings.lock().unwrap(), new.clone());
-        if old.input_device != new.input_device {
+        if old.input_device != new.input_device || old.input_channel != new.input_channel {
             self.open_capture(new.input_device.as_deref());
+        }
+        if old.output_gain_db != new.output_gain_db {
+            self.mixer.set_master_db(new.output_gain_db);
         }
         if old.output_device != new.output_device {
             self.open_playout(new.output_device.as_deref());
@@ -503,11 +507,12 @@ impl Engine {
         self.pump.input_level.store(0, Relaxed);
         for candidate in candidates(id) {
             let (producer, ring) = RingBuffer::new(CAPTURE_RING);
-            match self.io.open_capture(candidate, producer) {
+            let channel = self.settings.lock().unwrap().input_channel;
+            match self.io.open_capture(candidate, channel, producer) {
                 Ok(device) => {
                     tracing::info!(
                         device = %device.name, rate = device.sample_rate, channels = device.channels,
-                        "microphone open"
+                        channel, "microphone open"
                     );
                     let _ = self.ring_tx.send(ring);
                     self.capture = Some(device);
@@ -720,9 +725,12 @@ struct PumpShared {
 
 /// Capture ring → 10 ms blocks → transport. Paced by the device: a block goes out as soon
 /// as it is complete. Replacement rings arrive when the microphone is reopened.
-fn run_pump(shared: &PumpShared, rings: mpsc::Receiver<Consumer<i16>>, voice: &dyn VoiceOut) {
-    let mut ring: Option<Consumer<i16>> = None;
-    let mut block = [0i16; BLOCK];
+fn run_pump(shared: &PumpShared, rings: mpsc::Receiver<Consumer<f32>>, voice: &dyn VoiceOut) {
+    let mut ring: Option<Consumer<f32>> = None;
+    // f32 until the hand-over (E0): the DSP chain (S2) works here at the device precision;
+    // the transport wants 16-bit PCM.
+    let mut block = [0f32; BLOCK];
+    let mut pcm = [0i16; BLOCK];
     let mut last: Option<Instant> = None;
     while !shared.stop.load(Relaxed) {
         if let Ok(new) = rings.try_recv() {
@@ -758,11 +766,11 @@ fn run_pump(shared: &PumpShared, rings: mpsc::Receiver<Consumer<i16>>, voice: &d
         if ring.pop_entire_slice(&mut block).is_err() {
             continue;
         }
-        let energy: f64 = block.iter().map(|s| f64::from(*s).powi(2)).sum();
-        let rms = (energy / BLOCK as f64).sqrt() / f64::from(i16::MAX);
-        shared.input_level.store((rms as f32).to_bits(), Relaxed);
+        shared
+            .input_level
+            .store(dsp::rms(&block).to_bits(), Relaxed);
         if shared.muted.load(Relaxed) {
-            block.fill(0);
+            block.fill(0.0);
         }
         let now = Instant::now();
         if let Some(last) = last {
@@ -770,7 +778,10 @@ fn run_pump(shared: &PumpShared, rings: mpsc::Receiver<Consumer<i16>>, voice: &d
             shared.interval_max_ns.fetch_max(gap, Relaxed);
         }
         last = Some(now);
-        voice.send(&block);
+        for (out, s) in pcm.iter_mut().zip(&block) {
+            *out = (s.clamp(-1.0, 1.0) * f32::from(i16::MAX)).round() as i16;
+        }
+        voice.send(&pcm);
         let busy = started.elapsed().as_nanos() as u64;
         shared.busy_max_ns.fetch_max(busy, Relaxed);
         shared.busy_sum_ns.fetch_add(busy, Relaxed);

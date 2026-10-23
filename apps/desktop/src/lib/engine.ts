@@ -3,6 +3,7 @@
 // stays workable without audio hardware or a server.
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import type { AppInfo } from './types/AppInfo';
 import type { Command } from './types/Command';
 import type { Event } from './types/Event';
 import type { Invite } from './types/Invite';
@@ -11,14 +12,7 @@ import type { Settings } from './types/Settings';
 import { createMockEngine } from './mockEngine';
 import { sceneFromUrl } from './scene';
 
-export interface AppInfo {
-  version: string;
-  /** 0 = browser mode, no real engine. */
-  protocolVersion: number;
-  logDir: string;
-  /** Open the debug panel at start (development aid). */
-  debugPanel: boolean;
-}
+export type { AppInfo };
 
 export interface Engine {
   info(): Promise<AppInfo>;

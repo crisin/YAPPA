@@ -19,6 +19,22 @@ pub const PROTOCOL_VERSION: u32 = 2;
 /// (`crates/client`), which also migrates a version-1 file.
 pub const SETTINGS_VERSION: u32 = 2;
 
+/// What the shell tells the UI about the running app (`app_info`). Lives here so the UI
+/// type is generated, not hand-copied (realtime review 2026-10-23).
+#[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AppInfo {
+    pub version: String,
+    /// 0 = browser mode, no real engine.
+    pub protocol_version: u32,
+    pub log_dir: String,
+    /// Development aid: `YAPPA_DEBUG_PANEL=1` opens the diagnosis at start.
+    pub debug_panel: bool,
+    /// `YAPPA_PROFILE`, "default" without it — so two windows can be told apart.
+    pub profile: String,
+}
+
 /// UI -> engine.
 #[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq)]
 #[serde(
@@ -316,6 +332,13 @@ pub struct Settings {
     pub compressor: CompressorSettings,
     /// Voice track bitrate; the baseline asks for 64–96 kbps with RED, no DTX.
     pub voice_bitrate_kbps: u32,
+    /// Which input channel of the microphone device carries the voice (0 = first). A mic on
+    /// input 2 of a two-channel interface is channel 1. Clamped to what the device has.
+    #[serde(default)]
+    pub input_channel: u16,
+    /// Master volume of everything I hear, dB; a limiter keeps the sum below clipping.
+    #[serde(default)]
+    pub output_gain_db: f32,
 }
 
 impl Default for Settings {
@@ -339,6 +362,8 @@ impl Default for Settings {
                 makeup_db: 3.0,
             },
             voice_bitrate_kbps: 80,
+            input_channel: 0,
+            output_gain_db: 0.0,
         }
     }
 }
@@ -362,6 +387,18 @@ impl Settings {
             return Err(format!(
                 "vad threshold {} dBFS out of -90..=0",
                 self.vad_threshold_db
+            ));
+        }
+        if !(-30.0..=12.0).contains(&self.output_gain_db) {
+            return Err(format!(
+                "output gain {} dB out of -30..=12",
+                self.output_gain_db
+            ));
+        }
+        if self.input_channel > 31 {
+            return Err(format!(
+                "input channel {} out of 0..=31",
+                self.input_channel
             ));
         }
         if self.eq.len() > 5 {

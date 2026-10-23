@@ -100,6 +100,12 @@
             warn: stats.sendIntervalMaxMs > 30,
           },
           {
+            // The whole send chain must stay under 5 ms per 10 ms block (planning doc).
+            label: 'Sendekette pro Block',
+            value: `Ø ${fixed(stats.pumpBusyMeanMs * 1000, 0)} µs · max ${fixed(stats.pumpBusyMaxMs * 1000, 0)} µs`,
+            warn: stats.pumpBusyMaxMs > 5,
+          },
+          {
             label: 'Verworfene Sende-Blöcke',
             value: String(stats.sendBlocksDropped),
             warn: stats.sendBlocksDropped > 0,

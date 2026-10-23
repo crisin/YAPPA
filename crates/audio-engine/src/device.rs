@@ -1,9 +1,10 @@
 //! Audio devices behind the [`AudioIo`] trait, and the cpal implementation.
 //!
 //! The data callbacks only move samples between the device buffer and `rtrb` rings and bump
-//! atomics — no allocation, no locks, no logging. Not built yet, on purpose: resampling (a
-//! device that cannot run at 48 kHz is an error) and channel selection (capture takes the
-//! first channel, playout puts the mono mix on every channel).
+//! atomics — no allocation, no locks, no logging. Capture keeps the device's precision
+//! (`f32` all the way to the transport, E0) and takes the configured input channel;
+//! playout puts the mono mix on every channel. Not built yet, on purpose: resampling (a
+//! device that cannot run at 48 kHz is an error).
 
 use crate::mixer::MixerRt;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -51,9 +52,13 @@ pub struct DeviceList {
 /// The engine's view of the sound hardware. `None` as id means the system default.
 pub trait AudioIo: Send {
     fn devices(&self) -> DeviceList;
-    /// Mono 48 kHz samples into `ring`.
-    fn open_capture(&mut self, id: Option<&str>, ring: Producer<i16>)
-        -> Result<OpenDevice, String>;
+    /// Mono 48 kHz samples of input `channel` (clamped to what the device has) into `ring`.
+    fn open_capture(
+        &mut self,
+        id: Option<&str>,
+        channel: u16,
+        ring: Producer<f32>,
+    ) -> Result<OpenDevice, String>;
     /// Plays what `mixer` renders. The mixer comes back through `back` when the stream is
     /// closed — or right away if opening fails — so the next device continues with the same
     /// speakers.
@@ -118,20 +123,25 @@ impl AudioIo for CpalIo {
     fn open_capture(
         &mut self,
         id: Option<&str>,
-        ring: Producer<i16>,
+        channel: u16,
+        ring: Producer<f32>,
     ) -> Result<OpenDevice, String> {
         let host = cpal::default_host();
         let device = match id {
             Some(id) => find(&host, id)?,
             None => host.default_input_device().ok_or("no microphone found")?,
         };
-        let config = pick_48k(device.supported_input_configs().map_err(text)?)
+        // The fewest channels that still contain the wanted one; else any 48 kHz mode.
+        let config = pick_48k(device.supported_input_configs().map_err(text)?, channel + 1)
+            .or_else(|| pick_48k(device.supported_input_configs().ok()?, 1))
             .ok_or_else(|| no_48k(&device))?;
+        let channel = usize::from(channel).min(usize::from(config.channels()) - 1);
         let counters = Arc::new(DeviceCounters::default());
+        let c = counters.clone();
         let stream = match config.sample_format() {
-            SampleFormat::F32 => capture::<f32>(&device, &config, ring, counters.clone()),
-            SampleFormat::I16 => capture::<i16>(&device, &config, ring, counters.clone()),
-            SampleFormat::I32 => capture::<i32>(&device, &config, ring, counters.clone()),
+            SampleFormat::F32 => capture::<f32>(&device, &config, channel, ring, c),
+            SampleFormat::I16 => capture::<i16>(&device, &config, channel, ring, c),
+            SampleFormat::I32 => capture::<i32>(&device, &config, channel, ring, c),
             other => Err(format!("unsupported sample format {other}")),
         }?;
         stream.play().map_err(text)?;
@@ -157,7 +167,7 @@ impl AudioIo for CpalIo {
                 .default_output_device()
                 .ok_or("no output device found")?,
         };
-        let config = pick_48k(device.supported_output_configs().map_err(text)?)
+        let config = pick_48k(device.supported_output_configs().map_err(text)?, 1)
             .ok_or_else(|| no_48k(&device))?;
         let counters = Arc::new(DeviceCounters::default());
         let stream = match config.sample_format() {
@@ -174,26 +184,30 @@ impl AudioIo for CpalIo {
 fn capture<T>(
     device: &cpal::Device,
     config: &SupportedStreamConfig,
-    mut ring: Producer<i16>,
+    channel: usize,
+    mut ring: Producer<f32>,
     counters: Arc<DeviceCounters>,
 ) -> Result<cpal::Stream, String>
 where
     T: SizedSample,
-    i16: FromSample<T>,
+    f32: FromSample<T>,
 {
     let channels = usize::from(config.channels());
     let on_error = error_flag(counters.clone());
     let callback = move |data: &[T], _: &cpal::InputCallbackInfo| {
-        let frames = (data.len() / channels) as u32;
-        counters.callback_frames.fetch_max(frames, Relaxed);
-        let mut dropped = 0;
-        for frame in data.chunks_exact(channels) {
-            if ring.push(i16::from_sample(frame[0])).is_err() {
-                dropped += 1;
-            }
+        let frames = data.len() / channels;
+        counters.callback_frames.fetch_max(frames as u32, Relaxed);
+        // One chunk per callback instead of one ring operation per sample (realtime review
+        // 2026-10-23); what does not fit is dropped and counted.
+        let fits = frames.min(ring.slots());
+        if let Ok(chunk) = ring.write_chunk_uninit(fits) {
+            let samples = data
+                .chunks_exact(channels)
+                .map(|frame| f32::from_sample(frame[channel]));
+            chunk.fill_from_iter(samples);
         }
-        if dropped > 0 {
-            counters.overruns.fetch_add(dropped, Relaxed);
+        if fits < frames {
+            counters.overruns.fetch_add((frames - fits) as u32, Relaxed);
         }
     };
     device
@@ -274,16 +288,18 @@ fn find(host: &cpal::Host, id: &str) -> Result<cpal::Device, String> {
         .ok_or_else(|| "the selected device is not connected".to_string())
 }
 
-/// The mode with the fewest channels that runs at 48 kHz in a format we convert.
+/// The mode with the fewest channels (at least `min_channels`) that runs at 48 kHz in a
+/// format we convert.
 fn pick_48k(
     configs: impl Iterator<Item = cpal::SupportedStreamConfigRange>,
+    min_channels: u16,
 ) -> Option<SupportedStreamConfig> {
     configs
         .filter(|c| {
             matches!(
                 c.sample_format(),
                 SampleFormat::F32 | SampleFormat::I16 | SampleFormat::I32
-            )
+            ) && c.channels() >= min_channels
         })
         .filter_map(|c| c.try_with_sample_rate(SAMPLE_RATE))
         .min_by_key(|c| c.channels())

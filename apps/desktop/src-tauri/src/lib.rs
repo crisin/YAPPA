@@ -8,8 +8,7 @@ pub mod logging;
 use api_types::{ClientInfo, Invite};
 use audio_engine::{CpalIo, EngineConfig, EngineHandle};
 use client::{AppSettings, Client, Profile};
-use engine_protocol::{Command, Event, LogEntry, Settings, PROTOCOL_VERSION};
-use serde::Serialize;
+use engine_protocol::{AppInfo, Command, Event, LogEntry, Settings, PROTOCOL_VERSION};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager};
@@ -54,22 +53,10 @@ impl App {
     }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct AppInfo {
-    version: &'static str,
-    protocol_version: u32,
-    log_dir: String,
-    /// Development aid: `YAPPA_DEBUG_PANEL=1` opens the debug panel at start.
-    debug_panel: bool,
-    /// `YAPPA_PROFILE`, "default" without it — shown so two windows can be told apart.
-    profile: String,
-}
-
 #[tauri::command]
 fn app_info(app: tauri::State<'_, App>) -> AppInfo {
     AppInfo {
-        version: env!("CARGO_PKG_VERSION"),
+        version: env!("CARGO_PKG_VERSION").into(),
         protocol_version: PROTOCOL_VERSION,
         log_dir: app.logging.dir.display().to_string(),
         debug_panel: std::env::var_os("YAPPA_DEBUG_PANEL").is_some(),
