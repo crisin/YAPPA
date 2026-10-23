@@ -34,13 +34,15 @@ async function joinRaid() {
   await screen.findByRole('heading', { level: 1, name: 'Raid-Abend' });
 }
 
+const meNav = () => screen.getByRole('navigation', { name: 'Einstellungen' });
+
+/** Opens a section of „Ich“; a Profi-only one switches the view first. */
 async function openMe(section: string) {
   await fireEvent.click(within(rail()).getByRole('button', { name: 'Ich' }));
-  await fireEvent.click(
-    within(screen.getByRole('navigation', { name: 'Einstellungen' })).getByRole('button', {
-      name: section,
-    }),
-  );
+  if (!within(meNav()).queryByRole('button', { name: section })) {
+    await fireEvent.click(within(meNav()).getByRole('radio', { name: 'Profi' }));
+  }
+  await fireEvent.click(await within(meNav()).findByRole('button', { name: section }));
 }
 
 describe('App accessibility', () => {
@@ -309,6 +311,67 @@ describe('Ich module', () => {
         name: 'Hilfe',
       }),
     ).toHaveAttribute('aria-current', 'page');
+  });
+});
+
+describe('Settings: Einfach und Profi', () => {
+  const sections = () =>
+    within(meNav())
+      .getAllByRole('button')
+      .map((b) => b.textContent?.trim());
+
+  it('shows four everyday sections in Einfach and adds the rest in Profi, stored', async () => {
+    const engine = createMockEngine('call');
+    const api = createMockApi('call', engine);
+    render(App, { props: { api, engine } });
+    await screen.findByRole('heading', { level: 1, name: /^Hallo / });
+    await fireEvent.click(within(rail()).getByRole('button', { name: 'Ich' }));
+    expect(sections()).toEqual([
+      'Audio und Sprechen',
+      'Darstellung',
+      'Benachrichtigungen',
+      'Konto',
+      'Hilfe',
+    ]);
+    await fireEvent.click(within(meNav()).getByRole('radio', { name: 'Profi' }));
+    await waitFor(() => expect(sections()).toContain('Signalkette'));
+    expect(sections()).toEqual(
+      expect.arrayContaining(['Tasten', 'Netzwerk', 'Updates', 'Diagnose']),
+    );
+    expect((await api.appSettings()).view).toBe('pro');
+  });
+
+  it('goes back to „Audio und Sprechen“ when Einfach hides the open section', async () => {
+    await start();
+    await openMe('Netzwerk');
+    expect(screen.getByRole('heading', { level: 1, name: 'Netzwerk' })).toBeInTheDocument();
+    await fireEvent.click(within(meNav()).getByRole('radio', { name: 'Einfach' }));
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Audio und Sprechen' }),
+    ).toBeInTheDocument();
+  });
+
+  it('shows the send chain as stages with levels, cost and parameters', async () => {
+    const { container } = await start();
+    await openMe('Signalkette');
+    const stages = screen.getByRole('list', { name: 'Stufen der Signalkette' });
+    expect(within(stages).getAllByRole('button')).toHaveLength(6);
+    expect(within(stages).getAllByRole('meter')).toHaveLength(6);
+    expect(await screen.findByText('Rechenzeit je 10-ms-Block')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('10 ms')).toBeInTheDocument(), { timeout: 3000 });
+
+    const compressor = within(stages).getByRole('button', { name: /^Kompressor/ });
+    await fireEvent.click(compressor);
+    expect(compressor).toHaveAttribute('aria-expanded', 'true');
+    expect(compressor).toHaveTextContent('3:1');
+    await fireEvent.click(screen.getByRole('checkbox', { name: /An – gleicht laut und leise an/ }));
+    await waitFor(() => expect(compressor).toHaveTextContent('aus'));
+
+    const eq = within(stages).getByRole('button', { name: /^EQ/ });
+    await fireEvent.click(eq);
+    await fireEvent.click(screen.getByRole('button', { name: 'Band hinzufügen' }));
+    await waitFor(() => expect(eq).toHaveTextContent('1 Band'));
+    expect(await axe(container)).toHaveNoViolations();
   });
 });
 

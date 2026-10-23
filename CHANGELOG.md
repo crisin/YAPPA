@@ -4,6 +4,7 @@ One line per finished task (definition of done). Newest first.
 
 ## Unreleased
 
+- Settings have two views: „Einfach“ for everyday use and „Profi“ with the signal chain (every stage with its live level and parameters, CPU cost and added latency), keys, network, updates and diagnosis.
 - Easier server setup: `cargo xtask local` starts the whole server stack on the dev PC in one command (`--lan` for other PCs at home), and the home-server guide is one straight path — clone, two lines of `.env`, one command, admin link.
 - Push-to-talk and voice settings: „Ich → Audio und Sprechen“ now chooses automatic, hold-a-key or always-on, sets the voice threshold against a live meter, picks the push-to-talk key (also a mouse side button — it works while a game has the focus), the noise suppression, the input of a multi-channel interface and the overall volume. The server box can create channels (`yappa-control channel add`). A checklist for the first evening with the gang: docs/testabend.md.
 - The voice chain is live (E1): every microphone now goes through high-pass, DeepFilterNet noise suppression, voice activation, EQ and compressor before it is sent — 10 ms extra latency, about 1.5 ms of work per 10 ms block. Push-to-talk works in the engine; the global key comes with S3. The diagnosis shows the chain's cost.

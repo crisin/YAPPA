@@ -150,6 +150,11 @@
   />
 
   <button class="quiet" onclick={() => session.refreshDevices()}>Geräte neu einlesen</button>
+  {#if app.view === 'pro'}
+    <button class="quiet" onclick={() => app.openMe('signalkette')}>
+      Hochpass, Gate, EQ und Kompressor in „Signalkette“
+    </button>
+  {/if}
 </section>
 
 <style>

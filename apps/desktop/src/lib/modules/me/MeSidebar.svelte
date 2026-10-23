@@ -1,8 +1,15 @@
 <script lang="ts">
-  // Zone B of „Ich“: the settings navigation. U3 adds the Einfach/Profi switch on top.
+  // Zone B of „Ich“: the settings navigation, with the Einfach/Profi switch on top. Profi adds
+  // sections; it never hides one of Einfach.
   import { getApp, ME_SECTIONS } from '../../app.svelte';
+  import type { SettingsView } from '../../types/SettingsView';
 
   const app = getApp();
+  const views: { id: SettingsView; label: string }[] = [
+    { id: 'simple', label: 'Einfach' },
+    { id: 'pro', label: 'Profi' },
+  ];
+  const sections = $derived(ME_SECTIONS.filter((s) => app.view === 'pro' || !s.pro));
   const version = $derived(
     app.info === null
       ? '…'
@@ -14,8 +21,22 @@
 
 <nav class="sidebar" aria-label="Einstellungen">
   <h2>Ich</h2>
+  <div class="views" role="radiogroup" aria-label="Ansicht">
+    {#each views as view (view.id)}
+      <label class:on={app.view === view.id}>
+        <input
+          type="radio"
+          name="view"
+          value={view.id}
+          checked={app.view === view.id}
+          onchange={() => app.setView(view.id)}
+        />
+        {view.label}
+      </label>
+    {/each}
+  </div>
   <ul>
-    {#each ME_SECTIONS as section (section.id)}
+    {#each sections as section (section.id)}
       <li>
         <button
           aria-current={app.meSection === section.id ? 'page' : undefined}
@@ -38,9 +59,45 @@
   }
 
   h2 {
-    margin: 0 0 var(--space-4);
+    margin: 0 0 var(--space-3);
     padding: var(--space-1) var(--space-2);
     font-size: var(--font-size-lg);
+  }
+
+  .views {
+    display: flex;
+    margin: 0 0 var(--space-4);
+    padding: 2px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+  }
+
+  .views label {
+    position: relative;
+    flex: 1;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    text-align: center;
+    font-size: var(--font-size-sm);
+    color: var(--color-text-muted);
+    cursor: pointer;
+  }
+
+  .views label.on {
+    background: var(--color-surface-raised);
+    color: var(--color-text);
+    font-weight: 600;
+  }
+
+  .views label:has(input:focus-visible) {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 1px;
+  }
+
+  .views input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
   }
 
   ul {

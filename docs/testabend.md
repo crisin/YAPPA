@@ -92,7 +92,7 @@ oder abgehackt? Notieren.
    Taste? (S3 — Anti-Cheat-Spiele gesondert notieren.)
 5. Einer zieht kurz das LAN-Kabel oder wechselt ins WLAN: Wie lange war er weg, kam er
    von selbst zurück?
-6. Spielen. Wer etwas Komisches hört: **Ich → Diagnose → Diagnose-Datei speichern** und
+6. Spielen. Wer etwas Komisches hört: **Ich → Profi → Diagnose → Diagnose-Datei speichern** und
    die Uhrzeit notieren.
 
 ### Was in der Diagnose wichtig ist
