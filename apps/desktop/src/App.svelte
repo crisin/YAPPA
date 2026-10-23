@@ -8,6 +8,7 @@
   import { AppState, setApp } from './lib/app.svelte';
   import { engine as defaultEngine, type Engine } from './lib/engine';
   import { help } from './lib/helpState.svelte';
+  import { adminModule } from './lib/modules/admin';
   import { meModule } from './lib/modules/me';
   import { voiceModule } from './lib/modules/voice';
   import { Session } from './lib/session.svelte';
@@ -22,6 +23,7 @@
   const app = setApp(new AppState(new Session(engine), new ShellState(), api));
   const { session, shell, gang } = app;
   shell.register(voiceModule(app));
+  shell.register(adminModule(app));
   shell.register(meModule(app));
 
   async function loadConfig() {
@@ -81,6 +83,12 @@
       session.invite = link;
     }
   }
+
+  // The rail shows the admin module only to admins; a role change follows at once.
+  $effect(() => {
+    const role = gang.me?.role ?? 'member';
+    untrack(() => shell.setRole(role));
+  });
 
   // After a login the server is known: its config (minimum version) can be read.
   $effect(() => {

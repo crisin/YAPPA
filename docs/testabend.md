@@ -35,24 +35,14 @@ Die Stolpersteine:
 
 ### Links für die Gang
 
-Pro Person ein Link, jeder funktioniert genau einmal:
-
-```bash
-docker compose -f home.yml exec control yappa-control invite            # Mitglied, 7 Tage
-docker compose -f home.yml exec control yappa-control invite --days 2   # kürzer
-```
-
-Link und Installer zusammen schicken, mit dem Hinweis auf
+Pro Person ein Link, jeder funktioniert genau einmal: in der App **Admin → Einladungen →
+Neue Einladung**, dann kopieren. Link und Installer zusammen schicken, mit dem Hinweis auf
 [Mittesten](mittesten.md).
 
-Channels legt bis zum Admin-Bereich (U6) die Box an — sie erscheinen in der App nach dem
-nächsten Start (die Liste wird beim Anmelden geholt):
-
-```bash
-docker compose -f home.yml exec control yappa-control channel add "Raid-Abend"
-docker compose -f home.yml exec control yappa-control channel add "Musik-Session"
-docker compose -f home.yml exec control yappa-control channel        # Liste
-```
+Channels unter **Admin → Channels** anlegen (z. B. „Raid-Abend“, „Musik-Session“). Der erste
+in der Liste ist die Lobby, dort landen alle nach der Einrichtung. Ohne App geht beides auch
+auf der Box (`yappa-control invite`, `yappa-control channel add …`, siehe
+[Homeserver](homeserver.md#8-die-gang-einladen)).
 
 ### Messungen, die nur hier gehen
 

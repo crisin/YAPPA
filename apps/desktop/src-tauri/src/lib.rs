@@ -2,6 +2,7 @@
 //! transport and the real sound hardware, and forwards `engine-protocol` messages in both
 //! directions. It never does audio itself.
 
+pub mod admin;
 pub mod api;
 pub mod logging;
 
@@ -325,6 +326,19 @@ pub fn run() {
             api::set_app_settings,
             api::capture_ptt_key,
             api::hotkeys_global,
+            admin::admin_members,
+            admin::admin_set_role,
+            admin::admin_kick,
+            admin::admin_invites,
+            admin::admin_create_invite,
+            admin::admin_invite_link,
+            admin::admin_revoke_invite,
+            admin::admin_create_channel,
+            admin::admin_rename_channel,
+            admin::admin_move_channel,
+            admin::admin_delete_channel,
+            admin::admin_events,
+            admin::admin_set_policy,
             pending_invite_link
         ])
         .build(tauri::generate_context!())

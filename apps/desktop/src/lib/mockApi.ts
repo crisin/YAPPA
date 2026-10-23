@@ -181,6 +181,14 @@ export function createMockApi(scene: Scene = DEFAULT_SCENE, engine?: Engine): Ap
     notify();
   };
 
+  const config: PublicConfig = {
+    apiVersion: 1,
+    minVersion: scene === 'update' ? '99.0.0' : '0.1.0',
+    killedVersions: [],
+    updateBaseUrl: 'https://yappa.example/updates',
+    livekitWsUrl: MOCK_WS_URL,
+  };
+
   return {
     resume: () =>
       scene === 'offline'
@@ -218,14 +226,7 @@ export function createMockApi(scene: Scene = DEFAULT_SCENE, engine?: Engine): Ap
       presence.delete(myId);
       notify();
     },
-    config: () =>
-      online(() => ({
-        apiVersion: 1,
-        minVersion: scene === 'update' ? '99.0.0' : '0.1.0',
-        killedVersions: [],
-        updateBaseUrl: 'https://yappa.example/updates',
-        livekitWsUrl: MOCK_WS_URL,
-      })) as Promise<PublicConfig>,
+    config: () => online(() => structuredClone(config)) as Promise<PublicConfig>,
     channels: () => online(() => structuredClone(sorted())),
     presence(handler) {
       handlers.add(handler);
@@ -316,6 +317,7 @@ export function createMockApi(scene: Scene = DEFAULT_SCENE, engine?: Engine): Ap
           invites.push(invite);
           return structuredClone(invite);
         }),
+      inviteLink: (code) => mustBeAdmin(() => `yappa://invite/${code}?server=${MOCK_SERVER}`),
       revokeInvite: (code) =>
         mustBeAdmin(() => {
           const index = invites.findIndex((i) => i.code === code);
@@ -360,6 +362,12 @@ export function createMockApi(scene: Scene = DEFAULT_SCENE, engine?: Engine): Ap
           order.forEach((c, index) => (c.position = index));
         }),
       events: () => mustBeAdmin(() => structuredClone(events).reverse()),
+      setPolicy: (policy) =>
+        mustBeAdmin(() => {
+          config.minVersion = policy.minVersion;
+          config.killedVersions = [...policy.killedVersions];
+          return structuredClone(config);
+        }),
     },
   };
 }

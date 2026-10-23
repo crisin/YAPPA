@@ -63,7 +63,7 @@ describe('Shell', () => {
   it('shows the rail with labels, the dock and the breadcrumb', async () => {
     await start();
     const slots = within(rail()).getAllByRole('button');
-    expect(slots.map((b) => b.textContent?.trim())).toEqual(['Voice', 'Ich']);
+    expect(slots.map((b) => b.textContent?.trim())).toEqual(['Voice', 'Admin', 'Ich']);
     expect(within(rail()).getByRole('button', { name: 'Voice' })).toHaveAttribute(
       'aria-current',
       'page',
@@ -279,8 +279,8 @@ describe('Ich module', () => {
   it('shows the account and logs out after asking', async () => {
     await start();
     await openMe('Konto');
-    expect(screen.getByText('Krille')).toBeInTheDocument();
-    expect(screen.getByText('Admin')).toBeInTheDocument();
+    expect(within(stage()).getByText('Krille')).toBeInTheDocument();
+    expect(within(stage()).getByText('Admin')).toBeInTheDocument();
     await fireEvent.click(screen.getByRole('button', { name: 'Abmelden …' }));
     await fireEvent.click(screen.getByRole('button', { name: 'Ja, abmelden' }));
     expect(
@@ -407,6 +407,94 @@ describe('Settings: Einfach und Profi', () => {
     await fireEvent.click(screen.getByRole('button', { name: 'Band hinzufügen' }));
     await waitFor(() => expect(eq).toHaveTextContent('1 Band'));
     expect(await axe(container)).toHaveNoViolations();
+  });
+});
+
+describe('Admin module', () => {
+  const adminNav = () => screen.getByRole('navigation', { name: 'Verwaltung' });
+  async function openAdmin(section: string) {
+    await fireEvent.click(within(rail()).getByRole('button', { name: 'Admin' }));
+    await fireEvent.click(within(adminNav()).getByRole('button', { name: section }));
+    await screen.findByRole('heading', { level: 1, name: section });
+  }
+
+  it('is only in the rail for admins', async () => {
+    await start('member');
+    expect(within(rail()).queryByRole('button', { name: 'Admin' })).not.toBeInTheDocument();
+  });
+
+  it('lists the members with role, place and version, and kicks after a second click', async () => {
+    const { container } = await start();
+    await openAdmin('Leute');
+    const row = (await screen.findByRole('rowheader', { name: 'Rico' })).closest('tr')!;
+    expect(row).toHaveTextContent('in AFK · abwesend');
+    expect(row).toHaveTextContent('0.0.9');
+    expect(screen.getByRole('rowheader', { name: 'Krille (du)' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Rolle von Krille' })).toBeDisabled();
+    await fireEvent.change(screen.getByRole('combobox', { name: 'Rolle von Ben' }), {
+      target: { value: 'admin' },
+    });
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: 'Rolle von Ben' })).toHaveValue('admin'),
+    );
+    const kick = within(row).getByRole('button', { name: 'Rauswerfen' });
+    await fireEvent.click(kick);
+    expect(kick).toHaveTextContent('Wirklich rauswerfen?');
+    await fireEvent.click(kick);
+    await waitFor(() => expect(row).toHaveTextContent('offline'));
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('creates an invite link to copy and withdraws an open one', async () => {
+    await start();
+    await openAdmin('Einladungen');
+    await fireEvent.click(screen.getByRole('button', { name: 'Neue Einladung' }));
+    const link = await screen.findByLabelText(/Neuer Link/);
+    expect((link as HTMLInputElement).value).toMatch(/^yappa:\/\/invite\/gang-\d{4}\?server=/);
+    const code = (link as HTMLInputElement).value.split('/')[3].split('?')[0];
+    await fireEvent.click(screen.getByRole('button', { name: `Einladung ${code} zurückziehen` }));
+    await waitFor(() => expect(screen.queryByText(code)).not.toBeInTheDocument());
+  });
+
+  it('adds, renames, moves and deletes channels, and the channel tree follows', async () => {
+    await start();
+    await openAdmin('Channels');
+    await fireEvent.input(screen.getByLabelText('Neuer Channel'), {
+      target: { value: 'Strategie' },
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Anlegen' }));
+    const order = () =>
+      within(screen.getByRole('list', { name: 'Channel-Reihenfolge' }))
+        .getAllByRole('listitem')
+        .map((li) => li.querySelector('.name')?.textContent);
+    await waitFor(() => expect(order().at(-1)).toBe('Strategie'));
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Strategie nach oben' }));
+    await waitFor(() => expect(order().at(-2)).toBe('Strategie'));
+
+    const strategy = screen.getByText('Strategie').closest('li')!;
+    await fireEvent.click(within(strategy).getByRole('button', { name: 'Umbenennen' }));
+    const input = screen.getByLabelText('Neuer Name für Strategie');
+    await fireEvent.input(input, { target: { value: 'Taktik' } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(order()).toContain('Taktik'));
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Taktik löschen' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Taktik wirklich löschen?' }));
+    await waitFor(() => expect(order()).not.toContain('Taktik'));
+  });
+
+  it('sets the minimum version, warns before locking out my own app, and shows the log', async () => {
+    await start();
+    await openAdmin('Betrieb');
+    const min = screen.getByLabelText(/Mindestversion/);
+    await fireEvent.input(min, { target: { value: 'quatsch' } });
+    expect(screen.getByText(/Zahlen wie 0.2.0/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Speichern' })).toBeDisabled();
+    await fireEvent.input(min, { target: { value: '0.1.0' } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    expect(await screen.findByText(/Gespeichert/)).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Ereignis-Log' })).toBeInTheDocument();
   });
 });
 

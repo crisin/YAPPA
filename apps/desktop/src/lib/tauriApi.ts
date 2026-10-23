@@ -6,15 +6,11 @@ import type { Api, PresenceEntry } from './api';
 import type { ApiError } from './types/ApiError';
 import type { AppSettings } from './types/AppSettings';
 import type { Channel } from './types/Channel';
+import type { EventEntry } from './types/EventEntry';
+import type { InviteCode } from './types/InviteCode';
+import type { Member } from './types/Member';
 import type { PublicConfig } from './types/PublicConfig';
 import type { User } from './types/User';
-
-/** The admin endpoints exist in the control plane and crates/client; the UI gets them in U6. */
-const notYet = (): Promise<never> =>
-  Promise.reject<never>({
-    code: 'not_available',
-    message: 'Die Verwaltung kommt mit dem Admin-Bereich.',
-  } satisfies ApiError);
 
 export const tauriApi: Api = {
   resume: () => invoke<User | null>('api_resume'),
@@ -42,16 +38,18 @@ export const tauriApi: Api = {
   capturePttKey: () => invoke<string | null>('capture_ptt_key'),
   hotkeysGlobal: () => invoke<boolean>('hotkeys_global'),
   admin: {
-    members: notYet,
-    setRole: notYet,
-    kick: notYet,
-    invites: notYet,
-    createInvite: notYet,
-    revokeInvite: notYet,
-    createChannel: notYet,
-    renameChannel: notYet,
-    deleteChannel: notYet,
-    moveChannel: notYet,
-    events: notYet,
+    members: () => invoke<Member[]>('admin_members'),
+    setRole: (userId, role) => invoke<void>('admin_set_role', { userId, role }),
+    kick: (userId) => invoke<void>('admin_kick', { userId }),
+    invites: () => invoke<InviteCode[]>('admin_invites'),
+    createInvite: () => invoke<InviteCode>('admin_create_invite'),
+    inviteLink: (code) => invoke<string>('admin_invite_link', { code }),
+    revokeInvite: (code) => invoke<void>('admin_revoke_invite', { code }),
+    createChannel: (name) => invoke<Channel>('admin_create_channel', { name }),
+    renameChannel: (id, name) => invoke<void>('admin_rename_channel', { id, name }),
+    deleteChannel: (id) => invoke<void>('admin_delete_channel', { id }),
+    moveChannel: (id, position) => invoke<void>('admin_move_channel', { id, position }),
+    events: () => invoke<EventEntry[]>('admin_events'),
+    setPolicy: (policy) => invoke<PublicConfig>('admin_set_policy', { policy }),
   },
 };
