@@ -6,7 +6,8 @@
   import { inviteKind } from './api';
   import Info from './Info.svelte';
 
-  const { session, gang } = getApp();
+  const app = getApp();
+  const { session, gang } = app;
   let name = $state('');
   let busy = $state(false);
 
@@ -20,7 +21,10 @@
     event.preventDefault();
     if (kind === 'link') {
       busy = true;
-      if (await gang.login(session.invite, name)) session.invite = '';
+      if (await gang.login(session.invite, name)) {
+        session.invite = '';
+        app.onboarding = 'mic';
+      }
       busy = false;
     } else {
       await session.join();

@@ -145,7 +145,8 @@ docker compose -f home.yml logs control | grep invite
 
 Den Link (alles ab `yappa://`) auf dem eigenen PC öffnen: Ist yAPPA installiert, startet es
 mit eingefügtem Link; sonst in der App unter **Voice** ins Feld **Einladung** einfügen.
-Namen eingeben, **Beitreten** — unter **Ich → Konto** steht dann „Admin“.
+Namen eingeben, **Beitreten**, Mikro und Sprechmodus einrichten — danach steht unter
+**Ich → Konto** „Admin“.
 
 Link verpasst oder schon verbraucht? Eine neue Admin-Einladung:
 

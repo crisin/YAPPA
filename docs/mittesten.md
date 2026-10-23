@@ -12,10 +12,15 @@ beginnt mit `yappa://invite/`).
    Klappt der Klick nicht (manche Chat-Programme öffnen nur Web-Links), den Link kopieren,
    yAPPA öffnen und ihn ins Feld **Einladung** einfügen.
 3. Deinen **Namen** eintragen – so sehen dich die anderen – und auf **Beitreten** klicken.
-4. Links siehst du jetzt alle Channels und wer gerade wo ist. **Ein Klick auf einen
-   Channel**, und du bist drin. Wer spricht, bekommt einen farbigen Rahmen.
-5. Mikrofon und Ausgabe prüfen: unten links auf **Ich** → **Audio und Sprechen**. Wenn du
-   sprichst, bewegt sich der Balken. Mit `Esc` geht es zurück.
+4. **Hört dich yAPPA?** Sag etwas: Der Balken muss sich bewegen. Wenn nicht, oben ein
+   anderes Mikrofon wählen. Darunter Kopfhörer oder Headset als Ausgabe. **Weiter.**
+5. **Wie redest du?** Headset oder Lautsprecher wählen; yAPPA stellt passend ein, wann
+   dein Mikro angeht. Bei „Taste halten“ einmal auf **Taste festlegen** und die Taste
+   drücken (gut: eine Seitentaste der Maus). **Ab in die Lobby.**
+6. Links siehst du jetzt alle Channels und wer gerade wo ist. **Ein Klick auf einen
+   Channel**, und du bist drin. Wer spricht, bekommt einen farbigen Rahmen. Alles aus
+   Schritt 4 und 5 findest du später unter **Ich → Audio und Sprechen**; mit `Esc` geht
+   es zurück.
 
 Der Link funktioniert genau einmal. Danach kennt yAPPA dich auf diesem Rechner – beim
 nächsten Start bist du sofort drin.
