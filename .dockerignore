@@ -1,0 +1,9 @@
+# Docker builds (infra/control/Dockerfile) take the repo root as context; keep it small.
+target/
+**/node_modules/
+apps/desktop/dist/
+.git/
+.env
+**/.env
+*.db
+*.db-*

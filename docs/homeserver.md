@@ -109,9 +109,12 @@ Dann auf der VM:
 cd ~/yappa
 docker run --rm livekit/livekit-server:v1.13.8 generate-keys   # gibt API Key + Secret aus
 cp .env.example .env
-nano .env        # die beiden Werte und YAPPA_DOMAIN eintragen
+nano .env        # LIVEKIT_API_KEY=yappa, das Secret von oben, YAPPA_DOMAIN eintragen
 chmod 600 .env
 ```
+
+Als Schlüssel-**Name** nimm `yappa` statt des erzeugten Namens: Die Webhooks in
+`livekit.home.yaml` sind mit diesem Namen signiert. Das Secret bleibt das erzeugte.
 
 Die `.env` enthält das Geheimnis des Servers. Sie gehört nicht ins Repo (ist per
 `.gitignore` ausgeschlossen) und nicht in einen Chat.
@@ -166,6 +169,34 @@ Eine Einladung ist der Zugang: wer sie hat, kommt bis zum Ablaufdatum in den Rau
 zurückziehen lässt es sich nicht — nur alle auf einmal, indem du auf dem Server neue
 Schlüssel erzeugst (Schritt 5) und neu startest. Die Control-Plane (S6) ersetzt das später
 durch Einladungslinks.
+
+## Control-Plane (ab Meilenstein 2)
+
+Seit S6 läuft neben LiveKit die Control-Plane `yappa-control`: Einladungslinks, Channels,
+Tokens und ein Ereignis-Log. Sie wird auf der VM aus dem Repo gebaut, deshalb hier das
+Repo statt einzelner Dateien:
+
+```bash
+git clone https://github.com/crisin/YAPPA.git ~/yappa-repo
+cd ~/yappa-repo/infra/livekit
+cp ~/yappa/.env .                      # die .env aus Schritt 5
+docker compose -f home.yml up -d --build
+docker compose -f home.yml logs control | grep invite    # der erste Admin-Link
+```
+
+Beim allerersten Start legt sie eine Admin-Einladung an und schreibt den Link
+(`yappa://invite/…`) ins Log. Erreichbar ist sie unter `https://<YAPPA_DOMAIN>/api/`;
+`https://<YAPPA_DOMAIN>/api/health` antwortet mit `ok`.
+
+Notfall-Befehle laufen im Container:
+
+| Was | Befehl |
+| --- | --- |
+| Neue Einladung (Admin) | `docker compose -f home.yml exec control yappa-control invite --admin` |
+| Neue Einladung (Mitglied, 3 Tage) | `docker compose -f home.yml exec control yappa-control invite --days 3` |
+| Mindestversion und Kill-Switch | `docker compose -f home.yml exec control yappa-control policy --min 0.2.0 --kill 0.2.1` |
+
+Die App benutzt die Control-Plane erst mit Paket U5; bis dahin gilt weiter Schritt 7.
 
 ## Betrieb
 

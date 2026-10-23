@@ -31,6 +31,25 @@ services:
     network_mode: host
     restart: unless-stopped
 
+  # The control plane (spike S6, ADR-005): invites, channels, tokens, event log. HTTP only;
+  # Caddy publishes it under https://$YAPPA_DOMAIN/api/. The first start prints an admin
+  # invite: `docker compose -f home.yml logs control | grep invite`.
+  control:
+    build:
+      context: ../..
+      dockerfile: infra/control/Dockerfile
+    environment:
+      LIVEKIT_API_KEY: "${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY in .env}"
+      LIVEKIT_API_SECRET: "${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in .env}"
+      LIVEKIT_WS_URL: "wss://${YAPPA_DOMAIN:?set YAPPA_DOMAIN in .env}"
+      LIVEKIT_HTTP_URL: "http://localhost:7880"
+      YAPPA_UPDATE_BASE_URL: "https://${YAPPA_DOMAIN}/updates"
+    volumes:
+      - control_data:/data
+    network_mode: host
+    restart: unless-stopped
+
 volumes:
+  control_data:
   caddy_data:
   caddy_config:

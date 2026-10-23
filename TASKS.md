@@ -24,16 +24,12 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 **M2 · Login and channels** — invite link, name, lobby, who is where, join by click
 
-- [ ] S6 Control plane (cut per ADR-005): axum + sqlx/SQLite in the LiveKit compose;
-      `POST /auth/invite`, `GET /me|channels|config`, `POST /channels/{id}/token` (voice and
-      presence tokens via `livekit-api`), `POST /livekit/webhook` → event log only; admin
-      endpoints (invites, members, roles, kick via RoomService, channels, events) second;
-      no presence table, no push → `docs/spikes/s6-control.md`
 - [ ] C1 `crates/client` (ADR-007): API client with cache, session + presence token in
       `keyring` with file fallback, `transport::PresenceLink` (presence room, attributes
       `channel`/`app`/`talk`/`away`), `AppSettings` v1 + engine `Settings` v2 with
       migration, `YAPPA_PROFILE`; Tauri commands `api_*`; the headless example logs in the
-      same way; `cargo xtask livekit presence` to watch the room
+      same way; `cargo xtask livekit presence` to watch the room; build the presence map
+      from `remote_participants()` at connect plus events, never from events alone (S6)
 - [ ] U2 Voice module, call screen: channel tree with people, person tiles (states as
       text, `talk` from presence), join on click/Enter, person inspector (volume, local
       mute); soundboard/app-audio hidden until the engine reports them; against the mock
@@ -95,7 +91,10 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
       processing module, so this is an own AEC — phase 2; v1 is headset + PTT hint
 - [ ] Outage detection: the client needs ≈ 14 s to notice a dead link (S1) — find the
       source (signal ping timeout?) and detect silence on the wire sooner
-- [ ] `lk load-test` with 20 publishers against the dev server (needs the `lk` CLI)
+- [ ] `lk load-test` with 20 publishers plus 20 presence clients against the dev server
+      (needs the `lk` CLI)
+- [ ] Presence: show a person as "maybe gone" when their presence link is stale instead of
+      waiting for LiveKit's 20–23 s timeout for a dead client (S6)
 - [ ] Bumps when the files are touched anyway: LiveKit server v1.13.10, `livekit` 0.9.6
 - [ ] Phase 2 · Quality: second media server with failover (presence room needs a home,
       ADR-005 revisit), Prometheus/Grafana, load, AEC, four weeks without an outage
@@ -123,6 +122,14 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] S6 Control plane (ADR-005): `crates/control` (`yappa-control`: axum + sqlx/SQLite +
+      livekit-api) with invites, members, roles, kick, channels, voice and presence tokens,
+      `GET /config` with min version / kill switch, signed webhook → event log; bootstrap
+      admin invite at first start, `invite`/`policy` subcommands; `cargo xtask control`;
+      Docker image + `control` service and Caddy `/api/` route in `home.yml`;
+      `crates/spike-s6` measured the presence room (attribute change ≈ 1 ms, late joiner
+      sees state, kick 10 ms, dead client 20–23 s) → `docs/spikes/s6-control.md`
+      (2026-10-23)
 - [x] U1 Shell (ADR-004): zones A–G as components in `lib/shell/` (rail with label + icon,
       context sidebar, voice dock owned by the shell, topbar with breadcrumb, `Strg K`
       palette on Bits UI Command, banner slot, inspector); modules „Voice“ (room + people

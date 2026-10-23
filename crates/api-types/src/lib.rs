@@ -80,6 +80,39 @@ pub struct PublicConfig {
     pub livekit_ws_url: String,
 }
 
+impl PublicConfig {
+    /// Must this app version leave and update? Same rule as the UI's `version.ts`: below the
+    /// minimum or on the kill list; a version that is not `major.minor.patch` is never
+    /// blocked (better a call than a false lockout).
+    pub fn blocks(&self, version: &str) -> bool {
+        if self.killed_versions.iter().any(|v| v == version) {
+            return true;
+        }
+        matches!(
+            compare_versions(version, &self.min_version),
+            Some(std::cmp::Ordering::Less)
+        )
+    }
+}
+
+/// `major.minor.patch` (optionally with a leading `v`) compared numerically; `None` when
+/// either side is not a version.
+pub fn compare_versions(a: &str, b: &str) -> Option<std::cmp::Ordering> {
+    fn parse(v: &str) -> Option<[u64; 3]> {
+        let v = v.trim();
+        let v = v.strip_prefix('v').unwrap_or(v);
+        let mut parts = v.splitn(3, '.');
+        let mut out = [0u64; 3];
+        for slot in &mut out {
+            let part = parts.next()?;
+            let digits: String = part.chars().take_while(char::is_ascii_digit).collect();
+            *slot = digits.parse().ok()?;
+        }
+        Some(out)
+    }
+    Some(parse(a)?.cmp(&parse(b)?))
+}
+
 /// A member as the admin sees them.
 #[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -150,11 +183,52 @@ pub struct Channel {
     pub server_id: String,
 }
 
+/// `POST /invites` (admin): a new invite link. Defaults: member, seven days.
+#[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase", default)]
+#[ts(export)]
+pub struct CreateInviteRequest {
+    #[ts(optional)]
+    pub role: Option<Role>,
+    #[ts(optional)]
+    pub days: Option<u32>,
+}
+
+/// `PATCH /members/{id}` (admin).
 #[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
-pub struct VoiceTokenRequest {
-    pub channel_id: String,
+pub struct UpdateMemberRequest {
+    pub role: Role,
+}
+
+/// `POST /channels` (admin). The new channel goes to the end.
+#[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CreateChannelRequest {
+    pub name: String,
+}
+
+/// `PATCH /channels/{id}` (admin): rename, move, or both. Positions stay dense.
+#[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase", default)]
+#[ts(export)]
+pub struct UpdateChannelRequest {
+    #[ts(optional)]
+    pub name: Option<String>,
+    #[ts(optional)]
+    pub position: Option<u32>,
+}
+
+/// `PUT /admin/config` (admin): minimum version and kill list. The rest of
+/// [`PublicConfig`] comes from the server's environment.
+#[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct VersionPolicy {
+    pub min_version: String,
+    pub killed_versions: Vec<String>,
 }
 
 /// Long-lived (≈ one gaming evening) so reconnects survive a control-plane outage.
@@ -331,6 +405,26 @@ mod tests {
         .unwrap();
         assert_eq!(json["wsUrl"], "wss://voice.example");
         assert_eq!(json["expiresAt"], "2026-10-07T23:00:00Z");
+    }
+
+    #[test]
+    fn version_policy_matches_the_ui_rule() {
+        let config = PublicConfig {
+            api_version: 1,
+            min_version: "0.4.0".into(),
+            killed_versions: vec!["0.4.2".into()],
+            update_base_url: String::new(),
+            livekit_ws_url: String::new(),
+        };
+        assert!(config.blocks("0.3.9"));
+        assert!(config.blocks("0.4.2"));
+        assert!(!config.blocks("0.4.1"));
+        assert!(!config.blocks("0.10.0"));
+        assert!(!config.blocks("browser"));
+        assert_eq!(
+            compare_versions("v0.10.0", "0.9.9"),
+            Some(std::cmp::Ordering::Greater)
+        );
     }
 
     #[test]
