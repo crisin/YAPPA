@@ -158,23 +158,26 @@ docker compose -f home.yml exec control yappa-control invite --admin
 
 Jede Person bekommt den Installer (`cargo xtask build` auf dem Entwicklungs-PC, Datei unter
 `target/release/bundle/nsis/`), einen **eigenen** Link und die Anleitung
-[mittesten.md](mittesten.md):
+[mittesten.md](mittesten.md).
+
+Am einfachsten in der App: In der Leiste links unten auf **Admin** (nur für Admins
+sichtbar).
+
+- **Einladungen → Neue Einladung:** Der Link steht sofort zum Kopieren da. Er gilt 7 Tage
+  und genau einmal.
+- **Channels:** anlegen, umbenennen, verschieben, löschen. Der erste Channel ist die Lobby.
+- **Leute:** wer welche Version hat, wer gerade wo ist, Rollen, Rauswerfen.
+- **Betrieb:** Mindestversion, gesperrte Versionen und das Ereignis-Log.
+
+Dasselbe geht auch auf der VM, etwa bevor dein eigener Zugang steht:
 
 ```bash
 docker compose -f home.yml exec control yappa-control invite             # 7 Tage gültig
 docker compose -f home.yml exec control yappa-control invite --days 2    # kürzer
-```
-
-Ein Link funktioniert genau einmal. Channels legst du an, bis es dafür den Admin-Bereich in
-der App gibt, ebenfalls hier (die App holt die Liste beim nächsten Start):
-
-```bash
 docker compose -f home.yml exec control yappa-control channel add "Raid-Abend"
-docker compose -f home.yml exec control yappa-control channel        # Liste
+docker compose -f home.yml exec control yappa-control channel            # Liste
+docker compose -f home.yml exec control yappa-control policy --min 0.2.0 --kill 0.2.1
 ```
-
-Notfall: Eine kaputte App-Version aus dem Verkehr ziehen —
-`docker compose -f home.yml exec control yappa-control policy --min 0.2.0 --kill 0.2.1`.
 
 ## Betrieb
 

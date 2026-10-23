@@ -13,6 +13,7 @@ import type { PublicConfig } from './types/PublicConfig';
 import type { Role } from './types/Role';
 import type { TalkMode } from './types/TalkMode';
 import type { User } from './types/User';
+import type { VersionPolicy } from './types/VersionPolicy';
 import { isTauri } from '@tauri-apps/api/core';
 import { engine } from './engine';
 import { createMockApi } from './mockApi';
@@ -69,14 +70,20 @@ export interface Api {
     setRole(userId: string, role: Role): Promise<void>;
     kick(userId: string): Promise<void>;
     invites(): Promise<InviteCode[]>;
+    /** A new invite, valid 7 days, for one person. */
     createInvite(): Promise<InviteCode>;
+    /** The clickable `yappa://invite/<code>?server=…` link for a code. */
+    inviteLink(code: string): Promise<string>;
     revokeInvite(code: string): Promise<void>;
     createChannel(name: string): Promise<Channel>;
     renameChannel(id: string, name: string): Promise<void>;
     deleteChannel(id: string): Promise<void>;
     /** Puts the channel at `position` and shifts the others. */
     moveChannel(id: string, position: number): Promise<void>;
+    /** Newest first. */
     events(): Promise<EventEntry[]>;
+    /** Minimum version and kill list; answers the config that now applies. */
+    setPolicy(policy: VersionPolicy): Promise<PublicConfig>;
   };
 }
 

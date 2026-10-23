@@ -42,9 +42,6 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
       cut, build, sign, `latest.json`, upload to the box), `tauri-plugin-updater` +
       `tauri-plugin-process`, Caddy `/updates`, `GET /config` min version + kill switch →
       banner slot and forced leave; update channel in Profi
-- [ ] U6 Admin module: people (members with client version and presence, invites, roles,
-      kick), structure (channels), operations (event log, min version, kill switch); what
-      the control plane cannot do yet is hidden
 - [ ] Lofi round 2 (user): draw reconnect/offline/update banner and lobby radio against the
       running shell (detail questions follow established patterns, vision section 12)
 - [ ] Infra for three stages (vision section 12): one compose set for LiveKit + control +
@@ -103,6 +100,13 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] U6 Admin module (rail bottom, admins only — `shell.setRole` now follows the login):
+      Leute (role, where they are from presence, app version marked when below the policy,
+      last seen, kick after a second click), Einladungen (new link to copy, list with
+      open/used/expired, withdraw), Channels (add, rename, move, delete; the channel tree
+      follows), Betrieb (minimum version and kill list with a lock-myself-out warning, event
+      log); Tauri commands over the existing `crates/client` admin calls, `inviteLink` and
+      `setPolicy` added to the API door (2026-10-23)
 - [x] U4 Onboarding: full window before the shell while nobody is logged in — 1 Name (the
       login card), 2 Mikro (device, input, live level, output), 3 Reden (headset or
       speakers; speakers preselect „Taste halten“ because v1 has no echo cancelling, then

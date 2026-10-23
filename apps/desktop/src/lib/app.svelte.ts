@@ -2,6 +2,7 @@
 // the app settings (view, theme, …). Handed down with a typed context, so components do not
 // take the same three props over and over.
 import { createContext } from 'svelte';
+import { Admin } from './admin.svelte';
 import type { Api } from './api';
 import type { AppInfo } from './engine';
 import { Gang } from './gang.svelte';
@@ -52,12 +53,14 @@ export class AppState {
   readonly shell: Shell;
   readonly api: Api;
   readonly gang: Gang;
+  readonly admin: Admin;
 
   constructor(session: Session, shell: Shell, api: Api) {
     this.session = session;
     this.shell = shell;
     this.api = api;
     this.gang = new Gang(api);
+    this.admin = new Admin(api, this.gang, (config) => (this.config = config));
     try {
       const stored = localStorage.getItem(THEME_KEY);
       if (stored === 'dark' || stored === 'light') this.theme = stored;
