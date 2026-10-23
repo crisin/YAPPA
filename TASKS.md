@@ -35,10 +35,6 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
       record a real gaming-evening noise and run it through
 - [ ] PTT in a fullscreen game (user, testabend): does the voice come with the key, does
       the game still get the key? Note anti-cheat games separately → `docs/spikes/s3-ptt.md`
-- [ ] U3 rest — Einfach/Profi in „Ich“ (the „Audio und Sprechen“ part is done): `AppSettings` (view, theme, hotkeys,
-      notifications, update channel) and engine settings v2; signal chain as stages with
-      live levels; diagnosis = the debug panel; the "Audio und Sprechen" component is built
-      for reuse in onboarding
 
 **M4 · Operations** — auto-update, admin, onboarding, banners
 
@@ -109,6 +105,13 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] U3 rest — Einfach/Profi in „Ich“: the switch on top of the settings navigation, stored
+      as `AppSettings.view`; Einfach = Audio und Sprechen, Darstellung, Benachrichtigungen,
+      Konto, Hilfe; Profi adds Signalkette (six stages with live level and state, cost per
+      10 ms block and added latency on top, parameters for high-pass, denoiser, gate, EQ
+      bands, compressor), Tasten, Netzwerk (bitrate), Updates (channel, stored until D1),
+      Diagnose; theme now lives in `AppSettings` (browser storage only as first-frame
+      cache); palette command for the view (2026-10-23)
 - [x] Server setup made simple: `cargo xtask local [--lan]` (LiveKit + control plane in one
       command; LAN mode uses this PC's address for links and media — tested end to end with
       a join over 192.168.178.60), `cargo xtask control --lan …`; `home.yml` fixes the key

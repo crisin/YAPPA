@@ -46,6 +46,7 @@
     let gone = false;
     void (async () => {
       app.info = await engine.info();
+      void app.loadAppSettings().catch(() => {});
       if (app.info.debugPanel) app.openMe('diagnose');
       stop = await session.start();
       if (gone) stop();

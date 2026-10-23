@@ -31,6 +31,13 @@ export function meModule(app: AppState): ModuleDef {
           keywords: ['theme', 'farbe', 'dark', 'light'],
           run: () => app.setTheme(app.theme === 'dark' ? 'light' : 'dark'),
         },
+        {
+          id: 'me:view',
+          label: app.view === 'pro' ? 'Einstellungen: Einfach' : 'Einstellungen: Profi',
+          group: 'Einstellungen',
+          keywords: ['profi', 'einfach', 'experte', 'ansicht'],
+          run: () => app.setView(app.view === 'pro' ? 'simple' : 'pro'),
+        },
       ];
     },
   };

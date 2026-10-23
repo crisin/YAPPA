@@ -1,35 +1,47 @@
-// What every part of the window shares: the engine session, the shell, the API door, and a
-// little app-wide state that has no better home until `AppSettings` exist (C1). Handed down
-// with a typed context, so components do not take the same three props over and over.
+// What every part of the window shares: the engine session, the shell, the API door, and
+// the app settings (view, theme, …). Handed down with a typed context, so components do not
+// take the same three props over and over.
 import { createContext } from 'svelte';
 import type { Api } from './api';
 import type { AppInfo } from './engine';
 import { Gang } from './gang.svelte';
 import type { Session } from './session.svelte';
 import type { Shell } from './shell.svelte';
+import type { AppSettings } from './types/AppSettings';
 import type { PublicConfig } from './types/PublicConfig';
+import type { SettingsView } from './types/SettingsView';
 import type { TransmitMode } from './types/TransmitMode';
 
-/** The sections of the module „Ich“. U3 adds the Einfach/Profi split on top. */
+/** The sections of the module „Ich“. `pro` ones show only in the Profi view; both views write
+ * the same settings (concept: Einfach/Profi is a property of the settings). */
 export const ME_SECTIONS = [
-  { id: 'konto', label: 'Konto' },
-  { id: 'audio', label: 'Audio und Sprechen' },
-  { id: 'darstellung', label: 'Darstellung' },
-  { id: 'diagnose', label: 'Diagnose' },
-  { id: 'hilfe', label: 'Hilfe' },
+  { id: 'audio', label: 'Audio und Sprechen', pro: false },
+  { id: 'signalkette', label: 'Signalkette', pro: true },
+  { id: 'tasten', label: 'Tasten', pro: true },
+  { id: 'netzwerk', label: 'Netzwerk', pro: true },
+  { id: 'darstellung', label: 'Darstellung', pro: false },
+  { id: 'benachrichtigungen', label: 'Benachrichtigungen', pro: false },
+  { id: 'konto', label: 'Konto', pro: false },
+  { id: 'updates', label: 'Updates', pro: true },
+  { id: 'diagnose', label: 'Diagnose', pro: true },
+  { id: 'hilfe', label: 'Hilfe', pro: false },
 ] as const;
 
 export type MeSection = (typeof ME_SECTIONS)[number]['id'];
 
 export type Theme = 'dark' | 'light';
 
+/** The theme is also kept in the browser storage, so the first frame already has the right
+ * colours — the app settings arrive a moment later over IPC. */
 const THEME_KEY = 'yappa.theme';
 
 export class AppState {
   info = $state<AppInfo | null>(null);
   config = $state<PublicConfig | null>(null);
-  meSection = $state<MeSection>('konto');
+  meSection = $state<MeSection>('audio');
   theme = $state<Theme>('dark');
+  appSettings = $state<AppSettings | null>(null);
+  view = $derived<SettingsView>(this.appSettings?.view ?? 'simple');
 
   readonly session: Session;
   readonly shell: Shell;
@@ -49,13 +61,42 @@ export class AppState {
     }
   }
 
+  /** Reads the app settings once at start; their theme wins over the browser storage. */
+  async loadAppSettings() {
+    const settings = await this.api.appSettings();
+    this.appSettings = settings;
+    if (settings.theme === 'dark' || settings.theme === 'light')
+      this.#rememberTheme(settings.theme);
+  }
+
+  /** Changes some app settings. Reads the file first: the shell writes into it too (the PTT
+   * key), and a stale copy here must not undo that. */
+  async updateAppSettings(patch: Partial<AppSettings>) {
+    const next = { ...(await this.api.appSettings()), ...patch };
+    this.appSettings = next;
+    await this.api.setAppSettings(next);
+  }
+
   setTheme(theme: Theme) {
+    this.#rememberTheme(theme);
+    return this.updateAppSettings({ theme });
+  }
+
+  #rememberTheme(theme: Theme) {
     this.theme = theme;
     try {
       localStorage.setItem(THEME_KEY, theme);
     } catch {
       // see constructor
     }
+  }
+
+  /** Einfach or Profi. Leaving Profi on a pro-only section goes back to „Audio und Sprechen“. */
+  setView(view: SettingsView) {
+    if (view === 'simple' && ME_SECTIONS.find((s) => s.id === this.meSection)?.pro) {
+      this.meSection = 'audio';
+    }
+    return this.updateAppSettings({ view });
   }
 
   /** Leaves the voice channel: through the control-plane client when logged in (so the
@@ -71,8 +112,12 @@ export class AppState {
     if (this.gang.status === 'in') await this.api.setPresence({ talk: talk[mode] }).catch(() => {});
   }
 
-  /** Opens „Ich“ at a section — from the palette, the dock, or a help link. */
+  /** Opens „Ich“ at a section — from the palette, the dock, or a help link. A pro section
+   * switches to the Profi view, so the navigation shows where one is. */
   openMe(section: MeSection) {
+    if (ME_SECTIONS.find((s) => s.id === section)?.pro && this.view !== 'pro') {
+      void this.setView('pro');
+    }
     this.meSection = section;
     this.shell.open('me');
   }

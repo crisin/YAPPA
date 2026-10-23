@@ -35,7 +35,7 @@ weiter.
 | Verlassen | Raum verlassen. |
 | Regler bei einer Person | Diese Person für dich lauter oder leiser machen. |
 | Hörbar / Stumm für mich | Diese eine Person nur für dich stummschalten. Ein Klick auf den Namen links zeigt dasselbe noch einmal größer. |
-| Ich → Diagnose | Die Messwerte (siehe unten). Ein ⓘ neben einem Wert erklärt ihn. |
+| Ich → Profi → Diagnose | Die Messwerte (siehe unten). Ein ⓘ neben einem Wert erklärt ihn. „Profi“ ist der Umschalter oben in „Ich“; er zeigt auch Signalkette, Tasten, Netzwerk und Updates. |
 | Ich → Hilfe | Diese Anleitung, „So funktioniert yAPPA“ und ein Glossar – direkt in der App, auch ohne Verbindung. |
 | Suchen oder springen (`Strg K`) | Springt überallhin: Einstellungen, Leute, Stummschalten, Verlassen. |
 | `Esc` | Einen Schritt zurück. |
@@ -44,7 +44,7 @@ weiter.
 
 Genau dafür testen wir. Bitte so melden, dann können wir es nachvollziehen:
 
-1. **Ich → Diagnose** öffnen und kurz schauen, ob etwas orange ist – z. B. „Paketverlust" oder
+1. **Ich → Profi → Diagnose** öffnen und kurz schauen, ob etwas orange ist – z. B. „Paketverlust" oder
    „Ersetzte Samples". Das gern dazuschreiben.
 2. Dort auf **Diagnose-Datei speichern** klicken. Die Datei landet im Ordner
    „Downloads" (der genaue Pfad wird angezeigt).
