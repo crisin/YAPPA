@@ -36,7 +36,27 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 - [ ] PTT in a fullscreen game (user, testabend): does the voice come with the key, does
       the game still get the key? Note anti-cheat games separately → `docs/spikes/s3-ptt.md`
 
-**M4 · Operations** — auto-update, admin, onboarding, banners
+**A · Audio block** (ADR-009, interview 2026-10-23) — before M4; order is the decision
+
+- [ ] A1 Resampling: capture and playout at any device rate, engine stays at 48 kHz; a
+      44.1 kHz device or a Bluetooth headset at 16 kHz (hands-free) joins instead of being
+      refused; device list and onboarding say that a Bluetooth microphone sounds like a
+      phone; at most one block of latency per side; latency and CPU measured before/after;
+      realtime review
+- [ ] A2 Device return: `DeviceWatcher` trait in `crates/platform` (Windows
+      `IMMNotificationClient`, macOS CoreAudio listeners, absence = today); a lost device
+      is retried, the chosen device is taken back when it returns, the banner says so
+- [ ] A3 Global mute and deafen keys in „Tasten“ through the existing hook; dock shows
+      the state (user: before the next evening)
+- [ ] A4 Loudness levelling at the receiver: `dsp::Leveler` per mixer slot (≈ 400 ms
+      level, target ≈ −20 dBFS, ±12 dB, slow, idle below the noise floor), manual volume
+      stays an offset; current gain per speaker in the diagnosis; mixer bench before/after
+- [ ] A5 Monitor „Mich selbst hören“ in the Signalkette: chain output into the playout
+      mix as a local slot while the page is open
+- [ ] A6 Drift compensation: hold each speaker's playout ring at the cushion with a
+      gentle continuous correction instead of the ≈ 80 ms skip (ADR-003 known gap)
+
+**M4 · Operations** — auto-update, admin, onboarding, banners (after the audio block, ADR-009)
 
 - [ ] D1 Release pipeline (ADR-006): `cargo xtask release <channel>` (version, changelog
       cut, build, sign, `latest.json`, upload to the box), `tauri-plugin-updater` +
@@ -54,14 +74,14 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Later
 
-- [ ] Engine edges from the review 2026-10-23, in the order they bite: resampling for
-      devices not at 48 kHz (Bluetooth hands-free = 16 kHz); a lost device is retried and
-      device changes are listened to (today: one reopen on the default, then nothing);
-      a pump panic reaches the UI as an error and falls back to RNNoise; the running
-      denoiser is reported, not the configured one; PTT hook watchdog (Windows drops a slow
-      hook silently, `is_global` keeps saying true) and a missed key-up; engine settings
-      saved on quit, not only on the stats tick; `validate` checks EQ/compressor for NaN;
-      the engine failing to start shows a window with the error instead of dying
+- [ ] Engine edges from the review 2026-10-23 not in the audio block: a pump panic
+      reaches the UI as an error and falls back to RNNoise; automatic RNNoise fallback
+      when the chain tears the 5 ms budget (ADR-009: PCs are current, nice-to-have); the
+      running denoiser is reported, not the configured one; PTT hook watchdog (Windows
+      drops a slow hook silently, `is_global` keeps saying true) and a missed key-up;
+      engine settings saved on quit, not only on the stats tick; `validate` checks
+      EQ/compressor for NaN; the engine failing to start shows a window with the error
+      instead of dying
 - [ ] Control-plane edges from the review 2026-10-23: cache the presence token and the
       channel tokens (≈ 12 h, vision section 3) so a start without the control plane still
       has presence; kick revokes the session and a member can be removed; healthcheck in
@@ -120,6 +140,10 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] ADR-009 Audio first: interview with the user (eleven questions: hardware, default
+      speaking mode, lost device, weakest PC, network, loudness, PTT mechanics, mute keys,
+      monitor, D1 order) → audio block A1–A6 on the board before M4; D1/U7 wait;
+      installers by hand until then (2026-10-23)
 - [x] Review 2026-10-23 (`docs/02-review-2026-10-23.md`): three reviewers over engine,
       server/client and desktop; verdict „on track, code ahead of testing“; nine small
       fixes before the first evening (ghost join — presence set before the join and
