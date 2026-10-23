@@ -11,6 +11,9 @@
 
 #[cfg(feature = "livekit")]
 pub mod livekit;
+/// The presence room (ADR-005), next to the voice session on the same SDK.
+#[cfg(feature = "livekit")]
+pub mod presence;
 
 use std::sync::Arc;
 
