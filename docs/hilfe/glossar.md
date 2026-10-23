@@ -1,6 +1,6 @@
 # Glossar
 
-Begriffe, die in yAPPA auftauchen – vor allem im Debug-Bereich. Jeder Eintrag beginnt mit
+Begriffe, die in yAPPA auftauchen – vor allem in der Diagnose. Jeder Eintrag beginnt mit
 einem Satz, der auch als Erklärung hinter dem ⓘ in der App erscheint. Wer es genauer wissen
 will, findet darunter einen Link, meist zu Wikipedia.
 
@@ -31,7 +31,7 @@ Wie unregelmäßig die Pakete ankommen. Große Schwankungen zwingen den Jitterbu
 puffern – das kostet Latenz.
 
 Jitter entsteht durch WLAN, volle Leitungen oder einen beschäftigten Router. Ein Wert unter
-10 ms ist unauffällig, ab 30 ms ist er im Debug-Bereich orange.
+10 ms ist unauffällig, ab 30 ms ist er in der Diagnose orange.
 
 Mehr dazu: [Jitter (Wikipedia)](https://de.wikipedia.org/wiki/Jitter)
 
@@ -73,7 +73,7 @@ Das Verfahren, das Sprache für den Versand klein macht und beim Empfänger wied
 yAPPA benutzt Opus, den Standard für Sprache im Internet.
 
 Opus braucht bei 48 kHz Abtastrate 32 bis 64 kbit/s pro Person und verkraftet
-Paketverlust vergleichsweise gut; yAPPA erlaubt bis 64 kbit/s. Im Debug-Bereich steht unter „Codec“, womit gerade
+Paketverlust vergleichsweise gut; yAPPA erlaubt bis 64 kbit/s. In der Diagnose steht unter „Codec“, womit gerade
 gesendet wird.
 
 Mehr dazu: [Opus (Wikipedia)](<https://de.wikipedia.org/wiki/Opus_(Audioformat)>)
@@ -114,7 +114,7 @@ Die Portion Ton, die die Soundkarte auf einmal liefert oder abholt – angegeben
 Millisekunden. Kleiner Puffer: weniger Latenz, aber eher Aussetzer.
 
 yAPPA verarbeitet den Ton in Stücken von 10 ms; welche Portion das Gerät liefert, steht im
-Debug-Bereich. Manche Treiber geben nur 20 oder 30 ms – das ist in Ordnung, nur eben etwas
+Diagnose. Manche Treiber geben nur 20 oder 30 ms – das ist in Ordnung, nur eben etwas
 mehr Latenz.
 
 Mehr dazu: [Puffer (Wikipedia)](<https://de.wikipedia.org/wiki/Puffer_(Informatik)>)

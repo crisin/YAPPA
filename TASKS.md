@@ -17,10 +17,6 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 **M1 · Shell** — nightly with the new structure, still pasted invites
 
-- [ ] U1 Shell: zones A–G as components (rail, sidebar/stage slots, voice dock, topbar +
-      `Strg K` palette, banner slot, inspector); module „Ich“ = settings navigation +
-      stage + help, `Esc` returns (no overlay); the test client moves in without losing
-      anything; reconnect/offline in dock and banner → first nightly with the new structure
 - [ ] First evening with the gang (user): home server up (`docs/homeserver.md`), installer
       + invites out (`docs/mittesten.md`), collect diagnostics files; write down what broke
 - [ ] Homeserver walkthrough (user, hands-on): follow `docs/homeserver.md` on the mini PC
@@ -127,6 +123,13 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] U1 Shell (ADR-004): zones A–G as components in `lib/shell/` (rail with label + icon,
+      context sidebar, voice dock owned by the shell, topbar with breadcrumb, `Strg K`
+      palette on Bits UI Command, banner slot, inspector); modules „Voice“ (room + people
+      TeamSpeak-style, join card, tiles, person inspector) and „Ich“ (audio, appearance,
+      diagnosis = former debug panel, help); banners for engine errors, reconnect, server
+      unreachable, minimum version/kill switch; `Esc` closes the inspector or steps back;
+      theme remembered; tester guide and glossary follow the new places (2026-10-23)
 - [x] U0 UI foundation (ADR-004): `bits-ui` 2.20, `@lucide/svelte`, `vitest-axe` with an
       axe test on the app; `ui-tokens` v1 (rail/inspector widths, type scale, state colors,
       focus, overlay, motion); second door `api.ts` + `mockApi.ts` with the "Die Gang"

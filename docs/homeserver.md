@@ -143,7 +143,7 @@ cargo xtask dev                     # die App starten, Einladung einfügen, "Bei
 
 Steht unten „Verbunden", funktioniert die Anmeldung. Für einen zweiten Teilnehmer eine
 zweite Einladung ausstellen und z. B. auf einem Laptop am Handy-Hotspot beitreten: sobald
-ihr euch seht und hört, läuft die Sprache über deinen Anschluss. Im Debug-Bereich der App
+ihr euch seht und hört, läuft die Sprache über deinen Anschluss. Unter Ich → Diagnose in der App
 stehen Laufzeit, Paketverlust und Jitterbuffer.
 
 Ohne Fenster geht es auch, z. B. um nur den Server zu prüfen:

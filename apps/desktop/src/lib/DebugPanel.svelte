@@ -145,7 +145,8 @@
   </dl>
 {/snippet}
 
-<aside class="debug" aria-label="Debug">
+<section class="debug" aria-labelledby="debug-title">
+  <h1 id="debug-title">Diagnose</h1>
   <section>
     <h2>Verbindung</h2>
     {@render rows([
@@ -211,22 +212,27 @@
       </ol>
     {/if}
   </section>
-</aside>
+</section>
 
 <style>
+  .debug > h1 {
+    grid-column: 1 / -1;
+    margin: 0 0 var(--space-2);
+    font-size: var(--font-size-lg);
+  }
+
   .debug {
-    width: 340px;
-    overflow-y: auto;
-    padding: var(--space-3) var(--space-4);
-    background: var(--color-surface);
-    border-left: 1px solid var(--color-border);
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: var(--space-2) var(--space-6);
     font-size: var(--font-size-sm);
     user-select: text;
     scrollbar-color: var(--color-border) transparent;
   }
 
-  section + section {
-    margin-top: var(--space-4);
+  /* In the grid every block stands on its own; the history spans the full width. */
+  .debug > section:last-of-type {
+    grid-column: 1 / -1;
   }
 
   h2 {

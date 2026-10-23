@@ -84,16 +84,16 @@ A second participant without a second machine: `cargo run --release -p spike-s1 
 --identity klicker --room dev --source click --sink null` publishes clicks into the room.
 
 Two environment variables help while developing (not meant for users):
-`YAPPA_AUTOJOIN=<invite>` joins right after start, `YAPPA_DEBUG_PANEL=1` opens the debug
-panel at start.
+`YAPPA_AUTOJOIN=<invite>` joins right after start, `YAPPA_DEBUG_PANEL=1` opens „Ich →
+Diagnose“ at start.
 
 ### Logs
 
 The shell sets up `tracing` (ADR-003): JSON lines in the app's log folder
 (`%LOCALAPPDATA%\dev.crisin.yappa-b\logs` on Windows, `~/Library/Logs/dev.crisin.yappa-b`
 on macOS), one file per day, seven kept. Our crates log at debug level there — including one
-line per second with target `stats` while in a call — other crates from info. The debug panel
-shows info and above; "Diagnose-Datei speichern" writes version, settings and the log files
+line per second with target `stats` while in a call — other crates from info. The diagnosis
+(„Ich → Diagnose“) shows info and above; "Diagnose-Datei speichern" writes version, settings and the log files
 into one text file in the Downloads folder. Tokens and invites are never logged. In code:
 `tracing::info!(field = %value, "what happened")`, never in an audio callback.
 

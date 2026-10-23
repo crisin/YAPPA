@@ -21,8 +21,14 @@ export interface ModuleDef {
   icon: Component;
   /** Shown only to this role and above (`admin` sees everything). */
   role?: Role;
+  /** Where the rail shows it: the module list at the top, or next to „Ich“ at the bottom. */
+  slot?: 'main' | 'bottom';
   sidebar: Component;
   stage: Component;
+  /** What the inspector shows for this module; no inspector without it. */
+  inspector?: Component;
+  /** Breadcrumb after the module label, e.g. the room or the settings section. */
+  crumb?: () => string | null;
   commands?: () => CommandDef[];
 }
 
@@ -42,6 +48,8 @@ export interface Banner {
   action?: { label: string; run(): void };
   /** Can the person close it? Blocking banners cannot. */
   dismissible: boolean;
+  /** Runs when the person closes it, e.g. to forget the error that caused it. */
+  onDismiss?(): void;
 }
 
 export interface InspectorContent {
@@ -71,6 +79,15 @@ export class Shell {
   /** Modules this role may see, in registry order. */
   get visible(): ModuleDef[] {
     return this.modules.filter((m) => ROLE_RANK[m.role ?? 'member'] <= ROLE_RANK[this.role]);
+  }
+
+  /** The rail's two groups. */
+  get railMain(): ModuleDef[] {
+    return this.visible.filter((m) => (m.slot ?? 'main') === 'main');
+  }
+
+  get railBottom(): ModuleDef[] {
+    return this.visible.filter((m) => m.slot === 'bottom');
   }
 
   get activeModule(): ModuleDef | undefined {
@@ -126,7 +143,10 @@ export class Shell {
   }
 
   dismissBanner(id: string) {
-    this.banners = this.banners.filter((b) => b.id !== id || !b.dismissible);
+    const banner = this.banners.find((b) => b.id === id);
+    if (!banner?.dismissible) return;
+    this.banners = this.banners.filter((b) => b.id !== id);
+    banner.onDismiss?.();
   }
 
   /** Clears a banner whatever its dismissibility — for the thing that caused it going away. */

@@ -8,8 +8,9 @@ Textzeile, die mit `yappa1.` beginnt).
 
 1. Installer starten. Windows warnt vor einer unbekannten App: „Weitere Informationen" →
    „Trotzdem ausführen". Das liegt daran, dass die App noch nicht signiert ist.
-2. yAPPA öffnen. Links **Mikrofon** und **Ausgabe** wählen. Wenn du sprichst, bewegt sich
-   der Balken unter dem Mikrofon – das geht schon, bevor du verbunden bist.
+2. yAPPA öffnen. Unten links auf **Ich** → **Audio und Sprechen**: **Mikrofon** und
+   **Ausgabe** wählen. Wenn du sprichst, bewegt sich der Balken – das geht schon, bevor du
+   verbunden bist. Danach links oben zurück zu **Voice** (oder `Esc`).
 3. Die Einladung komplett in das Feld **Einladung** einfügen und auf **Beitreten** klicken.
 4. Du siehst, wer da ist. Wer spricht, bekommt einen farbigen Rand.
 
@@ -20,23 +21,28 @@ Echounterdrückung gibt es noch nicht.
 
 ## Was die Knöpfe tun
 
+Unten links sitzt immer der **Sprach-Kasten** – egal, was gerade offen ist, der Call läuft
+weiter.
+
 | Knopf | Wirkung |
 | --- | --- |
-| Mikro an / aus | Dein Mikrofon stummschalten. Der Balken zeigt weiter an, dass es funktioniert. |
-| Hören / Taub | Alle anderen stumm für dich. |
-| Regler bei einer Person | Diese Person für dich lauter oder leiser machen. |
-| Hörbar / Stumm für mich | Diese eine Person nur für dich stummschalten. |
+| Mikrofon (im Sprach-Kasten) | Dein Mikrofon stummschalten. Der Balken zeigt weiter an, dass es funktioniert. |
+| Kopfhörer (im Sprach-Kasten) | Alle anderen stumm für dich. |
 | Verlassen | Raum verlassen. |
-| Debug | Blendet rechts die Messwerte ein (siehe unten). Ein ⓘ neben einem Wert erklärt ihn. |
-| Hilfe | Diese Anleitung, „So funktioniert yAPPA“ und ein Glossar – direkt in der App, auch ohne Verbindung. |
+| Regler bei einer Person | Diese Person für dich lauter oder leiser machen. |
+| Hörbar / Stumm für mich | Diese eine Person nur für dich stummschalten. Ein Klick auf den Namen links zeigt dasselbe noch einmal größer. |
+| Ich → Diagnose | Die Messwerte (siehe unten). Ein ⓘ neben einem Wert erklärt ihn. |
+| Ich → Hilfe | Diese Anleitung, „So funktioniert yAPPA“ und ein Glossar – direkt in der App, auch ohne Verbindung. |
+| Suchen oder springen (`Strg K`) | Springt überallhin: Einstellungen, Leute, Stummschalten, Verlassen. |
+| `Esc` | Einen Schritt zurück. |
 
 ## Wenn etwas komisch klingt
 
 Genau dafür testen wir. Bitte so melden, dann können wir es nachvollziehen:
 
-1. **Debug** einschalten und kurz schauen, ob etwas orange ist – z. B. „Paketverlust" oder
+1. **Ich → Diagnose** öffnen und kurz schauen, ob etwas orange ist – z. B. „Paketverlust" oder
    „Ersetzte Samples". Das gern dazuschreiben.
-2. Im Debug-Bereich auf **Diagnose-Datei speichern** klicken. Die Datei landet im Ordner
+2. Dort auf **Diagnose-Datei speichern** klicken. Die Datei landet im Ordner
    „Downloads" (der genaue Pfad wird angezeigt).
 3. Die Datei an Chris schicken, zusammen mit: **Was** ist passiert (Knacken, Aussetzer,
    Roboterstimme, jemand war weg) und **ungefähr wann** (Uhrzeit reicht).

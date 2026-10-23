@@ -159,7 +159,8 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
 
   return {
     info: () =>
-      Promise.resolve({ version: 'browser', protocolVersion: 0, logDir: '', debugPanel: false }),
+      // The version the app would have; protocol 0 says "no real engine".
+      Promise.resolve({ version: '0.1.0', protocolVersion: 0, logDir: '', debugPanel: false }),
     settings: () => Promise.resolve(structuredClone(settings)),
     send(command) {
       handle(command);
