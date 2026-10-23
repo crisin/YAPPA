@@ -26,6 +26,13 @@
   }
 </script>
 
+<!-- Escape cancels the capture (in Rust); it must not also step the shell back. -->
+<svelte:window
+  onkeydowncapture={(e) => {
+    if (waiting && e.key === 'Escape') e.preventDefault();
+  }}
+/>
+
 <div class="ptt">
   <p class="current">
     Taste: <strong>{keyLabel(key)}</strong>

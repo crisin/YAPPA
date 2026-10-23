@@ -27,7 +27,8 @@ Why and what follows from it: [ADR-001](docs/adr/001-variante-b-stack.md).
 - [docs/adr/](docs/adr/README.md) — architecture decisions
 - [docs/spikes/](docs/spikes/README.md) — spike goals and results
 - [docs/dev-setup.md](docs/dev-setup.md) — tooling, tests, Claude Code setup
-- [docs/homeserver.md](docs/homeserver.md) — LiveKit on a home server behind a FRITZ!Box (German)
+- [docs/homeserver.md](docs/homeserver.md) — LiveKit on a home server behind a FRITZ!Box (German);
+  [docs/cloudflare-tunnel.md](docs/cloudflare-tunnel.md) — the same behind a Cloudflare Tunnel
 - [docs/mittesten.md](docs/mittesten.md) — for testers: install, join, report a problem (German)
 - [docs/hilfe/](docs/hilfe/glossar.md) — user help and glossary (German); everything in `docs/`,
   `TASKS.md` and `CHANGELOG.md` is also readable inside the app (module „Ich“ → Hilfe)
@@ -36,10 +37,15 @@ Why and what follows from it: [ADR-001](docs/adr/001-variante-b-stack.md).
 
 ## Status
 
-Test client (2026-10-10): the desktop app joins a LiveKit room with a pasted invite — real
-audio engine (cpal ↔ LiveKit Rust SDK, RED), who is there and who speaks, per-person volume,
-device choice, a debug panel with live statistics, structured logs with export. Not yet:
-login and channels (S6), noise reduction and push-to-talk (S2/S3), updater. Local repo only.
+Before the first evening with the gang (2026-10-23): invite links open the app, onboarding
+in three steps (name, microphone with a live level, how you talk), channel tree with who is
+where, one-click join, the voice chain (high-pass, DeepFilterNet, voice activation or
+push-to-talk that works in a game, EQ, compressor, limiter), settings in „Einfach“ and
+„Profi“ with the signal chain, admin in the app (invites, channels, roles, versions, event
+log), diagnosis with export, in-app help. Server: LiveKit + control plane + Caddy in one
+compose for a home server, or behind a Cloudflare Tunnel; one command for a local server.
+Not yet: auto-update (installers by hand), tray, echo cancelling, devices that are not at
+48 kHz. Review of where things stand: [docs/02-review-2026-10-23.md](docs/02-review-2026-10-23.md).
 Why Rust and not something else: [ADR-002](docs/adr/002-language-alternatives.md).
 
 ## Quickstart
@@ -71,7 +77,7 @@ cargo xtask build --debug  # same, debug profile (faster, for testing the instal
 Windows produces `target/release/bundle/nsis/*-setup.exe` (per-user install, no admin) and
 `target/release/bundle/msi/*.msi`; macOS produces `target/release/bundle/macos/*.app` and
 `target/release/bundle/dmg/*.dmg`. Builds are unsigned for now — SmartScreen / Gatekeeper
-warn once. Signing, update channels (nightly/beta/stable) and the updater come with phase 2.
+warn once. Signing, update channels (nightly/beta/stable) and the updater come with D1 (phase 1, M4).
 
 All commands, tools, test kinds and the Claude Code setup: [docs/dev-setup.md](docs/dev-setup.md).
 The same commands also exist as npm scripts in [apps/desktop](apps/desktop/README.md).

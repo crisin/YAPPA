@@ -194,6 +194,20 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let saved = Mutex::new(settings.clone());
     let (handle, for_saving) = (app.handle().clone(), Arc::downgrade(&engine));
     let started = start_engine(settings, move |event| {
+        // The presence says "in channel X" as soon as a join is asked for (voice_join). When
+        // the engine ends up disconnected — the join failed, the room threw us out — the
+        // presence must not keep showing us there, or a second try would be refused as
+        // "already in it" (review 2026-10-23).
+        if let Event::Connection {
+            state: engine_protocol::ConnectionState::Disconnected,
+        } = &event
+        {
+            if let Some(app) = handle.try_state::<App>() {
+                if let Some(presence) = app.presence.0.lock().unwrap().as_ref() {
+                    presence.update(|state| state.channel_id = None);
+                }
+            }
+        }
         if matches!(event, Event::Stats { .. }) {
             let current = for_saving
                 .upgrade()

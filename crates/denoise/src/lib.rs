@@ -118,6 +118,8 @@ mod deepfilter {
         model: DfTract,
         out: [f32; BLOCK],
         latency: usize,
+        /// Blocks the model refused so far (see `process`).
+        failed: u32,
     }
 
     impl DeepFilter {
@@ -136,6 +138,7 @@ mod deepfilter {
                 model,
                 out: [0.0; BLOCK],
                 latency,
+                failed: 0,
             })
         }
     }
@@ -157,7 +160,13 @@ mod deepfilter {
                     None
                 }
                 Err(error) => {
-                    tracing::warn!(%error, "DeepFilterNet block failed — passing it through");
+                    // One line per ~10 s, not one per block: a model that keeps failing would
+                    // otherwise flood the diagnosis file.
+                    if self.failed.is_multiple_of(1000) {
+                        let failed = self.failed + 1;
+                        tracing::warn!(%error, failed, "DeepFilterNet block failed — passing it through");
+                    }
+                    self.failed = self.failed.wrapping_add(1);
                     None
                 }
             }

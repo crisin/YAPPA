@@ -76,6 +76,7 @@ export class Gang {
     this.#stopPresence?.();
     this.#stopPresence = null;
     await this.#api.logout();
+    this.offline = false;
     this.me = null;
     this.people = [];
     this.channels = [];

@@ -13,6 +13,7 @@ use engine_protocol::{
     StageLevel, Stats, TrackKind, PROTOCOL_VERSION,
 };
 use rtrb::{Consumer, RingBuffer};
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering::Relaxed};
 use std::sync::mpsc::{self, RecvTimeoutError};
@@ -118,6 +119,7 @@ pub fn spawn(
         transport,
         io,
         on_event: Box::new(on_event),
+        pending_errors: RefCell::new(BTreeMap::new()),
         settings: settings.clone(),
         config,
         mixer,
@@ -155,10 +157,23 @@ pub fn spawn(
     }
 }
 
+/// Where an error came from, so a later success from the same source resolves it.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum ErrorSource {
+    Settings,
+    Microphone,
+    Output,
+    Room,
+}
+
 struct Engine {
     transport: Box<dyn Transport>,
     io: Box<dyn AudioIo>,
     on_event: Box<dyn Fn(Event) + Send>,
+    /// Errors that still stand, by source — for a UI that attaches after they happened
+    /// (no microphone at start: the message went out before the window listened). A later
+    /// success from the same source resolves its entry; `Resync` hands the rest over once.
+    pending_errors: RefCell<BTreeMap<ErrorSource, String>>,
     settings: Arc<Mutex<Settings>>,
     config: EngineConfig,
 
@@ -247,9 +262,16 @@ impl Engine {
         (self.on_event)(event);
     }
 
-    fn error(&self, message: String) {
+    fn error(&self, source: ErrorSource, message: String) {
         tracing::error!("{message}");
+        self.pending_errors
+            .borrow_mut()
+            .insert(source, message.clone());
         self.emit(Event::Error { message });
+    }
+
+    fn resolved(&self, source: ErrorSource) {
+        self.pending_errors.borrow_mut().remove(&source);
     }
 
     // ── commands ────────────────────────────────────────────────────────────────────────
@@ -339,15 +361,22 @@ impl Engine {
                     self.emit(Event::Joined { room, identity });
                 }
                 self.emit_participants();
+                for (_, message) in std::mem::take(&mut *self.pending_errors.borrow_mut()) {
+                    self.emit(Event::Error { message });
+                }
             }
         }
     }
 
     fn apply_settings(&mut self, new: Settings) {
         if let Err(problem) = new.validate() {
-            self.error(format!("settings rejected: {problem}"));
+            self.error(
+                ErrorSource::Settings,
+                format!("settings rejected: {problem}"),
+            );
             return;
         }
+        self.resolved(ErrorSource::Settings);
         let old = std::mem::replace(&mut *self.settings.lock().unwrap(), new.clone());
         if old.input_device != new.input_device || old.input_channel != new.input_channel {
             self.open_capture(new.input_device.as_deref());
@@ -399,6 +428,7 @@ impl Engine {
             TransportEvent::Joined { room, identity } => {
                 self.was_joined = true;
                 self.rejoin_attempts = 0;
+                self.resolved(ErrorSource::Room);
                 self.room = Some((room.clone(), identity.clone()));
                 self.emit(Event::Joined { room, identity });
             }
@@ -410,7 +440,7 @@ impl Engine {
                 } else {
                     self.wanted = None;
                 }
-                self.error(message);
+                self.error(ErrorSource::Room, message);
             }
             TransportEvent::ParticipantJoined { identity, name } => {
                 self.participants.insert(
@@ -534,9 +564,14 @@ impl Engine {
                     );
                     let _ = self.ring_tx.send(ring);
                     self.capture = Some(device);
+                    // The asked-for device works: a stored error is resolved. A fallback to
+                    // the default keeps it — "your microphone is not connected" stays true.
+                    if candidate == id {
+                        self.resolved(ErrorSource::Microphone);
+                    }
                     return;
                 }
-                Err(e) => self.error(format!("microphone: {e}")),
+                Err(e) => self.error(ErrorSource::Microphone, format!("microphone: {e}")),
             }
         }
     }
@@ -548,7 +583,10 @@ impl Engine {
         }
         for candidate in candidates(id) {
             let Some(mixer_rt) = self.mixer_rt.take() else {
-                self.error("output: the mixer did not come back from the last device".into());
+                self.error(
+                    ErrorSource::Output,
+                    "output: the mixer did not come back from the last device".into(),
+                );
                 return;
             };
             match self
@@ -561,11 +599,14 @@ impl Engine {
                         "output open"
                     );
                     self.playout = Some(device);
+                    if candidate == id {
+                        self.resolved(ErrorSource::Output);
+                    }
                     return;
                 }
                 Err(e) => {
                     self.reclaim_mixer();
-                    self.error(format!("output: {e}"));
+                    self.error(ErrorSource::Output, format!("output: {e}"));
                 }
             }
         }
@@ -581,12 +622,18 @@ impl Engine {
     /// A device that reported an error (unplugged, driver reset) is reopened on the default.
     fn check_devices(&mut self) {
         if failed(&self.capture) {
-            self.error("the microphone stopped working — switching to the default device".into());
+            self.error(
+                ErrorSource::Microphone,
+                "the microphone stopped working — switching to the default device".into(),
+            );
             self.open_capture(None);
             self.emit_devices();
         }
         if failed(&self.playout) {
-            self.error("the output stopped working — switching to the default device".into());
+            self.error(
+                ErrorSource::Output,
+                "the output stopped working — switching to the default device".into(),
+            );
             self.open_playout(None);
             self.emit_devices();
         }

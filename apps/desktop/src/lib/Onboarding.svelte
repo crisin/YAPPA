@@ -19,6 +19,20 @@
    * v1), so „Taste halten“ is the advice there. */
   let listening = $state<'headset' | 'speakers' | null>(null);
   let finishing = $state(false);
+  // Logged in here, but the server did not answer at start: „Erneut versuchen“ instead of
+  // the login card, so nobody pastes their used-up link again. The card below it is one
+  // click away for a new invite.
+  let retrying = $state(false);
+  let wantLogin = $state(false);
+
+  async function retry() {
+    retrying = true;
+    try {
+      await gang.start();
+    } finally {
+      retrying = false;
+    }
+  }
 
   const deviceValue = (id: string | null | undefined) => id ?? '';
   const deviceId = (value: string) => (value === '' ? null : value);
@@ -50,7 +64,23 @@
       {/each}
     </ol>
 
-    {#if step === 1}
+    {#if step === 1 && gang.offline && !wantLogin}
+      <section class="card" aria-labelledby="offline-title">
+        <h1 id="offline-title">Server nicht erreichbar</h1>
+        <p class="lead">
+          Du bist auf diesem Rechner angemeldet, aber der Server antwortet gerade nicht. Das liegt
+          meist am Server oder am Netz, nicht an dir.
+        </p>
+        <div class="actions">
+          <button class="primary" onclick={retry} disabled={retrying}>
+            {retrying ? 'Verbinde …' : 'Erneut versuchen'}
+          </button>
+          <button class="quiet" onclick={() => (wantLogin = true)}>
+            Mit neuer Einladung anmelden
+          </button>
+        </div>
+      </section>
+    {:else if step === 1}
       <LoginCard />
     {:else if step === 2}
       <section class="card" aria-labelledby="mic-title">
