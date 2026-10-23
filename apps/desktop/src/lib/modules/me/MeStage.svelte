@@ -3,13 +3,16 @@
   import { getApp } from '../../app.svelte';
   import DebugPanel from '../../DebugPanel.svelte';
   import Help from '../../Help.svelte';
+  import Account from './Account.svelte';
   import Appearance from './Appearance.svelte';
   import AudioSettings from './AudioSettings.svelte';
 
   const app = getApp();
 </script>
 
-{#if app.meSection === 'audio'}
+{#if app.meSection === 'konto'}
+  <Account />
+{:else if app.meSection === 'audio'}
   <AudioSettings />
 {:else if app.meSection === 'darstellung'}
   <Appearance />

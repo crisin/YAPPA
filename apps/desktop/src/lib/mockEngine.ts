@@ -8,6 +8,7 @@ import type { Participant } from './types/Participant';
 import type { Settings } from './types/Settings';
 import type { Stats } from './types/Stats';
 import defaultSettings from './types/defaultSettings.json';
+import { mockPeopleIn } from './mockApi';
 import { DEFAULT_SCENE, type Scene } from './scene';
 
 // Generated from `Settings::default()` in engine-protocol — the mock cannot drift from Rust.
@@ -55,6 +56,8 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
   const handlers = new Set<(event: Event) => void>();
   const settings: Settings = structuredClone(defaults);
   let connected = false;
+  /** Who is in the room now; the first one talks in waves. */
+  let people: Participant[] = [];
   let muted = false;
   let ticks = 0;
   let timer: ReturnType<typeof setInterval> | undefined;
@@ -108,7 +111,10 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
       type: 'levels',
       inputDb: -38 + 10 * wave,
       gateOpen: !muted,
-      peers: connected ? [{ identity: 'anna', levelDb: -30 + 12 * wave, speaking: wave > 0 }] : [],
+      peers:
+        connected && people.length > 0
+          ? [{ identity: people[0].identity, levelDb: -30 + 12 * wave, speaking: wave > 0 }]
+          : [],
     });
     if (ticks % 10 === 0) emit({ type: 'stats', stats: stats() });
     // A flaky link: gone for two seconds out of every five.
@@ -129,8 +135,15 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
           break;
         }
         connected = true;
-        emit({ type: 'joined', room: 'gang', identity: 'ich' });
-        emit({ type: 'participants', participants: structuredClone(others) });
+        {
+          // `mock.<room>.<me>` comes from the mock API's joinChannel: that room, those
+          // people. Any other token is a pasted developer invite: room `gang`.
+          const [kind, room, me] = command.token.split('.');
+          const fromApi = kind === 'mock' && room && me;
+          people = fromApi ? mockPeopleIn(room, me) : structuredClone(others);
+          emit({ type: 'joined', room: fromApi ? room : 'gang', identity: fromApi ? me : 'ich' });
+          emit({ type: 'participants', participants: structuredClone(people) });
+        }
         emit({ type: 'connection', state: 'connected' });
         break;
       case 'leave':

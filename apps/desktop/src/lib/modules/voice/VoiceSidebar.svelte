@@ -1,46 +1,116 @@
 <script lang="ts">
-  // Zone B of the voice module. Until the control plane exists there is one room — the one
-  // the invite leads to — shown TeamSpeak-style with the people right under it. U2 turns
-  // this into the channel tree.
+  // Zone B of the voice module: the channel tree, TeamSpeak-style — people right under their
+  // channel, so everybody sees who is where without going anywhere. One click (or Enter)
+  // joins; a click on a person opens them in the inspector. States are words, not only
+  // colours. Without a login (a pasted developer invite) there is only the one room.
   import { getApp } from '../../app.svelte';
+  import type { PresenceEntry } from '../../api';
 
-  const { session, shell } = getApp();
+  const { session, shell, gang } = getApp();
 
-  function personState(identity: string, muted: boolean, hasVoice: boolean): string {
+  const inMyRoom = (id: string) =>
+    session.inRoom && session.participants.some((p) => p.identity === id);
+
+  /** Same threshold the engine uses for the others (engine.rs `SPEAKING_DB`). */
+  const SPEAKING_DB = -45;
+
+  function speaking(person: PresenceEntry): boolean {
+    if (person.userId === gang.me?.id)
+      return session.inRoom && !session.muted && session.inputDb > SPEAKING_DB;
+    return session.peerLevels[person.userId]?.speaking ?? false;
+  }
+
+  function stateText(person: PresenceEntry): string {
+    const muted = session.participants.find((p) => p.identity === person.userId)?.muted;
+    if (person.userId === gang.me?.id && session.muted) return 'stumm';
     if (muted) return 'stumm';
-    if (!hasVoice) return 'ohne Ton';
-    return session.peerLevels[identity]?.speaking ? 'spricht' : '';
+    if (person.state.away) return 'abwesend';
+    if (person.state.talk === 'ptt') return 'PTT';
+    return '';
+  }
+
+  function openPerson(id: string) {
+    shell.openInspector({ kind: 'person', id });
   }
 </script>
 
 <div class="sidebar">
   <h2 class="space">Die Gang</h2>
-  <p class="heading">Voice-Channels</p>
-  {#if session.room && session.connection !== 'disconnected'}
-    <section class="channel" aria-label="Channel {session.room}">
-      <div class="channel-name">
-        <span>{session.room}</span>
+  {#if gang.status === 'in'}
+    <p class="heading" id="channels-heading">Voice-Channels</p>
+    <ul class="channels" aria-labelledby="channels-heading">
+      {#each gang.channels as channel (channel.id)}
+        {@const people = gang.peopleIn(channel.id)}
+        {@const mine = gang.myChannel === channel.id}
+        <li class="channel" class:mine>
+          <button
+            class="channel-name"
+            aria-current={mine ? 'true' : undefined}
+            aria-label="{channel.name}, {people.length === 1
+              ? '1 Person'
+              : `${people.length} Leute`}{mine ? ', du bist hier' : ', beitreten'}"
+            disabled={gang.joining !== null}
+            onclick={() => gang.join(channel.id)}
+          >
+            <span class="name">{channel.name}</span>
+            {#if gang.joining === channel.id}
+              <span class="count">…</span>
+            {:else if !mine}
+              <span class="join" aria-hidden="true">Beitreten</span>
+            {/if}
+            <span class="count" aria-hidden="true">{people.length}</span>
+          </button>
+          {#if people.length > 0}
+            <ul class="people" aria-label="Leute in {channel.name}">
+              {#each people as person (person.userId)}
+                {@const me = person.userId === gang.me?.id}
+                {@const state = stateText(person)}
+                <li>
+                  {#if me || !inMyRoom(person.userId)}
+                    <span class="who" class:speaking={speaking(person)}>
+                      {person.displayName}{me ? ' (du)' : ''}
+                    </span>
+                  {:else}
+                    <button
+                      class="who"
+                      class:speaking={speaking(person)}
+                      onclick={() => openPerson(person.userId)}
+                    >
+                      {person.displayName}
+                    </button>
+                  {/if}
+                  {#if state}<span class="state">{state}</span>{/if}
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </li>
+      {/each}
+    </ul>
+    {#if gang.offline}
+      <p class="empty">Server nicht erreichbar – Liste vom letzten Mal.</p>
+    {/if}
+  {:else if session.room && session.connection !== 'disconnected'}
+    <p class="heading">Raum</p>
+    <section class="channel mine" aria-label="Channel {session.room}">
+      <div class="channel-name static">
+        <span class="name">{session.room}</span>
         <span class="count">{session.participants.length + 1}</span>
       </div>
       <ul class="people" aria-label="Leute in {session.room}">
         <li><span class="who">{session.identity ?? 'Ich'} (du)</span></li>
         {#each session.participants as person (person.identity)}
-          {@const state = personState(person.identity, person.muted, person.hasVoice)}
           <li>
-            <button
-              class="who"
-              class:speaking={state === 'spricht'}
-              onclick={() => shell.openInspector({ kind: 'person', id: person.identity })}
-            >
-              {person.name}
-            </button>
-            {#if state}<span class="state">{state}</span>{/if}
+            <button class="who" onclick={() => openPerson(person.identity)}>{person.name}</button>
+            {#if person.muted}<span class="state">stumm</span>{/if}
           </li>
         {/each}
       </ul>
     </section>
+  {:else if gang.status === 'starting'}
+    <p class="empty">Verbinde …</p>
   {:else}
-    <p class="empty">Noch in keinem Channel. Mit einer Einladung geht es los.</p>
+    <p class="empty">Noch nicht dabei. Mit einer Einladung geht es los.</p>
   {/if}
 </div>
 
@@ -64,16 +134,63 @@
     letter-spacing: 0.06em;
   }
 
+  .channels {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
   .channel {
-    padding: var(--space-2);
-    border: 1px solid var(--color-border);
+    border: 1px solid transparent;
     border-radius: var(--radius-md);
+    padding: var(--space-1);
+  }
+
+  .channel.mine {
+    border-color: var(--color-border);
+    background: var(--color-surface-raised);
   }
 
   .channel-name {
     display: flex;
-    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+    padding: var(--space-1) var(--space-2);
+    background: transparent;
+    border-color: transparent;
     font-weight: 600;
+    text-align: left;
+  }
+
+  .channel-name:disabled {
+    cursor: default;
+  }
+
+  .channel-name .name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .join {
+    visibility: hidden;
+    padding: 0 var(--space-2);
+    border-radius: var(--radius-sm);
+    background: var(--color-accent);
+    color: var(--color-accent-text);
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+  }
+
+  .channel-name:hover .join,
+  .channel-name:focus-visible .join {
+    visibility: visible;
   }
 
   .count,
@@ -85,13 +202,13 @@
   }
 
   .empty {
-    margin: 0 var(--space-2);
+    margin: var(--space-2);
   }
 
   .people {
     list-style: none;
-    margin: var(--space-2) 0 0;
-    padding: 0 0 0 var(--space-3);
+    margin: 0;
+    padding: 0 var(--space-2) var(--space-1) var(--space-5);
   }
 
   .people li {
@@ -99,7 +216,7 @@
     justify-content: space-between;
     align-items: center;
     gap: var(--space-2);
-    min-height: 28px;
+    min-height: 26px;
   }
 
   .who {
@@ -107,16 +224,17 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    padding: 0 var(--space-1);
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
   }
 
   button.who {
-    padding: 0 var(--space-1);
     background: transparent;
-    border: 1px solid transparent;
     text-align: left;
   }
 
-  button.who.speaking {
+  .who.speaking {
     border-color: var(--color-speaking);
   }
 </style>

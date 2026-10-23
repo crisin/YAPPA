@@ -4,12 +4,14 @@
 import { createContext } from 'svelte';
 import type { Api } from './api';
 import type { AppInfo } from './engine';
+import { Gang } from './gang.svelte';
 import type { Session } from './session.svelte';
 import type { Shell } from './shell.svelte';
 import type { PublicConfig } from './types/PublicConfig';
 
 /** The sections of the module „Ich“. U3 adds the Einfach/Profi split on top. */
 export const ME_SECTIONS = [
+  { id: 'konto', label: 'Konto' },
   { id: 'audio', label: 'Audio und Sprechen' },
   { id: 'darstellung', label: 'Darstellung' },
   { id: 'diagnose', label: 'Diagnose' },
@@ -25,17 +27,19 @@ const THEME_KEY = 'yappa.theme';
 export class AppState {
   info = $state<AppInfo | null>(null);
   config = $state<PublicConfig | null>(null);
-  meSection = $state<MeSection>('audio');
+  meSection = $state<MeSection>('konto');
   theme = $state<Theme>('dark');
 
   readonly session: Session;
   readonly shell: Shell;
   readonly api: Api;
+  readonly gang: Gang;
 
   constructor(session: Session, shell: Shell, api: Api) {
     this.session = session;
     this.shell = shell;
     this.api = api;
+    this.gang = new Gang(api);
     try {
       const stored = localStorage.getItem(THEME_KEY);
       if (stored === 'dark' || stored === 'light') this.theme = stored;
@@ -51,6 +55,12 @@ export class AppState {
     } catch {
       // see constructor
     }
+  }
+
+  /** Leaves the voice channel: through the control-plane client when logged in (so the
+   * presence follows), straight at the engine for a pasted developer invite. */
+  leaveVoice() {
+    return this.gang.status === 'in' ? this.gang.leave() : this.session.leave();
   }
 
   /** Opens „Ich“ at a section — from the palette, the dock, or a help link. */

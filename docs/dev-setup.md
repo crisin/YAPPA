@@ -42,7 +42,7 @@ Docker, `lk` and `gh` come from the OS package manager (winget / brew).
 | --- | --- |
 | `cargo xtask dev` | desktop app with hot reload (`tauri dev`) |
 | `cargo xtask dev --ui` | UI only in the browser on :1420, engine and control plane mocked |
-| `cargo xtask dev --ui --scene <name>` | same, opened in a mock scene: `call` (default), `lobby`, `member`, `reconnect`, `offline`, `update` — see `apps/desktop/src/lib/scene.ts`; also `?scene=<name>` in the URL |
+| `cargo xtask dev --ui --scene <name>` | same, opened in a mock scene: `call` (default), `login` (first start), `lobby`, `member`, `reconnect`, `offline`, `update` — see `apps/desktop/src/lib/scene.ts`; also `?scene=<name>` in the URL |
 | `cargo xtask build` | production build: release profile (thin LTO, stripped) + installers, lists them with size |
 | `cargo xtask build --debug` | installer from the debug profile |
 | `cargo xtask check` | the gate: fmt, tokens, docs, prettier, svelte-check, clippy `-D warnings`, nextest + doctests, vitest, cargo-deny |

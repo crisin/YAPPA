@@ -7,7 +7,7 @@ import VoiceSidebar from './VoiceSidebar.svelte';
 import VoiceStage from './VoiceStage.svelte';
 
 export function voiceModule(app: AppState): ModuleDef {
-  const { session, shell } = app;
+  const { session, shell, gang } = app;
   return {
     id: 'voice',
     label: 'Voice',
@@ -15,7 +15,7 @@ export function voiceModule(app: AppState): ModuleDef {
     sidebar: VoiceSidebar,
     stage: VoiceStage,
     inspector: PersonInspector,
-    crumb: () => (session.inRoom ? session.room : null),
+    crumb: () => (session.inRoom ? (gang.channelName(session.room) ?? session.room) : null),
     commands: () => {
       const actions: CommandDef[] = [
         {
@@ -39,7 +39,7 @@ export function voiceModule(app: AppState): ModuleDef {
           label: 'Channel verlassen',
           group: 'Aktionen',
           keywords: ['leave', 'auflegen'],
-          run: () => void session.leave(),
+          run: () => void app.leaveVoice(),
         });
       }
       const people: CommandDef[] = session.participants.map((p) => ({
@@ -51,7 +51,19 @@ export function voiceModule(app: AppState): ModuleDef {
           shell.openInspector({ kind: 'person', id: p.identity });
         },
       }));
-      return [...actions, ...people];
+      const channels: CommandDef[] = gang.channels
+        .filter((c) => c.id !== gang.myChannel)
+        .map((c) => ({
+          id: `channel:${c.id}`,
+          label: `${c.name} beitreten`,
+          group: 'Channels',
+          keywords: [c.name, 'channel', 'beitreten'],
+          run: () => {
+            shell.open('voice');
+            void gang.join(c.id);
+          },
+        }));
+      return [...channels, ...actions, ...people];
     },
   };
 }

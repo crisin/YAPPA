@@ -1,74 +1,112 @@
 import { describe, expect, it } from 'vitest';
-import type { PresenceMap } from './api';
-import { CHANNELS, GANG, createMockApi } from './mockApi';
+import type { PresenceEntry } from './api';
+import { inviteKind } from './api';
+import { createMockEngine } from './mockEngine';
+import { CHANNELS, GANG, MOCK_INVITE_LINK, createMockApi } from './mockApi';
+import type { Event } from './types/Event';
+
+async function people(api = createMockApi()): Promise<PresenceEntry[]> {
+  let seen: PresenceEntry[] = [];
+  await api.presence((p) => (seen = p));
+  return seen;
+}
 
 describe('mock API: the gang', () => {
-  it('logs Krille in as admin with the four channels in order', async () => {
+  it('resumes Krille as admin, with the four channels in order', async () => {
     const api = createMockApi();
-    expect(await api.me()).toMatchObject({ id: 'krille', role: 'admin' });
-    const channels = await api.channels();
-    expect(channels.map((c) => c.name)).toEqual(['Lobby', 'Raid-Abend', 'Musik-Session', 'AFK']);
-    expect(channels).toEqual(CHANNELS);
+    expect(await api.resume()).toMatchObject({ id: 'krille', role: 'admin' });
+    expect(await api.channels()).toEqual(CHANNELS);
   });
 
-  it('shows everybody online in the call scene, with their channel and talk mode', async () => {
-    const api = createMockApi('call');
-    let seen: PresenceMap = {};
-    await api.presence((p) => (seen = p));
-    expect(Object.keys(seen)).toHaveLength(GANG.length);
-    expect(seen.lea.state).toMatchObject({ channelId: 'raid', talk: 'ptt' });
-    expect(seen.rico.state.away).toBe(true);
-    expect(seen.ben.displayName).toBe('Ben');
+  it('lists everybody online, me first and nowhere yet, the others by name', async () => {
+    const seen = await people();
+    expect(seen).toHaveLength(GANG.length);
+    expect(seen[0]).toMatchObject({ userId: 'krille', state: { channelId: null } });
+    expect(seen.slice(1).map((p) => p.displayName)).toEqual([
+      'Ben',
+      'Jule',
+      'Lea',
+      'Mo',
+      'Rico',
+      'Sasha',
+      'Tim',
+    ]);
+    expect(seen.find((p) => p.userId === 'lea')?.state).toMatchObject({
+      channelId: 'raid',
+      talk: 'ptt',
+    });
   });
 
   it('is quiet in the lobby scene and sees the app as Ben in the member scene', async () => {
-    let seen: PresenceMap = {};
-    await createMockApi('lobby').presence((p) => (seen = p));
-    expect(Object.keys(seen).sort()).toEqual(['krille', 'rico']);
-    expect(await createMockApi('member').me()).toMatchObject({ id: 'ben', role: 'member' });
+    expect((await people(createMockApi('lobby'))).map((p) => p.userId)).toEqual(['krille', 'rico']);
+    expect(await createMockApi('member').resume()).toMatchObject({ id: 'ben', role: 'member' });
     await expect(createMockApi('member').admin.members()).rejects.toMatchObject({
       code: 'forbidden',
     });
   });
 
-  it('pushes my own presence change to every listener and stops after unsubscribe', async () => {
-    const api = createMockApi();
-    const updates: PresenceMap[] = [];
+  it('joins a channel through the engine and moves me there in the presence', async () => {
+    const engine = createMockEngine();
+    const events: Event[] = [];
+    await engine.subscribe((e) => events.push(e));
+    const api = createMockApi('call', engine);
+    const updates: PresenceEntry[][] = [];
     const stop = await api.presence((p) => updates.push(p));
-    await api.setPresence({ channelId: 'musik', talk: 'ptt' });
-    expect(updates).toHaveLength(2);
-    expect(updates[1].krille.state).toMatchObject({ channelId: 'musik', talk: 'ptt' });
+    await api.joinChannel('raid');
+    expect(events).toContainEqual({ type: 'joined', room: 'raid', identity: 'krille' });
+    const participants = events.find((e) => e.type === 'participants');
+    expect(participants).toMatchObject({
+      participants: [
+        { name: 'Ben' },
+        { name: 'Sasha' },
+        { name: 'Tim', muted: true },
+        { name: 'Lea' },
+      ],
+    });
+    expect(updates.at(-1)?.[0].state.channelId).toBe('raid');
+    await api.leaveChannel();
+    expect(updates.at(-1)?.[0].state.channelId).toBeNull();
+    expect(events.filter((e) => e.type !== 'log').at(-1)).toMatchObject({
+      type: 'connection',
+      state: 'disconnected',
+    });
     stop();
     await api.setPresence({ away: true });
-    expect(updates).toHaveLength(2);
+    expect(updates).toHaveLength(3);
+    await expect(api.joinChannel('nope')).rejects.toMatchObject({ code: 'channel_unknown' });
   });
 
-  it('hands out a token per channel and refuses unknown channels', async () => {
-    const api = createMockApi();
-    expect(await api.voiceToken('raid')).toMatchObject({ wsUrl: 'wss://voice.yappa.example' });
-    await expect(api.voiceToken('nope')).rejects.toMatchObject({ code: 'channel_unknown' });
-  });
-
-  it('redeems an invite once and rejects short names', async () => {
-    const api = createMockApi();
-    await expect(api.redeemInvite('gang-7f3k', 'K')).rejects.toMatchObject({
-      code: 'name_too_short',
+  it('logs in once with an invite link and checks the name', async () => {
+    const api = createMockApi('login');
+    expect(await api.resume()).toBeNull();
+    expect(await people(api)).not.toContainEqual(expect.objectContaining({ userId: 'krille' }));
+    await expect(api.redeem('hallo', 'Krille')).rejects.toMatchObject({ code: 'invite_invalid' });
+    await expect(api.redeem(MOCK_INVITE_LINK, 'K')).rejects.toMatchObject({
+      code: 'name_invalid',
     });
-    const session = await api.redeemInvite('gang-7f3k', '  Krille  ');
-    expect(session.user.displayName).toBe('Krille');
-    expect(session.presence.token).toContain('presence');
-    await expect(api.redeemInvite('gang-7f3k', 'Krille')).rejects.toMatchObject({
+    const me = await api.redeem(` ${MOCK_INVITE_LINK}\n`, '  Krille  ');
+    expect(me.displayName).toBe('Krille');
+    expect(await api.resume()).toMatchObject({ id: 'krille' });
+    await expect(api.redeem(MOCK_INVITE_LINK, 'Krille')).rejects.toMatchObject({
       code: 'invite_invalid',
     });
+    await api.logout();
+    expect(await api.resume()).toBeNull();
+  });
+
+  it('tells invite links from developer invites', () => {
+    expect(inviteKind(MOCK_INVITE_LINK)).toBe('link');
+    expect(inviteKind(' yappa1.abc ')).toBe('direct');
+    expect(inviteKind('hallo')).toBeNull();
   });
 });
 
 describe('mock API: scenes with trouble', () => {
-  it('rejects everything as unreachable when offline', async () => {
+  it('rejects as unreachable when offline', async () => {
     const api = createMockApi('offline');
-    await expect(api.me()).rejects.toMatchObject({ code: 'unreachable' });
+    await expect(api.resume()).rejects.toMatchObject({ code: 'unreachable' });
     await expect(api.channels()).rejects.toMatchObject({ code: 'unreachable' });
-    await expect(api.config()).rejects.toMatchObject({ code: 'unreachable' });
+    await expect(api.joinChannel('lobby')).rejects.toMatchObject({ code: 'unreachable' });
   });
 
   it('demands a newer version in the update scene', async () => {
@@ -91,10 +129,10 @@ describe('mock API: admin', () => {
 
   it('kicks someone out of presence and logs it', async () => {
     const api = createMockApi();
-    let seen: PresenceMap = {};
+    let seen: PresenceEntry[] = [];
     await api.presence((p) => (seen = p));
     await api.admin.kick('tim');
-    expect(seen.tim).toBeUndefined();
+    expect(seen.map((p) => p.userId)).not.toContain('tim');
     expect((await api.admin.events())[0]).toMatchObject({ kind: 'kicked', userId: 'tim' });
   });
 
@@ -112,15 +150,12 @@ describe('mock API: admin', () => {
     ]);
     await api.admin.renameChannel('chill-zone', 'Chillzone');
     await api.admin.deleteChannel('raid');
-    const channels = await api.channels();
-    expect(channels.map((c) => [c.name, c.position])).toEqual([
+    expect((await api.channels()).map((c) => [c.name, c.position])).toEqual([
       ['Lobby', 0],
       ['Chillzone', 1],
       ['Musik-Session', 2],
       ['AFK', 3],
     ]);
-    let seen: PresenceMap = {};
-    await api.presence((p) => (seen = p));
-    expect(seen.ben.state.channelId).toBeNull();
+    expect((await people(api)).find((p) => p.userId === 'ben')?.state.channelId).toBeNull();
   });
 });

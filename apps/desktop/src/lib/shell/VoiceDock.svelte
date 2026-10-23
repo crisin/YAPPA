@@ -5,7 +5,9 @@
   import { getApp } from '../app.svelte';
   import Meter from '../Meter.svelte';
 
-  const { session } = getApp();
+  const app = getApp();
+  const { session, gang } = app;
+  const where = $derived(gang.channelName(session.room) ?? session.room);
 
   const status = $derived(
     {
@@ -25,7 +27,7 @@
   <div class="line">
     <span class="dot" class:on={session.connection === 'connected'} aria-hidden="true"></span>
     <span class="status" role="status">
-      {status}{#if session.room && session.connection !== 'disconnected'}&nbsp;· {session.room}{/if}
+      {status}{#if where && session.connection !== 'disconnected'}&nbsp;· {where}{/if}
     </span>
   </div>
   {#if rtt !== null && session.connection === 'connected'}
@@ -58,7 +60,7 @@
         />{/if}
     </button>
     {#if session.inRoom}
-      <button class="leave" onclick={() => session.leave()}>
+      <button class="leave" onclick={() => app.leaveVoice()}>
         <PhoneOff size={16} aria-hidden="true" />Verlassen
       </button>
     {/if}

@@ -4,9 +4,9 @@
   // connection and server state, the theme, and the two keys that work everywhere
   // (`Strg K` for the palette, `Esc` to step back).
   import { onMount, untrack } from 'svelte';
-  import { api } from './lib/api';
+  import { api as defaultApi, type Api } from './lib/api';
   import { AppState, setApp } from './lib/app.svelte';
-  import { engine } from './lib/engine';
+  import { engine as defaultEngine, type Engine } from './lib/engine';
   import { help } from './lib/helpState.svelte';
   import { meModule } from './lib/modules/me';
   import { voiceModule } from './lib/modules/voice';
@@ -15,8 +15,11 @@
   import { BANNER, Shell as ShellState } from './lib/shell.svelte';
   import { isBlocked } from './lib/version';
 
+  // Tests hand in their own mocks (a scene per test); the app uses the real doors.
+  let { api = defaultApi, engine = defaultEngine }: { api?: Api; engine?: Engine } = $props();
+  // svelte-ignore state_referenced_locally
   const app = setApp(new AppState(new Session(engine), new ShellState(), api));
-  const { session, shell } = app;
+  const { session, shell, gang } = app;
   shell.register(voiceModule(app));
   shell.register(meModule(app));
 
@@ -43,11 +46,13 @@
       if (app.info.debugPanel) app.openMe('diagnose');
       stop = await session.start();
       if (gone) stop();
+      await gang.start();
       void loadConfig();
     })();
     return () => {
       gone = true;
       stop?.();
+      gang.stop();
     };
   });
 

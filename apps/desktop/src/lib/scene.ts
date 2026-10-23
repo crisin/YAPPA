@@ -2,7 +2,8 @@
 // show without a server and without audio. Both mocks — engine and API — read the scene,
 // so one word puts the whole UI into a state that is otherwise hard to reach on demand.
 export const SCENES = {
-  call: 'Im Call: Raid-Abend mit fünf Leuten, Krille (du) ist Admin',
+  call: 'Abend mit der Gang: vier im Raid-Abend, zwei in der Lobby; Krille (du) ist Admin',
+  login: 'Erster Start: noch niemand angemeldet, eine Einladung wartet',
   lobby: 'Allein in der Lobby, sonst ist nur Rico da (abwesend)',
   member: 'Wie Ben es sieht: Mitglied ohne Admin-Rolle',
   reconnect: 'Die Verbindung bricht alle paar Sekunden weg und kommt wieder',
