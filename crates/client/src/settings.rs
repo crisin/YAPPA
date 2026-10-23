@@ -85,6 +85,18 @@ pub struct Loaded {
 /// the theme) to 2.
 pub fn load(profile: &Profile) -> Loaded {
     let raw: Option<Value> = profile.read_json(ENGINE_SETTINGS_FILE);
+    // A file this build cannot use (newer version, broken) is kept as `.bak` before the
+    // defaults are ever saved over it.
+    if let Some(value) = &raw {
+        let usable = serde_json::from_value::<Settings>(value.clone())
+            .ok()
+            .is_some_and(|s| s.validate().is_ok());
+        let old_version = value.get("version").and_then(Value::as_u64) == Some(1);
+        if !usable && !old_version {
+            let from = profile.path(ENGINE_SETTINGS_FILE);
+            let _ = std::fs::copy(&from, from.with_extension("json.bak"));
+        }
+    }
     let mut app: AppSettings = profile.read_json(APP_SETTINGS_FILE).unwrap_or_default();
     let app_file_exists = profile.path(APP_SETTINGS_FILE).exists();
     let (engine, theme, migrated) = migrate_engine(raw);
@@ -129,8 +141,10 @@ fn migrate_engine(raw: Option<Value>) -> (Settings, Option<String>, bool) {
     match settings {
         Ok(settings) => (settings, theme, migrated),
         Err(problem) => {
+            // Not "migrated": nothing is written over the file until the user changes a
+            // setting, and `load` keeps a copy first (realtime review C1).
             tracing::warn!(%problem, "engine settings unusable — starting with defaults");
-            (Settings::default(), theme, true)
+            (Settings::default(), theme, false)
         }
     }
 }
@@ -166,7 +180,7 @@ mod tests {
         );
         let (settings, _, migrated) = migrate_engine(Some(json!({ "version": 2, "eq": 7 })));
         assert_eq!(settings, Settings::default());
-        assert!(migrated);
+        assert!(!migrated, "a broken file is not overwritten by itself");
     }
 
     #[test]

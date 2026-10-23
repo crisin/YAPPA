@@ -10,7 +10,9 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 /// Version of this contract. The UI refuses to talk to an engine with a different major.
-pub const PROTOCOL_VERSION: u32 = 1;
+/// 2: `Settings` lost `theme` (ADR-007). UI and engine ship in one binary today, so this
+/// guards the day the engine runs as its own process.
+pub const PROTOCOL_VERSION: u32 = 2;
 
 /// Version of the [`Settings`] schema, stored with the settings file for migrations.
 /// 2 (ADR-007): audio and sending only — the theme moved to the app settings

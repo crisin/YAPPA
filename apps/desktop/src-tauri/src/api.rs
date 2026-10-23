@@ -20,6 +20,14 @@ pub struct PresenceSlot(pub Mutex<Option<client::Presence>>);
 
 type Reply<T> = Result<T, ApiFailure>;
 
+/// Ending a presence connection joins its thread. That never happens under the slot's lock
+/// (the sync commands would freeze the UI) nor on an async worker (realtime review C1).
+fn retire(old: Option<client::Presence>) {
+    if let Some(old) = old {
+        std::thread::spawn(move || drop(old));
+    }
+}
+
 fn talk_mode(settings: &engine_protocol::Settings) -> TalkMode {
     match settings.transmit_mode {
         engine_protocol::TransmitMode::PushToTalk => TalkMode::Ptt,
@@ -46,7 +54,8 @@ pub async fn start_presence(handle: &AppHandle, app: &App, client: &Arc<Client>)
             let _ = emitter.emit(PRESENCE_EVENT, entries);
         })
         .map_err(|e| ApiFailure::new("presence_failed", &e.to_string()))?;
-    *app.presence.0.lock().expect("lock") = Some(presence);
+    let old = app.presence.0.lock().expect("lock").replace(presence);
+    retire(old);
     Ok(me.user)
 }
 
@@ -81,7 +90,8 @@ pub async fn api_resume(handle: AppHandle, app: State<'_, App>) -> Reply<Option<
 #[tauri::command]
 pub async fn api_logout(app: State<'_, App>) -> Reply<()> {
     app.with_engine(|e| e.send(Command::Leave));
-    app.presence.0.lock().expect("lock").take();
+    let old = app.presence.0.lock().expect("lock").take();
+    retire(old);
     app.client.logout().await;
     Ok(())
 }

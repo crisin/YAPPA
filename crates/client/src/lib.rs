@@ -12,6 +12,10 @@
 //!   session.json         server + user of the login (not secret)
 //!   cache/channels.json, cache/config.json   last answers, for when the server is away
 //! ```
+//! The async calls write small JSON files and touch the credential store directly instead
+//! of via `spawn_blocking`: a few kilobytes and one OS call, rare, far from any audio thread
+//! (realtime review C1 accepted this).
+//!
 //! The session token itself lives in the credential store (Windows Credential Manager,
 //! macOS Keychain), with a file next to `session.json` as the fallback.
 

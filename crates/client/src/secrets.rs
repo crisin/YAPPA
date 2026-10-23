@@ -38,15 +38,13 @@ impl KeyringStore {
         keyring::Entry::new(SERVICE, &format!("{}:{key}", self.prefix)).ok()
     }
 
+    /// Reads a probe entry instead of writing one (realtime review C1): "no entry" means the
+    /// store answers, anything else means it does not.
     fn works(profile: &Profile) -> bool {
-        let probe = format!("{}:probe", profile.name());
-        let Ok(entry) = keyring::Entry::new(SERVICE, &probe) else {
+        let Ok(entry) = keyring::Entry::new(SERVICE, &format!("{}:probe", profile.name())) else {
             return false;
         };
-        let ok = entry.set_password("probe").is_ok()
-            && entry.get_password().ok().as_deref() == Some("probe");
-        let _ = entry.delete_credential();
-        ok
+        matches!(entry.get_password(), Ok(_) | Err(keyring::Error::NoEntry))
     }
 }
 

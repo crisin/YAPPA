@@ -166,7 +166,20 @@ async fn session(
 ) -> Ended {
     let mut options = RoomOptions::default();
     options.auto_subscribe = false;
-    let (room, mut room_events) = match Room::connect(url, token, options).await {
+    // A close must not wait for a slow or hanging connect (realtime review C1): race it
+    // against the control channel; new attributes meanwhile are only remembered.
+    let connect = Room::connect(url, token, options);
+    tokio::pin!(connect);
+    let connected = loop {
+        tokio::select! {
+            result = &mut connect => break result,
+            message = control.recv() => match message {
+                Some(Control::SetAttributes(attributes)) => *mine = Some(attributes),
+                Some(Control::Close) | None => return Ended::Closed,
+            },
+        }
+    };
+    let (room, mut room_events) = match connected {
         Ok(connected) => connected,
         Err(e) => {
             let message = format!("could not connect to {url}: {e}");
@@ -186,7 +199,7 @@ async fn session(
     });
     events(PresenceEvent::State(LinkState::Connected));
     if let Some(attributes) = mine.clone() {
-        apply(&room, attributes).await;
+        apply(&room, attributes);
     }
 
     let ended = loop {
@@ -194,7 +207,7 @@ async fn session(
             message = control.recv() => match message {
                 Some(Control::SetAttributes(attributes)) => {
                     *mine = Some(attributes.clone());
-                    apply(&room, attributes).await;
+                    apply(&room, attributes);
                 }
                 Some(Control::Close) | None => break Ended::Closed,
             },
@@ -248,10 +261,16 @@ async fn session(
     ended
 }
 
-async fn apply(room: &Room, attributes: HashMap<String, String>) {
-    if let Err(error) = room.local_participant().set_attributes(attributes).await {
-        tracing::warn!(%error, "could not set presence attributes");
-    }
+/// Sends my attributes in a task of its own: waiting for the server's answer must not keep
+/// the loop from hearing a close (realtime review C1). Changes are seconds apart, so two
+/// overlapping sends do not happen in practice; if they did, the server keeps the last.
+fn apply(room: &Room, attributes: HashMap<String, String>) {
+    let participant = room.local_participant();
+    tokio::spawn(async move {
+        if let Err(error) = participant.set_attributes(attributes).await {
+            tracing::warn!(%error, "could not set presence attributes");
+        }
+    });
 }
 
 #[cfg(test)]
