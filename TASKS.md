@@ -100,6 +100,11 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] Cloudflare Tunnel setup: `infra/livekit/tunnel.yml` (LiveKit + control plane, no
+      Caddy; optional `cloudflared` profile), two hostnames (voice → 7880, API → 8090,
+      `YAPPA_PUBLIC_URL` set), `docs/cloudflare-tunnel.md` — says plainly that the voice
+      (UDP 7882 / TCP 7881) cannot go through the tunnel and needs port forwarding and a
+      public IPv4; compose validated, never run with a real tunnel (2026-10-23)
 - [x] U6 Admin module (rail bottom, admins only — `shell.setRole` now follows the login):
       Leute (role, where they are from presence, app version marked when below the policy,
       last seen, kick after a second click), Einladungen (new link to copy, list with

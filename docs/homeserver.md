@@ -3,6 +3,8 @@
 yAPPA auf dem Mini-PC zu Hause, erreichbar für die Gang über die FRITZ!Box. Diese
 Anleitung ist für genau diesen Aufbau geschrieben: FRITZ!Box 6660 Cable, Mini-PC mit
 Windows, darauf eine Linux-VM. Erst ausprobieren ohne Mini-PC? → [Alles nur lokal](#alles-nur-lokal).
+Läuft auf dem Server schon ein Cloudflare Tunnel für andere Apps? →
+[yAPPA hinter einem Cloudflare Tunnel](cloudflare-tunnel.md).
 
 > **Stand 2026-10-23:** Lokal geprüft sind LiveKit, die Control-Plane (`yappa-control`, als
 > Docker-Image gebaut), Einladungslinks, Beitritt und Presence. Nicht geprüft: Caddy mit

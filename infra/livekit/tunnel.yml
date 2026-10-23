@@ -1,0 +1,60 @@
+# yAPPA behind a Cloudflare Tunnel: LiveKit + control plane, no Caddy (Cloudflare does TLS).
+# Step by step: docs/cloudflare-tunnel.md. Needs infra/livekit/.env with LIVEKIT_API_SECRET,
+# YAPPA_VOICE_HOST and YAPPA_API_HOST.
+#
+#   docker compose -f tunnel.yml up -d --build                        # tunnel runs elsewhere
+#   docker compose -f tunnel.yml --profile cloudflared up -d --build  # tunnel in here too
+#
+# The tunnel carries only HTTP and WebSocket: the API and LiveKit's signalling. The voice
+# itself is UDP and goes straight to this machine — the router forwards UDP 7882 and TCP 7881.
+# Host networking on purpose, as in home.yml: LiveKit must see the real addresses, and
+# media must not pass through Docker's NAT. Linux only.
+name: yappa-tunnel
+
+services:
+  livekit:
+    image: livekit/livekit-server:v1.13.8
+    command: ["--config=/etc/livekit.yaml"]
+    environment:
+      # Key name fixed, as in home.yml: LiveKit signs its webhooks with it.
+      LIVEKIT_KEYS: "yappa: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in .env}"
+    # Same settings as the home server: signalling 7880 (only the tunnel talks to it),
+    # TCP 7881 and UDP 7882 for media, public IPv4 via STUN, webhooks to localhost:8090.
+    volumes:
+      - ./livekit.home.yaml:/etc/livekit.yaml:ro
+    network_mode: host
+    restart: unless-stopped
+
+  # Invites, channels, tokens, event log. The tunnel publishes it on its own hostname
+  # (cloudflared cannot strip a path prefix like Caddy's /api does). The first start prints
+  # an admin invite: `docker compose -f tunnel.yml logs control | grep invite`.
+  control:
+    build:
+      context: ../..
+      dockerfile: infra/control/Dockerfile
+    environment:
+      LIVEKIT_API_KEY: "yappa"
+      LIVEKIT_API_SECRET: "${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in .env}"
+      LIVEKIT_WS_URL: "wss://${YAPPA_VOICE_HOST:?set YAPPA_VOICE_HOST in .env}"
+      LIVEKIT_HTTP_URL: "http://localhost:7880"
+      YAPPA_PUBLIC_URL: "https://${YAPPA_API_HOST:?set YAPPA_API_HOST in .env}"
+      YAPPA_UPDATE_BASE_URL: "https://${YAPPA_API_HOST}/updates"
+    volumes:
+      - control_data:/data
+    network_mode: host
+    restart: unless-stopped
+
+  # Optional: a tunnel of its own, for a machine that has none yet. With host networking it
+  # reaches LiveKit and the control plane on localhost. The token comes from the Cloudflare
+  # dashboard (Zero Trust → Networks → Tunnels → the tunnel → install command).
+  cloudflared:
+    profiles: ["cloudflared"]
+    image: cloudflare/cloudflared:2026.9.3
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: "${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN in .env}"
+    network_mode: host
+    restart: unless-stopped
+
+volumes:
+  control_data:

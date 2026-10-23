@@ -4,6 +4,7 @@ One line per finished task (definition of done). Newest first.
 
 ## Unreleased
 
+- Server setup for machines that already publish apps through a Cloudflare Tunnel (`infra/livekit/tunnel.yml`, guide in the help).
 - Admin in the app: invite links with one click, channels, who runs which version, roles, kick, minimum version and the event log.
 - First start in three steps: name, microphone check with a live level, how you talk (headset or speakers) — then straight into the lobby.
 - Settings have two views: „Einfach“ for everyday use and „Profi“ with the signal chain (every stage with its live level and parameters, CPU cost and added latency), keys, network, updates and diagnosis.

@@ -15,6 +15,10 @@ Einstellungen für Sprechmodus, Schwelle, Rauschunterdrückung, Eingangskanal un
 LiveKit und Control-Plane in einem Befehl, Admin-Link im Terminal, ein zweiter PC im
 Heimnetz kommt mit seinem eigenen Link rein ([Alles nur lokal](homeserver.md#alles-nur-lokal)).
 
+**Beim Kumpel mit Cloudflare Tunnel:** [yAPPA hinter einem Cloudflare Tunnel](cloudflare-tunnel.md) —
+der Tunnel trägt Anmeldung und Signalisierung, die Sprache braucht trotzdem UDP 7882 und
+TCP 7881 als Freigabe im Router und eine öffentliche IPv4.
+
 **Für die Gang, auf dem Mini-PC:** nach [Homeserver einrichten](homeserver.md), Schritte 1–7.
 Die Stolpersteine:
 
