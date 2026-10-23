@@ -4,6 +4,7 @@
 export const SCENES = {
   call: 'Abend mit der Gang: vier im Raid-Abend, zwei in der Lobby; Krille (du) ist Admin',
   login: 'Erster Start: noch niemand angemeldet, eine Einladung wartet',
+  invite: 'Erster Start über einen angeklickten Einladungslink',
   lobby: 'Allein in der Lobby, sonst ist nur Rico da (abwesend)',
   member: 'Wie Ben es sieht: Mitglied ohne Admin-Rolle',
   reconnect: 'Die Verbindung bricht alle paar Sekunden weg und kommt wieder',

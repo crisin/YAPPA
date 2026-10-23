@@ -27,7 +27,9 @@
     try {
       app.config = await api.config();
       shell.clearBanner('offline');
-    } catch {
+    } catch (reason) {
+      // Not logged in yet means: no server known yet — that is not "offline".
+      if ((reason as { code?: string })?.code !== 'unreachable') return;
       shell.showBanner({
         id: 'offline',
         priority: BANNER.offline,
@@ -40,6 +42,7 @@
 
   onMount(() => {
     let stop: (() => void) | undefined;
+    let stopLinks: (() => void) | undefined;
     let gone = false;
     void (async () => {
       app.info = await engine.info();
@@ -48,16 +51,38 @@
       if (gone) stop();
       await gang.start();
       void loadConfig();
+      stopLinks = await api.inviteLinks(receiveLink);
     })();
     return () => {
       gone = true;
       stop?.();
+      stopLinks?.();
       gang.stop();
     };
   });
 
   $effect(() => {
     document.documentElement.dataset.theme = app.theme;
+  });
+
+  /** A clicked invite link: into the login card, or a note when already logged in. */
+  function receiveLink(link: string) {
+    shell.open('voice');
+    if (gang.status === 'in') {
+      shell.showBanner({
+        id: 'invite',
+        priority: BANNER.update,
+        text: 'Du bist auf diesem Rechner schon angemeldet – die Einladung wird nicht gebraucht.',
+        dismissible: true,
+      });
+    } else {
+      session.invite = link;
+    }
+  }
+
+  // After a login the server is known: its config (minimum version) can be read.
+  $effect(() => {
+    if (gang.status === 'in') untrack(() => void loadConfig());
   });
 
   // A glossary link ("Mehr im Glossar") asks for the help; it lives in „Ich“.

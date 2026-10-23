@@ -24,11 +24,6 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 **M2 · Login and channels** — invite link, name, lobby, who is where, join by click
 
-- [ ] U5 Bind the client: `api.ts` → the Tauri commands of C1 (`api_*`, `voice_join`,
-      `voice_leave`, `presence` event); deep link `yappa://invite/<code>?server=…` +
-      single instance, paste as fallback; presence → channel tree; rewrite
-      `docs/mittesten.md`
-
 **M3 · Voice** — noise reduction, gate, PTT in the game, Einfach/Profi
 
 - [ ] S1 rest: mouth-to-ear with a loopback cable (Focusrite out → in) via
@@ -114,6 +109,12 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] U5 Bind the client: `tauriApi.ts` (the door in the app: `api_*`, `voice_join`,
+      `voice_leave`, `presence` event; admin answers "not yet" until U6), deep link
+      `yappa://invite/…` via `tauri-plugin-deep-link` + `tauri-plugin-single-instance`
+      (cold start and while running, the link lands in the login card; already logged in →
+      a note), config banner only for "unreachable", config reloaded after login; tester
+      guide and glossary rewritten for invite links; mock scene `invite` (2026-10-23)
 - [x] U2 Voice module: channel tree TeamSpeak-style (people under their channel, counts,
       states as words: stumm/PTT/abwesend, speaking ring), join on one click or Enter or
       from the palette, switch by clicking another channel, leave from the dock; tiles of

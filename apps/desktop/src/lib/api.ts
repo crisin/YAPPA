@@ -1,6 +1,7 @@
 // The UI's second door (ADR-004): everything that is not audio — who I am, channels, who is
 // where, admin. It speaks api-types (generated) and nothing else. In the app the Tauri
-// commands of crates/client answer (U5); in the browser and in tests the mock gang does.
+// commands of crates/client answer (`tauriApi.ts`); in the browser and in tests the mock
+// gang does.
 // Session and voice tokens never come through this door: joining a channel is one call.
 import type { Channel } from './types/Channel';
 import type { EventEntry } from './types/EventEntry';
@@ -11,9 +12,11 @@ import type { PublicConfig } from './types/PublicConfig';
 import type { Role } from './types/Role';
 import type { TalkMode } from './types/TalkMode';
 import type { User } from './types/User';
+import { isTauri } from '@tauri-apps/api/core';
 import { engine } from './engine';
 import { createMockApi } from './mockApi';
 import { sceneFromUrl } from './scene';
+import { tauriApi } from './tauriApi';
 
 export type { PresenceEntry };
 
@@ -45,6 +48,11 @@ export interface Api {
   /** Into a channel: token, engine join and presence in one step. */
   joinChannel(channelId: string): Promise<void>;
   leaveChannel(): Promise<void>;
+  /**
+   * Invite links the OS hands over (a clicked `yappa://invite/…`): the one that started the
+   * app right away, later ones as they come. The returned function stops listening.
+   */
+  inviteLinks(handler: (link: string) => void): Promise<() => void>;
   admin: {
     members(): Promise<Member[]>;
     setRole(userId: string, role: Role): Promise<void>;
@@ -69,4 +77,4 @@ export function inviteKind(text: string): 'link' | 'direct' | null {
   return null;
 }
 
-export const api: Api = createMockApi(sceneFromUrl(), engine);
+export const api: Api = isTauri() ? tauriApi : createMockApi(sceneFromUrl(), engine);

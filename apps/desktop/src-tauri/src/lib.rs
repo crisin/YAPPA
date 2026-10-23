@@ -13,6 +13,7 @@ use serde::Serialize;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager};
+use tauri_plugin_deep_link::DeepLinkExt;
 use transport::livekit::LiveKitTransport;
 
 /// The one channel on which every [`Event`] reaches the UI.
@@ -38,6 +39,8 @@ pub fn start_engine(
 type SharedEngine = Arc<Mutex<Option<EngineHandle>>>;
 
 pub struct App {
+    /// An invite link that opened the app before the UI asked for it (cold start).
+    pending_link: Mutex<Option<String>>,
     engine: SharedEngine,
     logging: logging::Logging,
     client: Arc<Client>,
@@ -228,18 +231,75 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     *engine.lock().unwrap() = Some(started);
+    // Invite links (U5): the one the app was started with, and every later one — a second
+    // start hands its link over through the single-instance plugin.
+    #[cfg(debug_assertions)]
+    if let Err(e) = app.deep_link().register_all() {
+        tracing::warn!(error = %e, "could not register the yappa:// scheme for development");
+    }
+    let first_link = app
+        .deep_link()
+        .get_current()
+        .ok()
+        .flatten()
+        .and_then(|urls| invite_link(urls.iter().map(|u| u.as_str())));
+    if first_link.is_some() {
+        tracing::info!("started with an invite link");
+    }
     app.manage(App {
+        pending_link: Mutex::new(first_link),
         engine,
         logging,
         client,
         app_settings: Mutex::new(loaded.app),
         presence: api::PresenceSlot::default(),
     });
+    // Registered after `manage`: the callback needs the App state.
+    let handle = app.handle().clone();
+    app.deep_link().on_open_url(move |event| {
+        let urls = event.urls();
+        if let Some(link) = invite_link(urls.iter().map(|u| u.as_str())) {
+            tracing::info!("invite link received");
+            show_window(&handle);
+            *handle.state::<App>().pending_link.lock().unwrap() = Some(link.clone());
+            let _ = handle.emit(INVITE_LINK_EVENT, link);
+        }
+    });
+
     Ok(())
+}
+
+/// The UI listens here for invite links that arrive while it runs.
+const INVITE_LINK_EVENT: &str = "invite-link";
+
+/// The first `yappa://invite/…` among what the OS handed over; other schemes are ignored.
+fn invite_link<'a>(urls: impl Iterator<Item = &'a str>) -> Option<String> {
+    urls.filter(|u| u.starts_with("yappa://invite/"))
+        .map(str::to_string)
+        .next()
+}
+
+fn show_window(handle: &tauri::AppHandle) {
+    if let Some(window) = handle.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+/// The link that opened the app, once (the UI asks at start).
+#[tauri::command]
+fn pending_invite_link(app: tauri::State<'_, App>) -> Option<String> {
+    app.pending_link.lock().unwrap().take()
 }
 
 pub fn run() {
     tauri::Builder::default()
+        // First: a second start (e.g. a clicked invite link) goes to this window instead.
+        .plugin(tauri_plugin_single_instance::init(|handle, _argv, _cwd| {
+            show_window(handle);
+        }))
+        .plugin(tauri_plugin_deep_link::init())
         .setup(setup)
         .invoke_handler(tauri::generate_handler![
             app_info,
@@ -260,7 +320,8 @@ pub fn run() {
             api::voice_join,
             api::voice_leave,
             api::app_settings,
-            api::set_app_settings
+            api::set_app_settings,
+            pending_invite_link
         ])
         .build(tauri::generate_context!())
         .expect("error while starting yAPPA")
@@ -276,4 +337,22 @@ pub fn run() {
                 drop(engine);
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::invite_link;
+
+    #[test]
+    fn only_invite_links_are_taken_from_what_the_os_hands_over() {
+        let link = "yappa://invite/abcd-efgh?server=https://voice.example/api";
+        assert_eq!(
+            invite_link(["C:/yappa.exe", "--flag", link].into_iter()),
+            Some(link.to_string())
+        );
+        assert_eq!(
+            invite_link(["yappa://other/x", "https://x"].into_iter()),
+            None
+        );
+    }
 }

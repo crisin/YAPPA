@@ -11,7 +11,7 @@ yAPPA besteht aus drei Teilen, die bewusst getrennt sind:
 | --- | --- | --- |
 | **App** | Mikrofon aufnehmen, Stimmen abspielen, Knöpfe | auf deinem Rechner |
 | **Server** | Stimmen zwischen allen verteilen | bei einem von uns zu Hause oder auf einem Mietserver |
-| **Verwaltung** | Einladungen, Channels, wer ist da | neben dem Server (kommt noch) |
+| **Verwaltung** | Einladungen, Channels, Mindestversion | neben dem Server |
 
 Der Server mischt nichts zusammen. Jede Stimme kommt einzeln bei dir an, deshalb kannst du
 jede Person für dich lauter, leiser oder stumm stellen. Die Verwaltung ist nie im Sprachweg:
