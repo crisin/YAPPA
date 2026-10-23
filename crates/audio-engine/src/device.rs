@@ -38,6 +38,8 @@ pub struct OpenDevice {
     pub name: String,
     pub sample_rate: u32,
     pub channels: u16,
+    /// Capture only: the input channel actually used (after clamping to the device).
+    pub channel: u16,
     pub counters: Arc<DeviceCounters>,
     /// Whatever keeps the stream alive.
     pub keep: Box<dyn Any + Send>,
@@ -136,6 +138,7 @@ impl AudioIo for CpalIo {
             .or_else(|| pick_48k(device.supported_input_configs().ok()?, 1))
             .ok_or_else(|| no_48k(&device))?;
         let channel = usize::from(channel).min(usize::from(config.channels()) - 1);
+        let used = channel as u16;
         let counters = Arc::new(DeviceCounters::default());
         let c = counters.clone();
         let stream = match config.sample_format() {
@@ -145,7 +148,10 @@ impl AudioIo for CpalIo {
             other => Err(format!("unsupported sample format {other}")),
         }?;
         stream.play().map_err(text)?;
-        Ok(opened(&device, &config, counters, stream))
+        Ok(OpenDevice {
+            channel: used,
+            ..opened(&device, &config, counters, stream)
+        })
     }
 
     fn open_playout(
@@ -275,6 +281,7 @@ fn opened(
         name: device_name(device),
         sample_rate: config.sample_rate(),
         channels: config.channels(),
+        channel: 0,
         counters,
         keep: Box::new(stream),
     }

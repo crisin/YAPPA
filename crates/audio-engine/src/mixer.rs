@@ -41,7 +41,7 @@ const RELEASE_MS: f32 = 80.0;
 #[derive(Default)]
 struct Shared {
     slots: [Slot; SLOTS],
-    /// Master gain (linear, `f32` bits); 0 bits = not set yet = unity.
+    /// Master gain (linear, `f32` bits), unity until set.
     master: AtomicU32,
     deafened: AtomicBool,
     underruns: AtomicU32,
@@ -86,6 +86,7 @@ pub struct MixerRt {
 
 pub fn mixer() -> (Arc<MixerControl>, MixerRt) {
     let shared = Arc::new(Shared::default());
+    shared.master.store(1f32.to_bits(), Relaxed);
     let mut free = Vec::with_capacity(SLOTS);
     let mut rings = Vec::with_capacity(SLOTS);
     for index in 0..SLOTS {
@@ -156,10 +157,7 @@ impl MixerRt {
                 self.shared.underruns.fetch_add(1, Relaxed);
             }
         }
-        let master = match self.shared.master.load(Relaxed) {
-            0 => 1.0,
-            bits => f32::from_bits(bits),
-        };
+        let master = f32::from_bits(self.shared.master.load(Relaxed));
         if master != 1.0 {
             for o in out.iter_mut() {
                 *o *= master;
@@ -212,10 +210,9 @@ impl MixerControl {
 
     /// Master volume of the whole mix, dB.
     pub fn set_master_db(&self, db: f32) {
-        let gain = dsp::db_to_gain(db);
-        // 0 bits mean "unity" to the callback; a gain of exactly 0.0 cannot be asked for
-        // (the settings allow down to -30 dB).
-        self.shared.master.store(gain.to_bits(), Relaxed);
+        self.shared
+            .master
+            .store(dsp::db_to_gain(db).to_bits(), Relaxed);
     }
 
     pub fn set_deafened(&self, deafened: bool) {

@@ -113,6 +113,7 @@ fn open(name: &str, keep: Box<dyn std::any::Any + Send>) -> OpenDevice {
         name: name.into(),
         sample_rate: 48_000,
         channels: 1,
+        channel: 0,
         counters: Arc::new(DeviceCounters::default()),
         keep,
     }

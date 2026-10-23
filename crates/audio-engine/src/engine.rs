@@ -512,7 +512,7 @@ impl Engine {
                 Ok(device) => {
                     tracing::info!(
                         device = %device.name, rate = device.sample_rate, channels = device.channels,
-                        channel, "microphone open"
+                        channel = device.channel, asked = channel, "microphone open"
                     );
                     let _ = self.ring_tx.send(ring);
                     self.capture = Some(device);
