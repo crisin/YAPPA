@@ -16,6 +16,16 @@ targets = [
 [advisories]
 version = 2
 yanked = "deny"
+# DeepFilterNet (libDF, crates/denoise feature `deepfilter`) only builds against tract 0.21.4
+# (ADR-008). Accepted until libDF runs on tract >= 0.21.16 — then these three go.
+ignore = [
+  # tract-nnef: overflow when parsing a crafted NNEF model. We load no NNEF and no model
+  # from outside: the ONNX model is embedded in the binary at build time.
+  { id = "RUSTSEC-2026-0217", reason = "tract-nnef NNEF parser; only the embedded ONNX model is loaded (ADR-008)" },
+  # Unmaintained, no known vulnerability: build-time templating of tract-linalg, and a macro crate.
+  { id = "RUSTSEC-2026-0319", reason = "anymap2, build dependency of tract-linalg 0.21.4 (ADR-008)" },
+  { id = "RUSTSEC-2024-0436", reason = "paste, proc-macro via tract 0.21.4 (ADR-008)" },
+]
 
 [licenses]
 version = 2
