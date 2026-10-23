@@ -30,11 +30,11 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
       `yappa-poc measure --acoustic`; second machine in the LAN: cable pulled at the PC,
       Wi-Fi switch, speech by ear at 5/10/20 % loss; spike on the MacBook → add to
       `docs/spikes/s1-poc.md`
-- [ ] S2 DSP chain offline (creates `crates/denoise` with the `Denoiser` trait, moved here
-      from E0): WAV → denoiser → gate → EQ → compressor → WAV; DeepFilterNet-LL
-      (git dependency, tract) vs RNNoise (`nnnoiseless`); DFN stays default only if the
-      chain adds ≤ 25 ms and ≤ 5 ms CPU per 10 ms block → `docs/spikes/s2-dsp.md`
-- [ ] E1 Chain in the pump: denoiser, gate/VAD with hold and hysteresis, EQ, compressor;
+- [ ] Listen to S2 (user): `target/s2/{off,rnnoise,deepfilter}.wav` (rerun
+      `cargo run --release -p spike-s2 -- target/s2/noisy_snr0.wav` after a fresh clone);
+      record a real gaming-evening noise and run it through
+- [ ] E1 Chain in the pump (ADR-008: the pump builds the denoiser from a `DenoiserKind`,
+      DeepFilterNet is not `Send`): denoiser, gate/VAD with hold and hysteresis, EQ, compressor;
       `Event::StageLevels`, chain CPU and latency in `Stats`; bench before and after;
       realtime review
 - [ ] S3 PTT: `GlobalHotkey` in `crates/platform-windows` (low-level hook or Raw Input, not
@@ -79,6 +79,8 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
       (needs the `lk` CLI)
 - [ ] Presence: show a person as "maybe gone" when their presence link is stale instead of
       waiting for LiveKit's 20–23 s timeout for a dead client (S6)
+- [ ] libDF on tract ≥ 0.21.16 (upstream or our patch), then remove the three advisory
+      exceptions in `deny.toml` (ADR-008)
 - [ ] Bumps when the files are touched anyway: LiveKit server v1.13.10, `livekit` 0.9.6
 - [ ] Phase 2 · Quality: second media server with failover (presence room needs a home,
       ADR-005 revisit), Prometheus/Grafana, load, AEC, four weeks without an outage
@@ -106,6 +108,12 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] S2 DSP chain offline: `crates/denoise` (`Denoiser` trait, RNNoise, DeepFilterNet 3 LL
+      behind feature `deepfilter`, libDF pinned + tract 0.21.4), `dsp::Gate` (hysteresis,
+      hold, fades, speech-probability veto) and `dsp::Compressor` (soft knee);
+      `crates/spike-s2`: chain 41 µs (RNNoise) / 0.66 ms (DeepFilterNet) per block, both
+      +10 ms, noise floor -40.5 → -73.9 dBFS (RNNoise) / silence (DFN) → DFN default,
+      ADR-008, three tract advisories accepted → `docs/spikes/s2-dsp.md` (2026-10-23)
 - [x] E0 Engine prep (realtime review 2026-10-23): capture ring and pump in f32, quantised
       to 16 bit only at the transport; the capture callback writes one chunk per callback;
       input channel choice (`input_channel`) and master volume (`output_gain_db`) as
