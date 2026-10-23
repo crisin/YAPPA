@@ -42,8 +42,6 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
       cut, build, sign, `latest.json`, upload to the box), `tauri-plugin-updater` +
       `tauri-plugin-process`, Caddy `/updates`, `GET /config` min version + kill switch →
       banner slot and forced leave; update channel in Profi
-- [ ] U4 Onboarding: name → microphone (component from U3) → speaking mode (speakers →
-      PTT recommended, no AEC in v1) → lobby
 - [ ] U6 Admin module: people (members with client version and presence, invites, roles,
       kick), structure (channels), operations (event log, min version, kill switch); what
       the control plane cannot do yet is hidden
@@ -105,6 +103,12 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] U4 Onboarding: full window before the shell while nobody is logged in — 1 Name (the
+      login card), 2 Mikro (device, input, live level, output), 3 Reden (headset or
+      speakers; speakers preselect „Taste halten“ because v1 has no echo cancelling, then
+      the speaking mode with threshold or key) → joins the first channel (Lobby). Steps 2
+      and 3 are the parts `MicTest` / `TalkMode` that „Audio und Sprechen“ is now built
+      from; a developer invite still goes straight into its room (2026-10-23)
 - [x] U3 rest — Einfach/Profi in „Ich“: the switch on top of the settings navigation, stored
       as `AppSettings.view`; Einfach = Audio und Sprechen, Darstellung, Benachrichtigungen,
       Konto, Hilfe; Profi adds Signalkette (six stages with live level and state, cost per

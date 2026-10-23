@@ -31,6 +31,9 @@ export type MeSection = (typeof ME_SECTIONS)[number]['id'];
 
 export type Theme = 'dark' | 'light';
 
+/** The steps after the invite was redeemed (step 1 is the login card itself). */
+export type OnboardingStep = 'mic' | 'talk';
+
 /** The theme is also kept in the browser storage, so the first frame already has the right
  * colours — the app settings arrive a moment later over IPC. */
 const THEME_KEY = 'yappa.theme';
@@ -41,6 +44,8 @@ export class AppState {
   meSection = $state<MeSection>('audio');
   theme = $state<Theme>('dark');
   appSettings = $state<AppSettings | null>(null);
+  /** Set right after a first login: the onboarding runs instead of the shell until done. */
+  onboarding = $state<OnboardingStep | null>(null);
   view = $derived<SettingsView>(this.appSettings?.view ?? 'simple');
 
   readonly session: Session;
@@ -59,6 +64,17 @@ export class AppState {
     } catch {
       // No storage: the theme lasts until the window closes.
     }
+  }
+
+  /** The onboarding is the whole window: nobody logged in (and no developer invite on its
+   * way into a room), or the steps after the first login. */
+  get showOnboarding(): boolean {
+    return (
+      this.onboarding !== null ||
+      (this.gang.status === 'out' &&
+        !this.session.inRoom &&
+        this.session.connection === 'disconnected')
+    );
   }
 
   /** Reads the app settings once at start; their theme wins over the browser storage. */
@@ -110,6 +126,13 @@ export class AppState {
     await this.session.setTransmitMode(mode);
     const talk = { voiceActivation: 'vad', pushToTalk: 'ptt', alwaysOn: 'open' } as const;
     if (this.gang.status === 'in') await this.api.setPresence({ talk: talk[mode] }).catch(() => {});
+  }
+
+  /** Ends the onboarding in the first channel — the lobby. */
+  async finishOnboarding() {
+    this.onboarding = null;
+    const lobby = this.gang.channels[0];
+    if (lobby) await this.gang.join(lobby.id);
   }
 
   /** Opens „Ich“ at a section — from the palette, the dock, or a help link. A pro section

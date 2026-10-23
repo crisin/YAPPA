@@ -11,6 +11,7 @@
   import { meModule } from './lib/modules/me';
   import { voiceModule } from './lib/modules/voice';
   import { Session } from './lib/session.svelte';
+  import Onboarding from './lib/Onboarding.svelte';
   import Shell from './lib/shell/Shell.svelte';
   import { BANNER, Shell as ShellState } from './lib/shell.svelte';
   import { isBlocked } from './lib/version';
@@ -156,4 +157,8 @@
 
 <svelte:window onkeydown={onKey} />
 
-<Shell />
+{#if app.showOnboarding}
+  <Onboarding />
+{:else}
+  <Shell />
+{/if}

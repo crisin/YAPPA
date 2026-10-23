@@ -192,9 +192,10 @@ describe('Voice module: channel tree', () => {
 });
 
 describe('Voice module: the way in', () => {
-  it('asks for a name when an invite link is pasted and lands in the channel tree', async () => {
+  it('asks for a name, then microphone and speaking mode, and lands in the lobby', async () => {
     await start('login');
-    expect(within(dock()).getByRole('meter', { name: 'Mikrofonpegel' })).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Schritte' })).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Bereiche' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Beitreten' })).toBeDisabled();
     await fireEvent.input(screen.getByLabelText('Einladung'), {
       target: { value: MOCK_INVITE_LINK },
@@ -204,8 +205,42 @@ describe('Voice module: the way in', () => {
     expect(screen.getByRole('button', { name: 'Beitreten' })).toBeDisabled();
     await fireEvent.input(name, { target: { value: 'Neu' } });
     await fireEvent.click(screen.getByRole('button', { name: 'Beitreten' }));
-    expect(await screen.findByRole('heading', { level: 1, name: 'Hallo Neu' })).toBeInTheDocument();
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Hört dich yAPPA?' }),
+    ).toBeVisible();
+    expect(screen.getByText(/Hallo Neu!/)).toBeInTheDocument();
+    expect(screen.getByRole('meter', { name: 'Mikrofontest' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Ausgabe (Kopfhörer oder Lautsprecher)')).toBeInTheDocument();
+    await fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Wie redest du?' })).toBeInTheDocument();
+    const done = screen.getByRole('button', { name: 'Ab in die Lobby' });
+    expect(done).toBeDisabled();
+    await fireEvent.click(screen.getByRole('radio', { name: /^Lautsprecher/ }));
+    await waitFor(() => expect(screen.getByRole('radio', { name: /^Taste halten/ })).toBeChecked());
+    expect(screen.getByRole('button', { name: /Taste/ })).toBeInTheDocument();
+    await fireEvent.click(screen.getByRole('radio', { name: /^Headset/ }));
+    await waitFor(() => expect(screen.getByRole('radio', { name: /^Automatisch/ })).toBeChecked());
+    await fireEvent.click(done);
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Lobby' })).toBeInTheDocument();
     expect(channel(/^Raid-Abend/)).toBeInTheDocument();
+  });
+
+  it('can go back from the speaking mode to the microphone, accessibly', async () => {
+    const { container } = await start('login');
+    await fireEvent.input(screen.getByLabelText('Einladung'), {
+      target: { value: MOCK_INVITE_LINK },
+    });
+    await fireEvent.input(screen.getByLabelText('Dein Name'), { target: { value: 'Neu' } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Beitreten' }));
+    await fireEvent.click(await screen.findByRole('button', { name: 'Weiter' }));
+    await fireEvent.click(screen.getByRole('radio', { name: /^Headset/ }));
+    expect(await axe(container)).toHaveNoViolations();
+    await fireEvent.click(screen.getByRole('button', { name: 'Zurück' }));
+    expect(await axe(container)).toHaveNoViolations();
+    expect(screen.getByRole('heading', { level: 1, name: 'Hört dich yAPPA?' })).toBeInTheDocument();
   });
 
   it('says why a used or wrong invite does not work', async () => {
