@@ -2,20 +2,21 @@
 //! transport and the real sound hardware, and forwards `engine-protocol` messages in both
 //! directions. It never does audio itself.
 
+pub mod api;
 pub mod logging;
 
-use api_types::Invite;
+use api_types::{ClientInfo, Invite};
 use audio_engine::{CpalIo, EngineConfig, EngineHandle};
+use client::{AppSettings, Client, Profile};
 use engine_protocol::{Command, Event, LogEntry, Settings, PROTOCOL_VERSION};
 use serde::Serialize;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager};
 use transport::livekit::LiveKitTransport;
 
 /// The one channel on which every [`Event`] reaches the UI.
 const ENGINE_EVENT: &str = "engine-event";
-const SETTINGS_FILE: &str = "settings.json";
 
 /// Engine with LiveKit and the real devices — also used by the headless example.
 pub fn start_engine(
@@ -36,9 +37,12 @@ pub fn start_engine(
 /// properly and closes the devices.
 type SharedEngine = Arc<Mutex<Option<EngineHandle>>>;
 
-struct App {
+pub struct App {
     engine: SharedEngine,
     logging: logging::Logging,
+    client: Arc<Client>,
+    app_settings: Mutex<AppSettings>,
+    presence: api::PresenceSlot,
 }
 
 impl App {
@@ -55,6 +59,8 @@ struct AppInfo {
     log_dir: String,
     /// Development aid: `YAPPA_DEBUG_PANEL=1` opens the debug panel at start.
     debug_panel: bool,
+    /// `YAPPA_PROFILE`, "default" without it — shown so two windows can be told apart.
+    profile: String,
 }
 
 #[tauri::command]
@@ -64,6 +70,7 @@ fn app_info(app: tauri::State<'_, App>) -> AppInfo {
         protocol_version: PROTOCOL_VERSION,
         log_dir: app.logging.dir.display().to_string(),
         debug_panel: std::env::var_os("YAPPA_DEBUG_PANEL").is_some(),
+        profile: app.client.profile().name().to_string(),
     }
 }
 
@@ -148,44 +155,40 @@ fn write_diagnostics(
     out.flush()
 }
 
-fn load_settings(path: &Path) -> Settings {
-    let loaded = std::fs::read_to_string(path)
-        .ok()
-        .and_then(|text| serde_json::from_str::<Settings>(&text).ok())
-        .filter(|settings| settings.validate().is_ok());
-    match loaded {
-        Some(settings) => settings,
-        None => {
-            tracing::info!(path = %path.display(), "no usable settings file — starting with defaults");
-            Settings::default()
-        }
-    }
-}
-
-fn save_settings(path: &Path, settings: &Settings) {
-    let result = serde_json::to_string_pretty(settings)
-        .map_err(|e| e.to_string())
-        .and_then(|json| std::fs::write(path, json).map_err(|e| e.to_string()));
-    match result {
-        Ok(()) => tracing::debug!(path = %path.display(), "settings saved"),
-        Err(e) => tracing::warn!(error = %e, "could not save the settings"),
-    }
-}
-
 fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let paths = app.path();
-    let logging = logging::init(&paths.app_log_dir()?)?;
+    // `YAPPA_PROFILE=<name>`: a second client on the same PC with its own settings, login
+    // and logs (ADR-007).
+    let profile = Profile::from_env(&paths.app_config_dir()?);
+    let log_dir = match profile.name() {
+        "default" => paths.app_log_dir()?,
+        name => paths.app_log_dir()?.join("profiles").join(name),
+    };
+    let logging = logging::init(&log_dir)?;
     tracing::info!(
         version = env!("CARGO_PKG_VERSION"),
         os = std::env::consts::OS,
         arch = std::env::consts::ARCH,
+        profile = profile.name(),
         log_dir = %logging.dir.display(),
         "yAPPA starting"
     );
-    let config_dir: PathBuf = paths.app_config_dir()?;
-    std::fs::create_dir_all(&config_dir)?;
-    let settings_path = config_dir.join(SETTINGS_FILE);
-    let settings = load_settings(&settings_path);
+    std::fs::create_dir_all(profile.dir())?;
+    let loaded = client::settings::load(&profile);
+    if loaded.migrated {
+        tracing::info!("settings migrated to the current schema");
+        client::settings::save_engine(&profile, &loaded.engine);
+        client::settings::save_app(&profile, &loaded.app);
+    }
+    let settings = loaded.engine;
+    let client = Arc::new(Client::new(
+        profile.clone(),
+        ClientInfo {
+            app_version: env!("CARGO_PKG_VERSION").into(),
+            protocol_version: PROTOCOL_VERSION,
+            platform: std::env::consts::OS.into(),
+        },
+    ));
 
     let handle = app.handle().clone();
     logging.on_entry(move |entry| {
@@ -205,7 +208,8 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             if let Some(current) = current {
                 let mut saved = saved.lock().unwrap();
                 if *saved != current {
-                    save_settings(&settings_path, &current);
+                    client::settings::save_engine(&profile, &current);
+                    tracing::debug!("settings saved");
                     *saved = current;
                 }
             }
@@ -224,7 +228,13 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     *engine.lock().unwrap() = Some(started);
-    app.manage(App { engine, logging });
+    app.manage(App {
+        engine,
+        logging,
+        client,
+        app_settings: Mutex::new(loaded.app),
+        presence: api::PresenceSlot::default(),
+    });
     Ok(())
 }
 
@@ -238,7 +248,19 @@ pub fn run() {
             recent_logs,
             decode_invite,
             export_logs,
-            open_url
+            open_url,
+            api::api_session,
+            api::api_resume,
+            api::api_redeem,
+            api::api_logout,
+            api::api_config,
+            api::api_channels,
+            api::api_presence,
+            api::api_set_presence,
+            api::voice_join,
+            api::voice_leave,
+            api::app_settings,
+            api::set_app_settings
         ])
         .build(tauri::generate_context!())
         .expect("error while starting yAPPA")
@@ -246,8 +268,11 @@ pub fn run() {
             if let tauri::RunEvent::Exit = event {
                 // Take the engine out and drop it without holding the lock: its thread may
                 // be in the callback above, waiting for that lock.
-                let engine = handle.state::<App>().engine.lock().unwrap().take();
+                let state = handle.state::<App>();
+                let engine = state.engine.lock().unwrap().take();
+                let presence = state.presence.0.lock().unwrap().take();
                 tracing::info!("yAPPA exiting");
+                drop(presence);
                 drop(engine);
             }
         });

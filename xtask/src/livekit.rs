@@ -6,6 +6,7 @@
 //!   logs             follow the server log
 //!   loss <percent>   drop that share of packets in both directions; 0 clears
 //!   cut <seconds>    drop everything for that long, then restore (cable pull)
+//!   presence         watch the presence room (hidden participant), one line per change
 //!   token <name> [--room gang] [--days 30] [--jwt]
 //!                    an invite for one person (server address + join token as one line
 //!                    to paste into the client), signed with the keys in
@@ -26,6 +27,9 @@ pub fn run(root: &Path, args: &[String]) -> Result {
     let arg = |i: usize| args.get(i).map(String::as_str);
     if arg(0) == Some("token") {
         return token(root, &args[1..]);
+    }
+    if arg(0) == Some("presence") {
+        return presence(root);
     }
     crate::tools::require(&["docker"])?;
     match arg(0) {
@@ -109,6 +113,63 @@ fn token(root: &Path, args: &[String]) -> Result {
         println!("{}", api_types::Invite { url, token: jwt }.encode());
     }
     Ok(())
+}
+
+/// Same keys as `token`: the server in `.env`, else the local dev server.
+fn keys(root: &Path) -> Result<(String, String, String)> {
+    let env = read_env(&root.join(ENV_FILE));
+    let get = |key: &str| env.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone());
+    match (get("LIVEKIT_API_KEY"), get("LIVEKIT_API_SECRET")) {
+        (Some(key), Some(secret)) => {
+            let domain =
+                get("YAPPA_DOMAIN").ok_or(format!("YAPPA_DOMAIN missing in {ENV_FILE}"))?;
+            Ok((key, secret, format!("wss://{domain}")))
+        }
+        _ => Ok((
+            "devkey".into(),
+            "secret".into(),
+            "ws://localhost:7880".into(),
+        )),
+    }
+}
+
+/// A hidden watcher in the presence room (ADR-005): sees everybody, is seen by nobody.
+fn presence(root: &Path) -> Result {
+    let (key, secret, url) = keys(root)?;
+    let jwt = AccessToken::with_api_key(&key, &secret)
+        .with_identity("xtask-watcher")
+        .with_name("watcher")
+        .with_ttl(Duration::from_secs(24 * 3600))
+        .with_grants(VideoGrants {
+            room_join: true,
+            room: "presence".into(),
+            hidden: true,
+            can_publish: Some(false),
+            can_publish_data: Some(false),
+            ..Default::default()
+        })
+        .to_jwt()
+        .map_err(|e| format!("token: {e}"))?;
+    eprintln!("presence room on {url}");
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
+    crate::run(
+        Command::new(cargo)
+            .current_dir(root)
+            .args([
+                "run",
+                "--quiet",
+                "--release",
+                "-p",
+                "transport",
+                "--features",
+                "livekit",
+                "--example",
+                "presence_watch",
+                "--",
+            ])
+            .arg(&url)
+            .arg(&jwt),
+    )
 }
 
 /// KEY=VALUE lines; empty values count as not set.

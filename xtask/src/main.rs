@@ -210,6 +210,9 @@ fn gen_types(root: &Path) -> Result {
         "engine-protocol",
         "-p",
         "api-types",
+        "-p",
+        "client",
+        "--lib",
         "export_",
     ];
     cargo(root, &args)?;

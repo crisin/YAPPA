@@ -137,7 +137,7 @@ Invite-Links aus U5.
 Tauri-Seite der `Api` aus `crates/client` (Paket C1): HTTP-Client, Session-Token im
 Schlüsselbund, Mindestversion → Banner, Presence aus dem LiveKit-Presence-Raum →
 Channel-Baum (ADR-005), Voice-Token je Channel → `Join`. Invite-Link statt eingefügter
-Einladung (Deep Link `yappa://invite/<code>` plus Einfügen als Fallback).
+Einladung (Deep Link `yappa://invite/<code>?server=<API>` plus Einfügen als Fallback).
 `docs/mittesten.md` wird dafür umgeschrieben.
 
 ### U6 · Admin-Modul (M, braucht U5 und die Admin-Endpunkte aus S6)

@@ -26,7 +26,13 @@ const FILE_SUFFIX: &str = "log";
 const DAYS_KEPT: usize = 7;
 const RECENT: usize = 300;
 /// Our own crates: these log at debug level into the file.
-const OWN: [&str; 4] = ["audio_engine", "transport", "yappa_desktop_lib", "stats"];
+const OWN: [&str; 5] = [
+    "audio_engine",
+    "client",
+    "transport",
+    "yappa_desktop_lib",
+    "stats",
+];
 
 type Listener = Box<dyn Fn(LogEntry) + Send + Sync>;
 
