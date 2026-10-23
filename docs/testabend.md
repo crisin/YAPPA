@@ -11,15 +11,19 @@ Einstellungen für Sprechmodus, Schwelle, Rauschunterdrückung, Eingangskanal un
 
 ### Server
 
-Nach [Homeserver einrichten](homeserver.md), Schritte 1–6 und der Abschnitt
-„Control-Plane“. Die Stolpersteine:
+**Vorher ausprobieren, ohne Mini-PC:** `cargo xtask local --lan` auf dem Entwicklungs-PC —
+LiveKit und Control-Plane in einem Befehl, Admin-Link im Terminal, ein zweiter PC im
+Heimnetz kommt mit seinem eigenen Link rein ([Alles nur lokal](homeserver.md#alles-nur-lokal)).
+
+**Für die Gang, auf dem Mini-PC:** nach [Homeserver einrichten](homeserver.md), Schritte 1–7.
+Die Stolpersteine:
 
 - [ ] **DS-Lite-Check zuerst** (Schritt 1). Ohne öffentliche IPv4 geht Stufe 1 nicht.
-- [ ] In der `.env`: `LIVEKIT_API_KEY=yappa` (der Name ist fest, die Webhooks sind damit
-      signiert), das Secret aus `generate-keys`, `YAPPA_DOMAIN`.
-- [ ] Repo auf die VM klonen und `docker compose -f home.yml up -d --build` — die
-      Control-Plane wird dort gebaut (≈ 1–2 Minuten).
-- [ ] `https://<YAPPA_DOMAIN>/api/health` antwortet `ok` (am Handy, ohne WLAN).
+- [ ] VM mit 4 GB RAM — der erste Build der Control-Plane braucht sie.
+- [ ] Die `.env` hat nur zwei Zeilen: `LIVEKIT_API_SECRET` (zufällig, Befehl in Schritt 5)
+      und `YAPPA_DOMAIN` (die MyFRITZ!-Adresse der **VM**).
+- [ ] `docker compose -f home.yml up -d --build`, dann `https://<YAPPA_DOMAIN>/api/health`
+      am Handy ohne WLAN: `ok`.
 - [ ] Der erste Admin-Link: `docker compose -f home.yml logs control | grep invite`.
 
 ### Installer

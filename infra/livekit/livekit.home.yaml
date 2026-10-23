@@ -11,8 +11,7 @@ rtc:
 logging:
   level: info
 # Joins and leaves for the control plane's event log (ADR-005). LiveKit signs them with
-# this key, so it must be the key NAME from LIVEKIT_API_KEY in .env (docs/homeserver.md
-# step 5 uses `yappa`). A mismatch only costs the log lines, never the voice.
+# this key name — fixed to `yappa` in home.yml, so nothing to match by hand.
 webhook:
   api_key: yappa
   urls:

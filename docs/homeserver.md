@@ -1,26 +1,28 @@
 # Homeserver einrichten (Stufe 1)
 
-LiveKit auf dem Mini-PC zu Hause, erreichbar für die Gang über die FRITZ!Box. Diese
+yAPPA auf dem Mini-PC zu Hause, erreichbar für die Gang über die FRITZ!Box. Diese
 Anleitung ist für genau diesen Aufbau geschrieben: FRITZ!Box 6660 Cable, Mini-PC mit
-Windows, darauf eine Linux-VM.
+Windows, darauf eine Linux-VM. Erst ausprobieren ohne Mini-PC? → [Alles nur lokal](#alles-nur-lokal).
 
-> **Stand 2026-10-10:** An echter Hardware noch nicht durchgespielt. Lokal geprüft sind die
-> LiveKit-Konfiguration, die Schlüssel aus der `.env` und der Beitritt mit ausgestellten
-> Tokens. Nicht geprüft: Caddy mit Let's-Encrypt-Zertifikat, die FRITZ!Box-Freigaben und
-> der Zugriff von außen. Menünamen der FRITZ!Box können je nach FRITZ!OS-Version leicht
-> abweichen. Was beim ersten Durchlauf hakt, bitte hier nachtragen.
+> **Stand 2026-10-23:** Lokal geprüft sind LiveKit, die Control-Plane (`yappa-control`, als
+> Docker-Image gebaut), Einladungslinks, Beitritt und Presence. Nicht geprüft: Caddy mit
+> Let's-Encrypt-Zertifikat, die FRITZ!Box-Freigaben und der Zugriff von außen. Menünamen der
+> FRITZ!Box können je nach FRITZ!OS-Version leicht abweichen. Was beim ersten Durchlauf
+> hakt, bitte hier nachtragen.
 
 ## Was am Ende läuft
 
 ```text
 Gang (Internet) ──► FRITZ!Box ──► Linux-VM auf dem Mini-PC
-                     4 Freigaben    ├─ Caddy     TCP 80, 443   TLS, Zertifikat automatisch
-                                    └─ LiveKit   TCP 7881, UDP 7882   Sprache
+                     4 Freigaben    ├─ Caddy          TCP 80, 443   TLS, Zertifikat automatisch
+                                    │    ├─ /api/  ─► yappa-control  Einladungen, Channels, Tokens
+                                    │    └─ sonst  ─► LiveKit        Anmeldung am Sprachserver
+                                    └─ LiveKit        TCP 7881, UDP 7882   die Sprache selbst
 ```
 
-Die Clients verbinden sich mit `wss://<deine-adresse>` (Anmeldung über Caddy) und schicken
-die Sprache danach direkt per UDP an LiveKit. Eine Control-Plane gibt es noch nicht: wer
-mitreden darf, bekommt von dir ein Token (Schritt 8).
+Die App holt sich über `https://<deine-adresse>/api/` ihre Zugänge, meldet sich über
+`wss://<deine-adresse>` bei LiveKit an und schickt die Sprache danach direkt per UDP an
+LiveKit. Wer dabei ist, entscheidest du mit Einladungslinks (Schritt 8).
 
 ## 1. Vorab prüfen: Hast du eine öffentliche IPv4-Adresse?
 
@@ -45,8 +47,9 @@ durch eine zusätzliche Netzwerkschicht, und Docker Desktop läuft nur, solange 
 angemeldet ist.
 
 - **Virtualisierung:** Hyper-V (Windows Pro) oder VirtualBox (geht auch mit Windows Home).
-- **System:** Debian 12 oder Ubuntu Server 24.04, ohne Desktop. 2 CPU-Kerne, 2 GB RAM,
-  16 GB Platte reichen.
+- **System:** Debian 12 oder Ubuntu Server 24.04, ohne Desktop. 2 CPU-Kerne, **4 GB RAM**
+  (der Betrieb braucht weniger, aber der erste Build der Control-Plane in Schritt 6 nicht),
+  20 GB Platte.
 - **Netzwerk: Netzwerkbrücke** (VirtualBox: „Netzwerkbrücke", Hyper-V: „Externer Switch").
   Die VM muss eine eigene Adresse aus deinem Heimnetz bekommen, wie ein eigenes Gerät. Mit
   „NAT" funktioniert es nicht.
@@ -94,121 +97,98 @@ die VM auswählen → vier Freigaben anlegen:
 
 Port 7880 wird **nicht** freigegeben — den spricht nur Caddy innerhalb der VM an.
 
-## 5. Dateien und Schlüssel auf die VM
-
-Das Repo liegt noch nicht auf einem Server, also die vier Dateien aus `infra/livekit/`
-in einen Ordner auf der VM kopieren (z. B. mit `scp` oder WinSCP nach `~/yappa/`):
-
-```text
-home.yml   livekit.home.yaml   Caddyfile   .env.example
-```
-
-Dann auf der VM:
+## 5. yAPPA auf die VM holen
 
 ```bash
-cd ~/yappa
-docker run --rm livekit/livekit-server:v1.13.8 generate-keys   # gibt API Key + Secret aus
-cp .env.example .env
-nano .env        # LIVEKIT_API_KEY=yappa, das Secret von oben, YAPPA_DOMAIN eintragen
-chmod 600 .env
+sudo apt install -y git openssl
+git clone https://github.com/crisin/YAPPA.git ~/yappa
+cd ~/yappa/infra/livekit
 ```
 
-Als Schlüssel-**Name** nimm `yappa` statt des erzeugten Namens: Die Webhooks in
-`livekit.home.yaml` sind mit diesem Namen signiert. Das Secret bleibt das erzeugte.
+Die `.env` braucht genau zwei Werte — ein Geheimnis und deine Adresse aus Schritt 4:
+
+```bash
+cat > .env <<EOF
+LIVEKIT_API_SECRET=$(openssl rand -hex 32)
+YAPPA_DOMAIN=<vm-name>.xxxxxxxx.myfritz.net
+EOF
+chmod 600 .env
+nano .env      # nur die Adresse in der zweiten Zeile anpassen
+```
 
 Die `.env` enthält das Geheimnis des Servers. Sie gehört nicht ins Repo (ist per
-`.gitignore` ausgeschlossen) und nicht in einen Chat.
+`.gitignore` ausgeschlossen) und nicht in einen Chat. Den Schlüssel-**Namen** setzt
+`home.yml` fest auf `yappa`; ein `LIVEKIT_API_KEY` in einer älteren `.env` wird ignoriert.
 
 ## 6. Starten und prüfen
 
 ```bash
-docker compose -f home.yml up -d
-docker compose -f home.yml logs livekit | tail -20
-docker compose -f home.yml logs caddy | tail -20
+docker compose -f home.yml up -d --build     # beim ersten Mal 2–3 Minuten (baut yappa-control)
+docker compose -f home.yml ps                # livekit, caddy, control: alle "running"
 ```
 
-- **LiveKit:** Die Zeile `starting LiveKit server` muss bei `nodeIP` deine öffentliche
-  IPv4-Adresse zeigen (dieselbe wie im Online-Monitor). Der Server braucht nach dem Start
-  einige Sekunden, bis er Verbindungen annimmt.
-- **Caddy:** Im Log steht nach kurzer Zeit `certificate obtained successfully`.
-- **Von außen:** Am Handy WLAN ausschalten und `https://<YAPPA_DOMAIN>` im Browser öffnen.
-  Erscheint `OK` ohne Zertifikatswarnung, steht die Anmeldung.
+- **LiveKit:** `docker compose -f home.yml logs livekit | grep nodeIP` muss deine
+  **öffentliche** IPv4-Adresse zeigen (dieselbe wie im Online-Monitor).
+- **Caddy:** `docker compose -f home.yml logs caddy | grep certificate` zeigt nach kurzer
+  Zeit `certificate obtained successfully`.
+- **Von außen:** Am Handy WLAN ausschalten und `https://<YAPPA_DOMAIN>/api/health` öffnen.
+  Steht dort `ok` ohne Zertifikatswarnung, ist alles erreichbar.
 
-## 7. Erster Test
+## 7. Dein eigener Zugang
 
-Auf dem Entwicklungs-PC dieselbe `.env` nach `infra/livekit/.env` legen (damit die
-Einladungen mit dem Schlüssel des Servers signiert werden), dann:
+Beim allerersten Start legt die Control-Plane eine **Admin-Einladung** an:
 
 ```bash
-cargo xtask livekit token chris     # gibt die Einladung aus: eine Zeile, beginnt mit yappa1.
-cargo xtask dev                     # die App starten, Einladung einfügen, "Beitreten"
+docker compose -f home.yml logs control | grep invite
+# … no members yet — this admin invite works once … link=yappa://invite/xxxx-xxxx-xxxx?server=https://…/api
 ```
 
-Steht unten „Verbunden", funktioniert die Anmeldung. Für einen zweiten Teilnehmer eine
-zweite Einladung ausstellen und z. B. auf einem Laptop am Handy-Hotspot beitreten: sobald
-ihr euch seht und hört, läuft die Sprache über deinen Anschluss. Unter Ich → Diagnose in der App
-stehen Laufzeit, Paketverlust und Jitterbuffer.
+Den Link (alles ab `yappa://`) auf dem eigenen PC öffnen: Ist yAPPA installiert, startet es
+mit eingefügtem Link; sonst in der App unter **Voice** ins Feld **Einladung** einfügen.
+Namen eingeben, **Beitreten** — unter **Ich → Konto** steht dann „Admin“.
 
-Ohne Fenster geht es auch, z. B. um nur den Server zu prüfen:
-`cargo run --release -p yappa-desktop --example headless -- --invite <einladung>`.
+Link verpasst oder schon verbraucht? Eine neue Admin-Einladung:
 
-Aus dem eigenen Heimnetz heraus geht die Verbindung einmal zur FRITZ!Box und wieder zurück.
-Das klappt normalerweise; wenn nicht, zuerst von außen (Hotspot) testen, bevor du am Server
-suchst.
+```bash
+docker compose -f home.yml exec control yappa-control invite --admin
+```
 
 ## 8. Die Gang einladen
 
-Jede Person bekommt zwei Dinge und die Anleitung [mittesten.md](mittesten.md):
-
-1. Den Installer: `cargo xtask build` legt ihn unter `target/release/bundle/nsis/` ab
-   (Windows warnt beim ersten Start, weil er nicht signiert ist).
-2. Eine eigene Einladung: `cargo xtask livekit token <name> --days 30`. Der Name ist der,
-   unter dem die Person im Raum erscheint; jede Einladung nur einmal vergeben.
-
-Eine Einladung ist der Zugang: wer sie hat, kommt bis zum Ablaufdatum in den Raum `gang`. Einzeln
-zurückziehen lässt es sich nicht — nur alle auf einmal, indem du auf dem Server neue
-Schlüssel erzeugst (Schritt 5) und neu startest. Die Control-Plane (S6) ersetzt das später
-durch Einladungslinks.
-
-## Control-Plane (ab Meilenstein 2)
-
-Seit S6 läuft neben LiveKit die Control-Plane `yappa-control`: Einladungslinks, Channels,
-Tokens und ein Ereignis-Log. Sie wird auf der VM aus dem Repo gebaut, deshalb hier das
-Repo statt einzelner Dateien:
+Jede Person bekommt den Installer (`cargo xtask build` auf dem Entwicklungs-PC, Datei unter
+`target/release/bundle/nsis/`), einen **eigenen** Link und die Anleitung
+[mittesten.md](mittesten.md):
 
 ```bash
-git clone https://github.com/crisin/YAPPA.git ~/yappa-repo
-cd ~/yappa-repo/infra/livekit
-cp ~/yappa/.env .                      # die .env aus Schritt 5
-docker compose -f home.yml up -d --build
-docker compose -f home.yml logs control | grep invite    # der erste Admin-Link
+docker compose -f home.yml exec control yappa-control invite             # 7 Tage gültig
+docker compose -f home.yml exec control yappa-control invite --days 2    # kürzer
 ```
 
-Beim allerersten Start legt sie eine Admin-Einladung an und schreibt den Link
-(`yappa://invite/…`) ins Log. Erreichbar ist sie unter `https://<YAPPA_DOMAIN>/api/`;
-`https://<YAPPA_DOMAIN>/api/health` antwortet mit `ok`.
+Ein Link funktioniert genau einmal. Channels legst du an, bis es dafür den Admin-Bereich in
+der App gibt, ebenfalls hier (die App holt die Liste beim nächsten Start):
 
-Notfall-Befehle laufen im Container:
+```bash
+docker compose -f home.yml exec control yappa-control channel add "Raid-Abend"
+docker compose -f home.yml exec control yappa-control channel        # Liste
+```
 
-| Was | Befehl |
-| --- | --- |
-| Neue Einladung (Admin) | `docker compose -f home.yml exec control yappa-control invite --admin` |
-| Neue Einladung (Mitglied, 3 Tage) | `docker compose -f home.yml exec control yappa-control invite --days 3` |
-| Mindestversion und Kill-Switch | `docker compose -f home.yml exec control yappa-control policy --min 0.2.0 --kill 0.2.1` |
-
-Die App benutzt die Control-Plane erst mit Paket U5; bis dahin gilt weiter Schritt 7.
+Notfall: Eine kaputte App-Version aus dem Verkehr ziehen —
+`docker compose -f home.yml exec control yappa-control policy --min 0.2.0 --kill 0.2.1`.
 
 ## Betrieb
 
-| Was | Befehl (auf der VM, im Ordner `~/yappa`) |
+| Was | Befehl (auf der VM, im Ordner `~/yappa/infra/livekit`) |
 | --- | --- |
 | Status | `docker compose -f home.yml ps` |
-| Logs mitlesen | `docker compose -f home.yml logs -f livekit` |
+| Logs mitlesen | `docker compose -f home.yml logs -f livekit control` |
 | Neu starten | `docker compose -f home.yml restart` |
-| Stoppen | `docker compose -f home.yml down` |
-| LiveKit aktualisieren | Version in `home.yml` ändern, dann `docker compose -f home.yml pull && docker compose -f home.yml up -d` — nicht während jemand spricht |
+| Stoppen | `docker compose -f home.yml down` (Daten bleiben im Volume) |
+| yAPPA aktualisieren | `git pull && docker compose -f home.yml up -d --build` — nicht während jemand spricht |
+| LiveKit aktualisieren | Version in `home.yml` ändern, dann wie oben |
+| Datenbank sichern | `docker compose -f home.yml cp control:/data/yappa.db ./yappa-backup.db` |
 
-Beide Container starten nach einem Neustart der VM von selbst (`restart: unless-stopped`).
+Alle Container starten nach einem Neustart der VM von selbst (`restart: unless-stopped`).
+Ein Neustart der Control-Plane beendet keinen laufenden Call.
 
 ## Wenn es nicht geht
 
@@ -216,7 +196,12 @@ Beide Container starten nach einem Neustart der VM von selbst (`restart: unless-
 | --- | --- | --- |
 | Caddy bekommt kein Zertifikat | Port 80 kommt nicht an, oder die Adresse zeigt per IPv6 auf die FRITZ!Box | Freigabe TCP 80; `YAPPA_DOMAIN` ist die Adresse der **VM**, nicht der Box |
 | `https://…` von außen nicht erreichbar | DS-Lite, oder Freigabe 443 fehlt | Schritt 1 und 4 |
-| App: „could not connect … 401 Unauthorized" | Einladung mit anderen Schlüsseln signiert oder abgelaufen | `.env` auf Server und Entwicklungs-PC müssen gleich sein |
+| App: „Server nicht erreichbar“ beim Einladungslink | Caddy oder `control` läuft nicht, oder die Adresse im Link stimmt nicht | `https://<YAPPA_DOMAIN>/api/health`; der Link muss `server=https://<YAPPA_DOMAIN>/api` enthalten |
+| App: „Diese Einladung ist ungültig …“ | Link schon benutzt oder abgelaufen | neuen Link ausstellen (Schritt 8) |
+| App: „Diese yAPPA-Version ist zu alt“ | Mindestversion gesetzt | neuen Installer verteilen, oder `policy --min` zurücknehmen |
+| `control` startet nicht: „LIVEKIT_API_SECRET is not set“ | `.env` fehlt oder liegt im falschen Ordner | die `.env` gehört nach `~/yappa/infra/livekit/` |
+| Admin sieht kein Ereignis-Log, Sprache geht aber | Webhooks erreichen `control` nicht | `docker compose -f home.yml logs livekit \| grep webhook` |
+| App: „could not connect … 401 Unauthorized" | Token mit anderen Schlüsseln signiert oder abgelaufen | nach einem neuen Secret: alle melden sich mit neuem Link an |
 | App: „… 500" direkt nach dem Serverstart | Server noch nicht bereit | ein paar Sekunden warten |
 | Jemand fliegt immer wieder raus | dieselbe Einladung läuft auf zwei Rechnern | pro Person und Rechner eine eigene Einladung |
 | Beitritt klappt, aber niemand hört sich | UDP 7882 kommt nicht an | Freigabe UDP 7882; `nodeIP` im LiveKit-Log ist die öffentliche Adresse |
@@ -230,3 +215,25 @@ Beide Container starten nach einem Neustart der VM von selbst (`restart: unless-
   rein. Kommt mit Stufe 2 (eigene Subdomain und Zertifikat nötig).
 - Keine Überwachung: fällt der Mini-PC aus, merkt es niemand außer den Leuten im Call.
 - Die VM selbst braucht Updates (`sudo apt update && sudo apt upgrade`).
+
+## Alles nur lokal
+
+Zum Ausprobieren ohne Mini-PC — auf dem Entwicklungs-PC mit Docker Desktop, ein Befehl:
+
+```bash
+cargo xtask local          # nur dieser PC
+cargo xtask local --lan    # auch andere PCs im Heimnetz (Windows-Firewall: "Private Netzwerke" erlauben)
+```
+
+Das startet LiveKit (Docker, Entwicklungsschlüssel) und die Control-Plane und zeigt beim
+ersten Start den Admin-Link. Danach `cargo xtask dev` (oder die installierte App) und den
+Link anklicken. Weitere Links und Channels:
+
+```bash
+cargo xtask control --lan invite                    # ohne --lan, wenn nur dieser PC
+cargo xtask control --lan channel add "Raid-Abend"
+cargo xtask livekit down                            # LiveKit wieder stoppen
+```
+
+Lokal heißt: Entwicklungsschlüssel, kein TLS, nicht aus dem Internet erreichbar — nur zum
+Testen, nie mit Portfreigabe.

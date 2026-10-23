@@ -12,7 +12,9 @@ services:
     image: livekit/livekit-server:v1.13.8
     command: ["--config=/etc/livekit.yaml"]
     environment:
-      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY in .env}: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in .env}"
+      # The key NAME is fixed: LiveKit signs its webhooks with it (livekit.home.yaml), and a
+      # mismatch would silently cost the event log. Only the secret comes from .env.
+      LIVEKIT_KEYS: "yappa: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in .env}"
     volumes:
       - ./livekit.home.yaml:/etc/livekit.yaml:ro
     network_mode: host
@@ -39,7 +41,7 @@ services:
       context: ../..
       dockerfile: infra/control/Dockerfile
     environment:
-      LIVEKIT_API_KEY: "${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY in .env}"
+      LIVEKIT_API_KEY: "yappa"
       LIVEKIT_API_SECRET: "${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in .env}"
       LIVEKIT_WS_URL: "wss://${YAPPA_DOMAIN:?set YAPPA_DOMAIN in .env}"
       LIVEKIT_HTTP_URL: "http://localhost:7880"

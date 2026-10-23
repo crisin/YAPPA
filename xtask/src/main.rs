@@ -13,7 +13,8 @@
 //!   bench              criterion benchmarks (DSP cost per 10 ms block)
 //!   livekit [cmd]      local LiveKit server in Docker: up | down | logs | loss <%> | cut <s>;
 //!                      token <name> = join token for one person
-//!   control [args]     the control plane against the local LiveKit (dev keys, port 8090)
+//!   local [--lan]      LiveKit + control plane for development in one go (LAN: other PCs)
+//!   control [--lan] [args]  only the control plane; args go to yappa-control
 //!   coverage           line coverage as HTML (target/llvm-cov/html)
 //!   hook <name>        entry points for Claude Code hooks (see .claude/settings.json)
 
@@ -59,12 +60,13 @@ fn main() -> ExitCode {
         Some("coverage") => coverage(&root),
         Some("livekit") => livekit::run(&root, &args[1..]),
         Some("control") => control::run(&root, &args[1..]),
+        Some("local") => control::local(&root, &args[1..]),
         Some("hook") => hook::run(&root, args.get(1).map(String::as_str)),
         _ => {
             eprintln!(
                 "usage: cargo xtask <dev [--ui] | build [--debug] | setup | doctor \
                  | check [--fast|--ci] | test | gen-types | tokens | docs | bench | coverage \
-                 | livekit [up|down|logs|loss <%>|cut <s>|token <name>] | control [args] | hook <post-edit|session-start>>"
+                 | livekit [up|down|logs|loss <%>|cut <s>|token <name>] | local [--lan] | control [--lan] [args] | hook <post-edit|session-start>>"
             );
             return ExitCode::from(2);
         }

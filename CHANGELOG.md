@@ -4,6 +4,7 @@ One line per finished task (definition of done). Newest first.
 
 ## Unreleased
 
+- Easier server setup: `cargo xtask local` starts the whole server stack on the dev PC in one command (`--lan` for other PCs at home), and the home-server guide is one straight path — clone, two lines of `.env`, one command, admin link.
 - Push-to-talk and voice settings: „Ich → Audio und Sprechen“ now chooses automatic, hold-a-key or always-on, sets the voice threshold against a live meter, picks the push-to-talk key (also a mouse side button — it works while a game has the focus), the noise suppression, the input of a multi-channel interface and the overall volume. The server box can create channels (`yappa-control channel add`). A checklist for the first evening with the gang: docs/testabend.md.
 - The voice chain is live (E1): every microphone now goes through high-pass, DeepFilterNet noise suppression, voice activation, EQ and compressor before it is sent — 10 ms extra latency, about 1.5 ms of work per 10 ms block. Push-to-talk works in the engine; the global key comes with S3. The diagnosis shows the chain's cost.
 - Noise suppression measured (S2): DeepFilterNet 3 removes the noise between words completely and costs 0.66 ms per 10 ms block, RNNoise takes ~33 dB off at 0.03 ms; both add 10 ms. DeepFilterNet becomes the default (ADR-008), RNNoise the fallback. New building blocks for the voice chain: noise gate with hold and hysteresis, compressor. Not wired into the app yet (E1).

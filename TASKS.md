@@ -73,6 +73,8 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
       (needs the `lk` CLI)
 - [ ] Presence: show a person as "maybe gone" when their presence link is stale instead of
       waiting for LiveKit's 20–23 s timeout for a dead client (S6)
+- [ ] Control-plane image from CI (`ghcr.io/crisin/yappa-control`), so the box pulls instead
+      of compiling Rust (needs 4 GB RAM today); `home.yml` keeps `build:` as the fallback
 - [ ] Tray icon and autostart (from S3): yAPPA in the notification area, start with Windows
       as an option in „Ich“
 - [ ] Send-chain headroom: the pump with DeepFilterNet peaks at 3.3 ms of the 5 ms budget
@@ -107,6 +109,12 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] Server setup made simple: `cargo xtask local [--lan]` (LiveKit + control plane in one
+      command; LAN mode uses this PC's address for links and media — tested end to end with
+      a join over 192.168.178.60), `cargo xtask control --lan …`; `home.yml` fixes the key
+      name `yappa` (`.env` = secret + domain only); `docs/homeserver.md` rewritten as one
+      path (clone, two-line `.env`, one compose command, admin link, invites, channels,
+      backups, troubleshooting) (2026-10-23)
 - [x] S3 PTT (implementation): `crates/platform` — global low-level hooks via `rdev`
       (passes keys on to the game), PTT key with auto-repeat filtered, mouse side buttons,
       left/right click never; key capture; the shell sends `SetPttPressed`; a hook that
