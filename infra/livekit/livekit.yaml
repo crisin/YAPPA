@@ -9,3 +9,9 @@ rtc:
   use_external_ip: false
 logging:
   level: info
+# The control plane's event log (ADR-005), running on the host while developing
+# (`cargo run -p control`, port 8090). Without it LiveKit only logs failed deliveries.
+webhook:
+  api_key: devkey
+  urls:
+    - http://host.docker.internal:8090/livekit/webhook

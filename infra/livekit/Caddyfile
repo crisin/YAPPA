@@ -1,4 +1,9 @@
-# TLS in front of LiveKit's signalling port. The certificate comes from Let's Encrypt.
+# TLS in front of LiveKit's signalling port and the control plane. The certificate comes
+# from Let's Encrypt. /api/… goes to yappa-control (prefix stripped), everything else to
+# LiveKit.
 {$YAPPA_DOMAIN} {
+	handle_path /api/* {
+		reverse_proxy localhost:8090
+	}
 	reverse_proxy localhost:7880
 }

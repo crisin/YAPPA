@@ -58,6 +58,8 @@ Docker, `lk` and `gh` come from the OS package manager (winget / brew).
 | `cargo xtask livekit` | local LiveKit in Docker (`infra/livekit/dev.yml`): ws://localhost:7880, dev keys `devkey` / `secret`, media on udp/7882 |
 | `cargo xtask livekit down` / `logs` | stop it / follow the server log |
 | `cargo xtask livekit loss <percent>` | drop that share of packets in both directions (tc/netem in a sidecar); `0` clears |
+| `cargo xtask control [args]` | the control plane (`yappa-control`) against the local LiveKit: dev keys, `target/control-dev.db`, port 8090 (where the dev LiveKit sends webhooks); the first start prints an admin invite; `invite [--admin]`, `policy --min <v> [--kill <v>]` as arguments |
+| `cargo run --release -p spike-s6` | S6 spike: control plane + presence room against the local LiveKit, prints the measurement table |
 | `cargo xtask livekit cut <seconds>` | drop everything for that long, then restore — the pulled cable |
 | `cargo xtask livekit token <name> [--room gang] [--days 30] [--jwt]` | an invite for one person (server address + join token as one line to paste into the app), signed with the keys in `infra/livekit/.env` (dev keys and `ws://localhost:7880` without one); `--jwt` prints the bare token — see [homeserver.md](homeserver.md) |
 | `cargo run --release -p yappa-desktop --example headless -- --invite <text>` | the app's engine without a window: same transport and devices, events as JSON lines on stdout — for measuring and for checking a server |
