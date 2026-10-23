@@ -4,6 +4,7 @@ One line per finished task (definition of done). Newest first.
 
 ## Unreleased
 
+- The voice chain is live (E1): every microphone now goes through high-pass, DeepFilterNet noise suppression, voice activation, EQ and compressor before it is sent — 10 ms extra latency, about 1.5 ms of work per 10 ms block. Push-to-talk works in the engine; the global key comes with S3. The diagnosis shows the chain's cost.
 - Noise suppression measured (S2): DeepFilterNet 3 removes the noise between words completely and costs 0.66 ms per 10 ms block, RNNoise takes ~33 dB off at 0.03 ms; both add 10 ms. DeepFilterNet becomes the default (ADR-008), RNNoise the fallback. New building blocks for the voice chain: noise gate with hold and hysteresis, compressor. Not wired into the app yet (E1).
 - Engine groundwork for the voice chain (E0): the microphone path keeps full precision until it is sent, a microphone on the second input of an audio interface can be chosen, a master volume and a limiter stop everyone-laughs-at-once from clipping, and the diagnosis shows how long the send chain takes per block. Measured before and after: about 1 % of the 5 ms budget.
 - The app talks to the real server (U5): clicking an invite link opens yAPPA with the link already filled in (also when it is running — no second window), a name, „Beitreten“, and the channel tree is live from the server's presence room. Tester guide rewritten for links.

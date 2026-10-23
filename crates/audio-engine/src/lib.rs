@@ -11,6 +11,7 @@
 //!   encodes on it.
 //! - **device callbacks** ([`device`], [`mixer`]) — real-time: rings and atomics only.
 
+pub mod chain;
 pub mod device;
 pub mod engine;
 pub mod mixer;

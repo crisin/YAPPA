@@ -4,9 +4,10 @@ import type { ConnectionState } from "./ConnectionState";
 import type { LogEntry } from "./LogEntry";
 import type { Participant } from "./Participant";
 import type { PeerLevel } from "./PeerLevel";
+import type { StageLevel } from "./StageLevel";
 import type { Stats } from "./Stats";
 
 /**
  * Engine -> UI.
  */
-export type Event = { "type": "ready", protocolVersion: number, } | { "type": "devices", inputs: Array<AudioDevice>, outputs: Array<AudioDevice>, } | { "type": "levels", inputDb: number, gateOpen: boolean, peers: Array<PeerLevel>, } | { "type": "connection", state: ConnectionState, } | { "type": "error", message: string, } | { "type": "joined", room: string, identity: string, } | { "type": "participants", participants: Array<Participant>, } | { "type": "stats", stats: Stats, } | { "type": "log", entry: LogEntry, };
+export type Event = { "type": "ready", protocolVersion: number, } | { "type": "devices", inputs: Array<AudioDevice>, outputs: Array<AudioDevice>, } | { "type": "levels", inputDb: number, gateOpen: boolean, peers: Array<PeerLevel>, } | { "type": "connection", state: ConnectionState, } | { "type": "error", message: string, } | { "type": "joined", room: string, identity: string, } | { "type": "participants", participants: Array<Participant>, } | { "type": "stats", stats: Stats, } | { "type": "log", entry: LogEntry, } | { "type": "stageLevels", stages: Array<StageLevel>, };

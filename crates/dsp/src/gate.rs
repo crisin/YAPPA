@@ -84,6 +84,19 @@ impl Gate {
         self.open
     }
 
+    /// Takes over from another way of opening (push-to-talk, always on): starts open or
+    /// closed at the given gain, so switching modes neither clicks nor leaks a stale state.
+    pub fn take_over(&mut self, open: bool, gain: f32) {
+        self.open = open;
+        self.held = 0;
+        self.gain = gain.clamp(0.0, 1.0);
+    }
+
+    /// The gain applied right now (0..1).
+    pub fn gain(&self) -> f32 {
+        self.gain
+    }
+
     /// Current input level the gate decides on, dBFS — for the threshold slider's meter.
     pub fn level_db(&self) -> f32 {
         gain_to_db(self.envelope)

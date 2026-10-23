@@ -12,6 +12,7 @@ publish = false
 engine-protocol = { path = "crates/engine-protocol" }
 api-types = { path = "crates/api-types" }
 dsp = { path = "crates/dsp" }
+denoise = { path = "crates/denoise" }
 audio-engine = { path = "crates/audio-engine" }
 transport = { path = "crates/transport" }
 client = { path = "crates/client" }

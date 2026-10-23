@@ -8,6 +8,7 @@ import type { LogEntry } from './types/LogEntry';
 import type { Participant } from './types/Participant';
 import type { PeerLevel } from './types/PeerLevel';
 import type { Settings } from './types/Settings';
+import type { StageLevel } from './types/StageLevel';
 import type { Stats } from './types/Stats';
 
 const INVITE_KEY = 'yappa.invite';
@@ -37,6 +38,8 @@ export class Session {
   sending = $state(true);
   peerLevels = $state<Record<string, PeerLevel>>({});
   stats = $state<Stats | null>(null);
+  /** The send chain stage by stage (pro view). */
+  stages = $state<StageLevel[]>([]);
   log = $state<LogEntry[]>([]);
   inputs = $state<AudioDevice[]>([]);
   outputs = $state<AudioDevice[]>([]);
@@ -96,6 +99,9 @@ export class Session {
         break;
       case 'stats':
         this.stats = event.stats;
+        break;
+      case 'stageLevels':
+        this.stages = event.stages;
         break;
       case 'devices':
         this.inputs = event.inputs;

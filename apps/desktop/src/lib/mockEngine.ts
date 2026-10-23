@@ -103,6 +103,7 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
     playoutSkips: 0,
     pumpBusyMaxMs: 0.03,
     pumpBusyMeanMs: 0.01,
+    chainLatencyMs: 10,
   });
 
   // Ten times per second is enough to see the meters move.
@@ -117,6 +118,18 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
         connected && people.length > 0
           ? [{ identity: people[0].identity, levelDb: -30 + 12 * wave, speaking: wave > 0 }]
           : [],
+    });
+    const level = (db: number, active = true) => ({ levelDb: db, active });
+    emit({
+      type: 'stageLevels',
+      stages: [
+        { id: 'input', ...level(-38 + 10 * wave) },
+        { id: 'highpass', ...level(-39 + 10 * wave) },
+        { id: 'denoiser', ...level(-41 + 10 * wave) },
+        { id: 'gate', ...level(muted ? -120 : -41 + 10 * wave, !muted) },
+        { id: 'eq', ...level(muted ? -120 : -40 + 10 * wave) },
+        { id: 'compressor', ...level(muted ? -120 : -36 + 6 * wave) },
+      ],
     });
     if (ticks % 10 === 0) emit({ type: 'stats', stats: stats() });
     // A flaky link: gone for two seconds out of every five.

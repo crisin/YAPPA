@@ -23,7 +23,7 @@ tauri-plugin-deep-link = "2.6"
 tauri-plugin-single-instance = { version = "2.5", features = ["deep-link"] }
 api-types.workspace = true
 client.workspace = true
-audio-engine.workspace = true
+audio-engine = { workspace = true, features = ["deepfilter"] }
 engine-protocol.workspace = true
 serde.workspace = true
 serde_json.workspace = true
