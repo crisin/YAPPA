@@ -111,7 +111,7 @@ export function createMockApi(scene: Scene = DEFAULT_SCENE, engine?: Engine): Ap
   const presence = new Map<string, PresenceState>(
     Object.entries(structuredClone(scene === 'lobby' ? QUIET : EVENING)),
   );
-  let loggedIn = scene !== 'login';
+  let loggedIn = scene !== 'login' && scene !== 'invite';
   if (loggedIn) presence.set(myId, state(null));
   const handlers = new Set<(people: PresenceEntry[]) => void>();
   const invites: InviteCode[] = [
@@ -249,6 +249,11 @@ export function createMockApi(scene: Scene = DEFAULT_SCENE, engine?: Engine): Ap
     async leaveChannel() {
       await engine?.send({ type: 'leave' });
       setMine({ channelId: null });
+    },
+    inviteLinks(handler) {
+      // Scene `invite`: the app was started by clicking the invite link.
+      if (scene === 'invite') queueMicrotask(() => handler(MOCK_INVITE_LINK));
+      return Promise.resolve(() => {});
     },
     admin: {
       members: () =>

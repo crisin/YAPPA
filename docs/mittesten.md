@@ -1,20 +1,24 @@
 # Mittesten
 
 Für alle aus der Gang, die yAPPA ausprobieren. Du brauchst Windows 10 oder 11, ein Headset
-und zwei Dinge von Chris: den **Installer** und deine persönliche **Einladung** (eine lange
-Textzeile, die mit `yappa1.` beginnt).
+und zwei Dinge von Chris: den **Installer** und deinen persönlichen **Einladungslink** (er
+beginnt mit `yappa://invite/`).
 
 ## Loslegen
 
 1. Installer starten. Windows warnt vor einer unbekannten App: „Weitere Informationen" →
    „Trotzdem ausführen". Das liegt daran, dass die App noch nicht signiert ist.
-2. yAPPA öffnen. Unten links auf **Ich** → **Audio und Sprechen**: **Mikrofon** und
-   **Ausgabe** wählen. Wenn du sprichst, bewegt sich der Balken – das geht schon, bevor du
-   verbunden bist. Danach links oben zurück zu **Voice** (oder `Esc`).
-3. Die Einladung komplett in das Feld **Einladung** einfügen und auf **Beitreten** klicken.
-4. Du siehst, wer da ist. Wer spricht, bekommt einen farbigen Rand.
+2. Auf den **Einladungslink** klicken. yAPPA öffnet sich und hat den Link schon eingefügt.
+   Klappt der Klick nicht (manche Chat-Programme öffnen nur Web-Links), den Link kopieren,
+   yAPPA öffnen und ihn ins Feld **Einladung** einfügen.
+3. Deinen **Namen** eintragen – so sehen dich die anderen – und auf **Beitreten** klicken.
+4. Links siehst du jetzt alle Channels und wer gerade wo ist. **Ein Klick auf einen
+   Channel**, und du bist drin. Wer spricht, bekommt einen farbigen Rahmen.
+5. Mikrofon und Ausgabe prüfen: unten links auf **Ich** → **Audio und Sprechen**. Wenn du
+   sprichst, bewegt sich der Balken. Mit `Esc` geht es zurück.
 
-Die Einladung merkt sich yAPPA. Beim nächsten Mal reicht ein Klick auf „Beitreten".
+Der Link funktioniert genau einmal. Danach kennt yAPPA dich auf diesem Rechner – beim
+nächsten Start bist du sofort drin.
 
 **Bitte Headset benutzen.** Mit Lautsprechern hören die anderen sich selbst als Echo – eine
 Echounterdrückung gibt es noch nicht.
@@ -56,7 +60,7 @@ Einladung steht nicht drin.
 - Kein Push-to-Talk und keine Rauschunterdrückung: das Mikrofon ist immer offen.
 - Geräte müssen auf 48000 Hz stehen (Windows-Soundeinstellungen → Gerät → Format). Meldet
   yAPPA „kein 48-kHz-Modus", dort umstellen.
-- Ein Raum, keine Channels, kein Text-Chat.
+- Kein Text-Chat, kein Soundboard.
 - Updates kommen noch von Hand: neuer Installer, drüberinstallieren.
-- Dieselbe Einladung nicht auf zwei Rechnern gleichzeitig benutzen – der zuerst verbundene
-  fliegt raus.
+- Abmelden (**Ich → Konto**) heißt: Für den nächsten Start brauchst du einen neuen Link.
+- Stürzt yAPPA bei jemandem ab, steht er für die anderen noch etwa 20 Sekunden im Channel.

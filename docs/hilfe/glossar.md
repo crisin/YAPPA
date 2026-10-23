@@ -153,13 +153,14 @@ Mehr dazu: [Selective Forwarding Unit (Wikipedia, englisch)](https://en.wikipedi
 
 ## Einladung
 
-Eine lange Textzeile, die mit `yappa1.` beginnt. Sie enthält die Adresse des Servers und
-deinen persönlichen Zugang. Nicht weitergeben – sie ist dein Schlüssel.
+Ein Link, der mit `yappa://invite/` beginnt und genau einmal funktioniert: Er sagt yAPPA,
+welcher Server gemeint ist, und lässt dich einmal hinein. Danach kennt yAPPA dich auf diesem
+Rechner.
 
-Technisch steckt darin ein signierter Token mit deinem Namen und einer Laufzeit. Dieselbe
-Einladung auf zwei Rechnern gleichzeitig geht nicht; der zuerst verbundene fliegt raus.
-
-Mehr dazu: [JSON Web Token (Wikipedia)](https://de.wikipedia.org/wiki/JSON_Web_Token)
+Im Link stehen ein einmaliger Code und die Adresse der Verwaltung des Servers. Beim Einlösen
+bekommst du einen eigenen Zugang, den yAPPA in der Windows-Anmeldeinformationsverwaltung
+(macOS: Schlüsselbund) ablegt. Für Entwickler gibt es noch die alte Form `yappa1.…`, die
+direkt in einen Raum führt.
 
 ## Echo
 

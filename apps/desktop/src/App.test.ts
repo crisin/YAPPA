@@ -296,3 +296,11 @@ describe('Ich module', () => {
     ).toHaveAttribute('aria-current', 'page');
   });
 });
+
+describe('Invite links from the OS', () => {
+  it('puts a clicked invite link into the login card', async () => {
+    await start('invite');
+    await waitFor(() => expect(screen.getByLabelText('Einladung')).toHaveValue(MOCK_INVITE_LINK));
+    expect(screen.getByLabelText('Dein Name')).toBeInTheDocument();
+  });
+});

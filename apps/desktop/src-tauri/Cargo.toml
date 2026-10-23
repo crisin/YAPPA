@@ -17,6 +17,10 @@ tauri-build = { version = "2.7", features = [] }
 tauri = { version = "2.12", features = [] }
 # Links in the in-app help open in the system browser (Rust side only, see `open_url`).
 tauri-plugin-opener = "2"
+# Invite links (`yappa://invite/…`) open the app; a second start hands its link to the first
+# window instead of opening another one (U5).
+tauri-plugin-deep-link = "2.6"
+tauri-plugin-single-instance = { version = "2.5", features = ["deep-link"] }
 api-types.workspace = true
 client.workspace = true
 audio-engine.workspace = true
