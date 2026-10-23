@@ -1,0 +1,17 @@
+[package]
+name = "platform"
+description = "OS integration behind small traits (CLAUDE.md rule 3): global hotkeys for push-to-talk, later app-audio capture. A missing or failing implementation degrades the feature, never the call."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Low-level keyboard and mouse hooks (Windows: WH_KEYBOARD_LL / WH_MOUSE_LL with
+# CallNextHookEx, so the game still gets the key; macOS: CGEventTap, needs the
+# accessibility permission). MIT.
+rdev = "0.5"
+tracing.workspace = true
+
+[lints]
+workspace = true

@@ -9,6 +9,7 @@ import type { Participant } from './types/Participant';
 import type { PeerLevel } from './types/PeerLevel';
 import type { Settings } from './types/Settings';
 import type { StageLevel } from './types/StageLevel';
+import type { TransmitMode } from './types/TransmitMode';
 import type { Stats } from './types/Stats';
 
 const INVITE_KEY = 'yappa.invite';
@@ -166,6 +167,18 @@ export class Session {
   setOutput(id: string | null) {
     if (this.settings) this.settings.outputDevice = id;
     return this.#engine.send({ type: 'setOutputDevice', id });
+  }
+
+  /** Changes some settings; the engine gets the whole object (both views write the same). */
+  applySettings(patch: Partial<Settings>) {
+    if (!this.settings) return Promise.resolve();
+    Object.assign(this.settings, patch);
+    return this.#engine.send({ type: 'applySettings', settings: $state.snapshot(this.settings) });
+  }
+
+  setTransmitMode(mode: TransmitMode) {
+    if (this.settings) this.settings.transmitMode = mode;
+    return this.#engine.send({ type: 'setTransmitMode', mode });
   }
 
   refreshDevices() {

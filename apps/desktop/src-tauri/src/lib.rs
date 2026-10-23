@@ -45,6 +45,8 @@ pub struct App {
     client: Arc<Client>,
     app_settings: Mutex<AppSettings>,
     presence: api::PresenceSlot,
+    /// Global hotkeys (push-to-talk), running for the app's lifetime.
+    hotkeys: platform::Hotkeys,
 }
 
 impl App {
@@ -233,6 +235,18 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     if first_link.is_some() {
         tracing::info!("started with an invite link");
     }
+    // Push-to-talk (S3): the hook calls this from its own thread when the key goes down
+    // or up; the engine opens the send path in PTT mode.
+    let for_ptt = Arc::downgrade(&engine);
+    let hotkeys = platform::Hotkeys::start(move |pressed| {
+        if let Some(engine) = for_ptt.upgrade() {
+            if let Some(engine) = engine.lock().unwrap().as_ref() {
+                engine.send(Command::SetPttPressed { pressed });
+            }
+        }
+    });
+    hotkeys.set_ptt(loaded.app.ptt_key.clone());
+
     app.manage(App {
         pending_link: Mutex::new(first_link),
         engine,
@@ -240,6 +254,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         client,
         app_settings: Mutex::new(loaded.app),
         presence: api::PresenceSlot::default(),
+        hotkeys,
     });
     // Registered after `manage`: the callback needs the App state.
     let handle = app.handle().clone();
@@ -308,6 +323,8 @@ pub fn run() {
             api::voice_leave,
             api::app_settings,
             api::set_app_settings,
+            api::capture_ptt_key,
+            api::hotkeys_global,
             pending_invite_link
         ])
         .build(tauri::generate_context!())

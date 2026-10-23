@@ -45,7 +45,8 @@ crates/transport/        LiveKit: voice session (Transport trait) + PresenceLink
 crates/client/           non-audio client logic: API client, session/keyring, presence, app
                          settings, update check — no Tauri, no audio (ADR-007)
 crates/control/          control-plane server binary (axum, sqlx/SQLite, migrations)
-crates/platform-windows/, crates/platform-macos/   one implementation per OS behind traits
+crates/platform/         OS integration behind small interfaces: global hotkeys (rdev hooks on
+                         Windows and macOS); per-OS modules via cfg when a feature needs them
 crates/plugin-host/      CLAP/VST3 (phase 3)
 xtask/                   repo tasks: check, livekit, gen-types, …  (`cargo xtask <cmd>`)
 ui-tokens/               design tokens + themes as JSON -> CSS variables

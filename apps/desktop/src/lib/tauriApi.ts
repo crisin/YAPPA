@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { Api, PresenceEntry } from './api';
 import type { ApiError } from './types/ApiError';
+import type { AppSettings } from './types/AppSettings';
 import type { Channel } from './types/Channel';
 import type { PublicConfig } from './types/PublicConfig';
 import type { User } from './types/User';
@@ -36,6 +37,10 @@ export const tauriApi: Api = {
     if (first) handler(first);
     return stop;
   },
+  appSettings: () => invoke<AppSettings>('app_settings'),
+  setAppSettings: (settings) => invoke<void>('set_app_settings', { settings }),
+  capturePttKey: () => invoke<string | null>('capture_ptt_key'),
+  hotkeysGlobal: () => invoke<boolean>('hotkeys_global'),
   admin: {
     members: notYet,
     setRole: notYet,

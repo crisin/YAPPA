@@ -172,5 +172,35 @@ pub fn app_settings(app: State<'_, App>) -> AppSettings {
 #[tauri::command]
 pub fn set_app_settings(app: State<'_, App>, settings: AppSettings) {
     client::settings::save_app(app.client.profile(), &settings);
+    app.hotkeys.set_ptt(settings.ptt_key.clone());
     *app.app_settings.lock().expect("lock") = settings;
+}
+
+/// Waits (up to 10 s) for the next key or mouse button and makes it the push-to-talk key.
+/// `None`: cancelled with Escape, or nothing pressed.
+#[tauri::command]
+pub async fn capture_ptt_key(app: State<'_, App>) -> Reply<Option<String>> {
+    let hotkeys = app.hotkeys.clone();
+    let key = tauri::async_runtime::spawn_blocking(move || {
+        hotkeys.capture_next(std::time::Duration::from_secs(10))
+    })
+    .await
+    .map_err(|e| ApiFailure::new("capture_failed", &e.to_string()))?;
+    if let Some(key) = &key {
+        let settings = {
+            let mut settings = app.app_settings.lock().expect("lock");
+            settings.ptt_key = Some(key.clone());
+            settings.clone()
+        };
+        client::settings::save_app(app.client.profile(), &settings);
+        app.hotkeys.set_ptt(Some(key.clone()));
+        tracing::info!(%key, "push-to-talk key set");
+    }
+    Ok(key)
+}
+
+/// False when the global hook could not start: the key then only works in the window.
+#[tauri::command]
+pub fn hotkeys_global(app: State<'_, App>) -> bool {
+    app.hotkeys.is_global()
 }

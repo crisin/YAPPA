@@ -55,5 +55,9 @@ Two smells in the current contracts:
 - `keyring` 3.6 with `windows-native` + `apple-native` (C1: 4.x pulls the whole Linux
   D-Bus stack through its default feature);
   if it fails at runtime the token falls back to a file in the config dir with a warning.
+- Implemented in S3 (2026-10-23) as `crates/platform` with `rdev` 0.5: its Windows backend
+  is exactly the planned low-level keyboard/mouse hook (`WH_KEYBOARD_LL`/`WH_MOUSE_LL`,
+  passing every event on), its macOS backend a `CGEventTap`. One crate instead of
+  `platform-windows`/`-macos`, without `unsafe` in our code; mouse side buttons work as PTT.
 - Revisit: if the hook is blocked by an anti-cheat in a game the gang plays, PTT degrades to
   "hotkey while focused" plus VAD — never breaks the call (platform rule).

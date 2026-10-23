@@ -33,11 +33,9 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 - [ ] Listen to S2 (user): `target/s2/{off,rnnoise,deepfilter}.wav` (rerun
       `cargo run --release -p spike-s2 -- target/s2/noisy_snr0.wav` after a fresh clone);
       record a real gaming-evening noise and run it through
-- [ ] S3 PTT: `GlobalHotkey` in `crates/platform-windows` (low-level hook or Raw Input, not
-      the Tauri plugin — `RegisterHotKey` keeps the key from the game), engine
-      `SetPttPressed`, verified in a fullscreen game; tray; autostart →
-      `docs/spikes/s3-ptt.md`
-- [ ] U3 Settings Einfach/Profi in module „Ich“: `AppSettings` (view, theme, hotkeys,
+- [ ] PTT in a fullscreen game (user, testabend): does the voice come with the key, does
+      the game still get the key? Note anti-cheat games separately → `docs/spikes/s3-ptt.md`
+- [ ] U3 rest — Einfach/Profi in „Ich“ (the „Audio und Sprechen“ part is done): `AppSettings` (view, theme, hotkeys,
       notifications, update channel) and engine settings v2; signal chain as stages with
       live levels; diagnosis = the debug panel; the "Audio und Sprechen" component is built
       for reuse in onboarding
@@ -75,6 +73,8 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
       (needs the `lk` CLI)
 - [ ] Presence: show a person as "maybe gone" when their presence link is stale instead of
       waiting for LiveKit's 20–23 s timeout for a dead client (S6)
+- [ ] Tray icon and autostart (from S3): yAPPA in the notification area, start with Windows
+      as an option in „Ich“
 - [ ] Send-chain headroom: the pump with DeepFilterNet peaks at 3.3 ms of the 5 ms budget
       on a Ryzen 7 7700X (E1) — measure on the gang's slowest PC; if it gets close, run the
       denoiser on its own thread with a one-block handoff, or default that PC to RNNoise
@@ -107,6 +107,16 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] S3 PTT (implementation): `crates/platform` — global low-level hooks via `rdev`
+      (passes keys on to the game), PTT key with auto-repeat filtered, mouse side buttons,
+      left/right click never; key capture; the shell sends `SetPttPressed`; a hook that
+      cannot start degrades to "only while focused" with a note in the UI. Tray and
+      autostart are left for later (2026-10-23)
+- [x] U3 part „Audio und Sprechen“ (pulled forward for the testabend): speaking mode
+      (automatic / hold a key / always on, also as presence `talk`), threshold with the
+      level after the noise suppression, PTT key with capture, noise suppression choice,
+      input channel, master volume; `yappa-control channel add|list` for channels before
+      U6; `docs/testabend.md` (2026-10-23)
 - [x] E1 Chain in the pump (ADR-008): `audio-engine::chain` — HPF → denoiser (built on the
       pump thread) → gate (VAD) / push-to-talk / always on (linear 5 ms ramps) → EQ →
       compressor; settings reach the pump as `ChainConfig`; `Command::SetPttPressed`,

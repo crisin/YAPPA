@@ -176,6 +176,12 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
       case 'setOutputDevice':
         settings.outputDevice = command.id;
         break;
+      case 'applySettings':
+        Object.assign(settings, structuredClone(command.settings));
+        break;
+      case 'setTransmitMode':
+        settings.transmitMode = command.mode;
+        break;
       case 'refreshDevices':
       case 'resync':
         emit(devices());

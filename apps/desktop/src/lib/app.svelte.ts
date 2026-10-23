@@ -8,6 +8,7 @@ import { Gang } from './gang.svelte';
 import type { Session } from './session.svelte';
 import type { Shell } from './shell.svelte';
 import type { PublicConfig } from './types/PublicConfig';
+import type { TransmitMode } from './types/TransmitMode';
 
 /** The sections of the module „Ich“. U3 adds the Einfach/Profi split on top. */
 export const ME_SECTIONS = [
@@ -61,6 +62,13 @@ export class AppState {
    * presence follows), straight at the engine for a pasted developer invite. */
   leaveVoice() {
     return this.gang.status === 'in' ? this.gang.leave() : this.session.leave();
+  }
+
+  /** The speaking mode, in the engine and as presence (others see „PTT“ on my tile). */
+  async setTransmitMode(mode: TransmitMode) {
+    await this.session.setTransmitMode(mode);
+    const talk = { voiceActivation: 'vad', pushToTalk: 'ptt', alwaysOn: 'open' } as const;
+    if (this.gang.status === 'in') await this.api.setPresence({ talk: talk[mode] }).catch(() => {});
   }
 
   /** Opens „Ich“ at a section — from the palette, the dock, or a help link. */
