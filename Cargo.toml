@@ -14,6 +14,7 @@ api-types = { path = "crates/api-types" }
 dsp = { path = "crates/dsp" }
 audio-engine = { path = "crates/audio-engine" }
 transport = { path = "crates/transport" }
+client = { path = "crates/client" }
 base64 = "0.23"
 rtrb = "0.4"
 tracing = "0.1"
