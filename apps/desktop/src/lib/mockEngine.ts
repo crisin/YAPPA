@@ -101,6 +101,8 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
     sendBlocksDropped: 0,
     playoutFramesDropped: 0,
     playoutSkips: 0,
+    pumpBusyMaxMs: 0.03,
+    pumpBusyMeanMs: 0.01,
   });
 
   // Ten times per second is enough to see the meters move.

@@ -55,7 +55,7 @@ fn main() -> ExitCode {
         Some("gen-types") => gen_types(&root),
         Some("tokens") => tokens::generate(&root),
         Some("docs") => docs::generate(&root),
-        Some("bench") => cargo(&root, &["bench", "-p", "dsp"]),
+        Some("bench") => cargo(&root, &["bench", "-p", "dsp", "-p", "audio-engine"]),
         Some("coverage") => coverage(&root),
         Some("livekit") => livekit::run(&root, &args[1..]),
         Some("control") => control::run(&root, &args[1..]),

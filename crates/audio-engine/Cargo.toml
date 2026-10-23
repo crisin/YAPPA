@@ -17,7 +17,16 @@ tracing.workspace = true
 transport.workspace = true
 
 [dev-dependencies]
+criterion.workspace = true
 proptest.workspace = true
+
+# Only criterion runs under `cargo bench` (libtest would reject criterion's flags).
+[lib]
+bench = false
+
+[[bench]]
+name = "mixer"
+harness = false
 
 [lints]
 workspace = true

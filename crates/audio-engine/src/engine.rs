@@ -622,6 +622,8 @@ impl Engine {
             + counted(&self.capture, |c| c.driver_xruns.load(Relaxed));
         let underruns =
             self.mixer.underruns() + counted(&self.playout, |c| c.driver_xruns.load(Relaxed));
+        let busy_blocks = self.pump.busy_blocks.swap(0, Relaxed);
+        let busy_sum = self.pump.busy_sum_ns.swap(0, Relaxed);
         let stats = Stats {
             network: self.net.clone(),
             capture: device(&self.capture, overruns),
@@ -630,6 +632,12 @@ impl Engine {
             send_blocks_dropped: self.pump.dropped_blocks.load(Relaxed),
             playout_frames_dropped: self.mixer.dropped_frames(),
             playout_skips: self.mixer.skips(),
+            pump_busy_max_ms: self.pump.busy_max_ns.swap(0, Relaxed) as f32 / 1e6,
+            pump_busy_mean_ms: if busy_blocks == 0 {
+                0.0
+            } else {
+                busy_sum as f32 / busy_blocks as f32 / 1e6
+            },
         };
         if self.state != ConnectionState::Disconnected {
             // One line per second in the log file: enough to reconstruct an evening.
@@ -646,6 +654,8 @@ impl Engine {
                 concealed = net.concealed_percent_recent,
                 send_interval_max_ms = stats.send_interval_max_ms,
                 send_blocks_dropped = stats.send_blocks_dropped,
+                pump_busy_max_ms = stats.pump_busy_max_ms,
+                pump_busy_mean_ms = stats.pump_busy_mean_ms,
                 capture_overruns = overruns,
                 playout_underruns = underruns,
                 playout_skips = stats.playout_skips,
@@ -701,6 +711,10 @@ struct PumpShared {
     input_level: AtomicU32,
     /// Longest gap between two blocks since the stats timer last read it.
     interval_max_ns: AtomicU64,
+    /// Work per block since the stats timer last read it: longest, sum, count.
+    busy_max_ns: AtomicU64,
+    busy_sum_ns: AtomicU64,
+    busy_blocks: AtomicU64,
     dropped_blocks: AtomicU32,
 }
 
@@ -740,6 +754,7 @@ fn run_pump(shared: &PumpShared, rings: mpsc::Receiver<Consumer<i16>>, voice: &d
             }
             shared.dropped_blocks.fetch_add(stale as u32, Relaxed);
         }
+        let started = Instant::now();
         if ring.pop_entire_slice(&mut block).is_err() {
             continue;
         }
@@ -756,5 +771,9 @@ fn run_pump(shared: &PumpShared, rings: mpsc::Receiver<Consumer<i16>>, voice: &d
         }
         last = Some(now);
         voice.send(&block);
+        let busy = started.elapsed().as_nanos() as u64;
+        shared.busy_max_ns.fetch_max(busy, Relaxed);
+        shared.busy_sum_ns.fetch_add(busy, Relaxed);
+        shared.busy_blocks.fetch_add(1, Relaxed);
     }
 }

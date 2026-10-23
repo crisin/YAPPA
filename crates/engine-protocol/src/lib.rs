@@ -229,6 +229,13 @@ pub struct Stats {
     /// Times playout jumped forward because a speaker's buffer ran over — their clock is
     /// faster than our output device, or playout stalled (total).
     pub playout_skips: u32,
+    /// Work per 10 ms block on the send side (from the ring to the transport, the future
+    /// DSP chain included) since the last snapshot: the longest and the mean. The budget for
+    /// the whole chain is 5 ms (planning doc); the "before" of every send-chain change.
+    #[serde(default)]
+    pub pump_busy_max_ms: f32,
+    #[serde(default)]
+    pub pump_busy_mean_ms: f32,
 }
 
 /// From the transport's WebRTC statistics. "Recent" values cover the time since the

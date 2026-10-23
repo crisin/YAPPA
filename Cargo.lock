@@ -292,6 +292,7 @@ name = "audio-engine"
 version = "0.1.0"
 dependencies = [
  "cpal",
+ "criterion",
  "dsp",
  "engine-protocol",
  "proptest",

@@ -23,4 +23,10 @@ playoutFramesDropped: number,
  * Times playout jumped forward because a speaker's buffer ran over — their clock is
  * faster than our output device, or playout stalled (total).
  */
-playoutSkips: number, };
+playoutSkips: number, 
+/**
+ * Work per 10 ms block on the send side (from the ring to the transport, the future
+ * DSP chain included) since the last snapshot: the longest and the mean. The budget for
+ * the whole chain is 5 ms (planning doc); the "before" of every send-chain change.
+ */
+pumpBusyMaxMs: number, pumpBusyMeanMs: number, };
