@@ -1,17 +1,19 @@
 // A stand-in control plane and presence room for the browser and for tests: the fixture
-// "Die Gang" from the UI concept, arranged per scene. Admin actions change the fixture in
-// memory so the admin screens can be clicked through. No network.
-import type { Api, PresenceMap } from './api';
+// "Die Gang" from the UI concept, arranged per scene. Joining a channel drives the engine
+// mock like the real client drives the engine. Admin actions change the fixture in memory
+// so the admin screens can be clicked through. No network.
+import type { Api, PresenceEntry } from './api';
+import type { Engine } from './engine';
 import type { ApiError } from './types/ApiError';
 import type { Channel } from './types/Channel';
 import type { EventEntry } from './types/EventEntry';
 import type { InviteCode } from './types/InviteCode';
 import type { Member } from './types/Member';
+import type { Participant } from './types/Participant';
 import type { PresenceState } from './types/PresenceState';
 import type { PublicConfig } from './types/PublicConfig';
 import type { Role } from './types/Role';
 import type { User } from './types/User';
-import type { VoiceToken } from './types/VoiceToken';
 import { DEFAULT_SCENE, type Scene } from './scene';
 
 const user = (id: string, displayName: string, role: Role = 'member'): User => ({
@@ -42,6 +44,9 @@ export const CHANNELS: readonly Channel[] = [
 ];
 
 export const MOCK_WS_URL = 'wss://voice.yappa.example';
+export const MOCK_SERVER = 'https://voice.yappa.example/api';
+/** A link the mock accepts once (scene `login`). */
+export const MOCK_INVITE_LINK = `yappa://invite/gang-7f3k?server=${MOCK_SERVER}`;
 
 const state = (channelId: string | null, extra: Partial<PresenceState> = {}): PresenceState => ({
   channelId,
@@ -51,9 +56,8 @@ const state = (channelId: string | null, extra: Partial<PresenceState> = {}): Pr
   ...extra,
 });
 
-/** Who is where in the busy scenes (concept screen "Im Call"). */
+/** Who is where in the busy scenes (concept screen "Im Call"); I start nowhere. */
 const EVENING: Record<string, PresenceState> = {
-  krille: state('raid'),
   ben: state('raid'),
   sasha: state('raid'),
   tim: state('raid'),
@@ -64,9 +68,23 @@ const EVENING: Record<string, PresenceState> = {
 };
 
 const QUIET: Record<string, PresenceState> = {
-  krille: state('lobby'),
   rico: state('afk', { away: true, app: 'stable 0.0.9' }),
 };
+
+/** Tim has muted himself in the evening scene (concept screen). */
+const SELF_MUTED = new Set(['tim']);
+
+/** Who the engine mock finds in a room, as LiveKit would list them. */
+export function mockPeopleIn(room: string, me: string): Participant[] {
+  return Object.entries(EVENING)
+    .filter(([id, s]) => s.channelId === room && id !== me)
+    .map(([id]) => ({
+      identity: id,
+      name: GANG.find((u) => u.id === id)?.displayName ?? id,
+      hasVoice: true,
+      muted: SELF_MUTED.has(id),
+    }));
+}
 
 const reject = (code: string, message: string): Promise<never> =>
   Promise.reject<never>({ code, message } satisfies ApiError);
@@ -77,15 +95,25 @@ const UNREACHABLE: ApiError = { code: 'unreachable', message: 'Server nicht erre
 const T0 = Date.UTC(2026, 9, 23, 19, 0, 0);
 const at = (minutes: number) => new Date(T0 + minutes * 60_000).toISOString();
 
-export function createMockApi(scene: Scene = DEFAULT_SCENE): Api {
+/** The code of a `yappa://invite/<code>?server=…` link, or `null`. */
+function linkCode(link: string): string | null {
+  const match = /^yappa:\/\/invite\/([a-z0-9-]+)\?server=https?:\/\/\S+$/i.exec(
+    link.replace(/\s+/g, ''),
+  );
+  return match ? match[1].toLowerCase() : null;
+}
+
+/** `engine` (optional) is driven on join/leave, as the real client drives the engine. */
+export function createMockApi(scene: Scene = DEFAULT_SCENE, engine?: Engine): Api {
   const users = new Map(GANG.map((u) => [u.id, structuredClone(u)]));
   const channels: Channel[] = structuredClone(CHANNELS) as Channel[];
   const myId = scene === 'member' ? 'ben' : 'krille';
   const presence = new Map<string, PresenceState>(
     Object.entries(structuredClone(scene === 'lobby' ? QUIET : EVENING)),
   );
-  if (scene === 'lobby') presence.set(myId, state('lobby'));
-  const handlers = new Set<(presence: PresenceMap) => void>();
+  let loggedIn = scene !== 'login';
+  if (loggedIn) presence.set(myId, state(null));
+  const handlers = new Set<(people: PresenceEntry[]) => void>();
   const invites: InviteCode[] = [
     {
       code: 'gang-7f3k',
@@ -101,74 +129,73 @@ export function createMockApi(scene: Scene = DEFAULT_SCENE): Api {
       kind: 'joined',
       userId: 'ben',
       channelId: 'raid',
-      message: 'Ben ist Raid-Abend beigetreten',
+      message: 'Ben betritt raid',
     },
     {
       time: at(-29),
       kind: 'joined',
       userId: 'sasha',
       channelId: 'raid',
-      message: 'Sasha ist Raid-Abend beigetreten',
+      message: 'Sasha betritt raid',
     },
-    {
-      time: at(-12),
-      kind: 'reconnected',
-      userId: 'tim',
-      channelId: 'raid',
-      message: 'Tim hat die Verbindung wiederhergestellt',
-    },
+    { time: at(-12), kind: 'online', userId: 'tim', channelId: null, message: 'Tim ist online' },
     {
       time: at(-3),
       kind: 'invite_redeemed',
       userId: 'lea',
       channelId: null,
-      message: 'Lea hat eine Einladung eingelöst',
+      message: 'Lea ist dabei (0.1.0)',
     },
   ];
-  let loggedIn = scene !== 'offline';
   let nextCode = 1;
 
-  const snapshot = (): PresenceMap =>
-    Object.fromEntries(
-      [...presence].map(([userId, s]) => [
-        userId,
-        {
-          userId,
-          displayName: users.get(userId)?.displayName ?? userId,
-          state: structuredClone(s),
-        },
-      ]),
-    );
+  /** Me first, then the others by name — the order crates/client hands out. */
+  const snapshot = (): PresenceEntry[] => {
+    const entry = ([userId, s]: [string, PresenceState]): PresenceEntry => ({
+      userId,
+      displayName: users.get(userId)?.displayName ?? userId,
+      state: structuredClone(s),
+    });
+    const all = [...presence].map(entry);
+    const mine = all.filter((e) => e.userId === myId);
+    const others = all
+      .filter((e) => e.userId !== myId)
+      .sort((a, b) => a.displayName.localeCompare(b.displayName, 'de'));
+    return [...mine, ...others];
+  };
   const notify = () => {
-    const map = snapshot();
-    handlers.forEach((handler) => handler(map));
+    const people = snapshot();
+    handlers.forEach((handler) => handler(people));
   };
   const online = <T>(value: () => T): Promise<T> =>
     scene === 'offline' ? Promise.reject(UNREACHABLE) : Promise.resolve(value());
   const me = () => users.get(myId)!;
   const mustBeAdmin = <T>(value: () => T): Promise<T> =>
     me().role === 'admin' ? online(value) : reject('forbidden', 'Nur für Admins.');
-  const token = (room: string): VoiceToken => ({
-    wsUrl: MOCK_WS_URL,
-    token: `mock.${room}.${myId}`,
-    expiresAt: at(60 * 12),
-  });
   const sorted = () => [...channels].sort((a, b) => a.position - b.position);
+  const setMine = (patch: Partial<PresenceState>) => {
+    presence.set(myId, { ...(presence.get(myId) ?? state(null)), ...patch });
+    notify();
+  };
 
   return {
-    me: () =>
+    resume: () =>
       scene === 'offline'
         ? Promise.reject(UNREACHABLE)
-        : loggedIn
-          ? Promise.resolve(structuredClone(me()))
-          : reject('no_session', 'Nicht angemeldet.'),
-    redeemInvite(code, displayName) {
+        : Promise.resolve(loggedIn ? structuredClone(me()) : null),
+    redeem(link, displayName) {
       if (scene === 'offline') return Promise.reject(UNREACHABLE);
+      const code = linkCode(link);
+      if (!code) return reject('invite_invalid', 'Das ist kein yAPPA-Einladungslink.');
       const invite = invites.find((i) => i.code === code && i.usedBy === null);
-      if (!invite) return reject('invite_invalid', 'Diese Einladung ist ungültig oder verbraucht.');
-      const name = displayName.trim();
-      if (name.length < 2)
-        return reject('name_too_short', 'Der Name braucht mindestens zwei Zeichen.');
+      if (!invite)
+        return reject(
+          'invite_invalid',
+          'Diese Einladung ist ungültig, abgelaufen oder schon benutzt.',
+        );
+      const name = displayName.trim().replace(/\s+/g, ' ');
+      if (name.length < 2 || name.length > 32)
+        return reject('name_invalid', 'Der Name braucht 2 bis 32 Zeichen.');
       invite.usedBy = myId;
       users.set(myId, { ...me(), displayName: name });
       loggedIn = true;
@@ -177,19 +204,16 @@ export function createMockApi(scene: Scene = DEFAULT_SCENE): Api {
         kind: 'invite_redeemed',
         userId: myId,
         channelId: null,
-        message: `${name} hat eine Einladung eingelöst`,
+        message: `${name} ist dabei (0.1.0)`,
       });
-      return Promise.resolve({
-        user: structuredClone(me()),
-        sessionToken: 'mock-session',
-        presence: token('presence'),
-      });
+      setMine({});
+      return Promise.resolve(structuredClone(me()));
     },
-    logout() {
+    async logout() {
+      await engine?.send({ type: 'leave' });
       loggedIn = false;
       presence.delete(myId);
       notify();
-      return Promise.resolve();
     },
     config: () =>
       online(() => ({
@@ -200,10 +224,6 @@ export function createMockApi(scene: Scene = DEFAULT_SCENE): Api {
         livekitWsUrl: MOCK_WS_URL,
       })) as Promise<PublicConfig>,
     channels: () => online(() => structuredClone(sorted())),
-    voiceToken: (channelId) =>
-      channels.some((c) => c.id === channelId)
-        ? online(() => token(channelId))
-        : reject('channel_unknown', 'Diesen Channel gibt es nicht.'),
     presence(handler) {
       handlers.add(handler);
       handler(snapshot());
@@ -213,9 +233,22 @@ export function createMockApi(scene: Scene = DEFAULT_SCENE): Api {
     },
     setPresence(patch) {
       if (scene === 'offline') return Promise.reject(UNREACHABLE);
-      presence.set(myId, { ...(presence.get(myId) ?? state(null)), ...patch });
-      notify();
+      setMine(patch);
       return Promise.resolve();
+    },
+    async joinChannel(channelId) {
+      if (scene === 'offline') throw UNREACHABLE;
+      if (!channels.some((c) => c.id === channelId))
+        throw {
+          code: 'channel_unknown',
+          message: 'Diesen Channel gibt es nicht.',
+        } satisfies ApiError;
+      await engine?.send({ type: 'join', url: MOCK_WS_URL, token: `mock.${channelId}.${myId}` });
+      setMine({ channelId });
+    },
+    async leaveChannel() {
+      await engine?.send({ type: 'leave' });
+      setMine({ channelId: null });
     },
     admin: {
       members: () =>
@@ -225,7 +258,7 @@ export function createMockApi(scene: Scene = DEFAULT_SCENE): Api {
             client: presence.has(u.id)
               ? {
                   appVersion: presence.get(u.id)!.app.split(' ')[1] ?? '0.0.0',
-                  protocolVersion: 1,
+                  protocolVersion: 2,
                   platform: 'windows',
                 }
               : null,

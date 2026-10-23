@@ -44,7 +44,7 @@
   </button>
   <p class="hint">Nur du hörst die Änderung.</p>
 {:else}
-  <p class="hint">Diese Person ist nicht mehr im Channel.</p>
+  <p class="hint">Diese Person ist nicht in deinem Channel.</p>
 {/if}
 
 <style>

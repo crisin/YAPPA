@@ -1,43 +1,50 @@
 // The UI's second door (ADR-004): everything that is not audio — who I am, channels, who is
-// where, admin. It speaks api-types (generated) and nothing else. Until the client crate
-// exists (C1/U5) the door is the mock in every environment, so the UI can be built and the
-// browser mode shows "Die Gang" without a server.
+// where, admin. It speaks api-types (generated) and nothing else. In the app the Tauri
+// commands of crates/client answer (U5); in the browser and in tests the mock gang does.
+// Session and voice tokens never come through this door: joining a channel is one call.
 import type { Channel } from './types/Channel';
 import type { EventEntry } from './types/EventEntry';
 import type { InviteCode } from './types/InviteCode';
 import type { Member } from './types/Member';
 import type { PresenceEntry } from './types/PresenceEntry';
-import type { PresenceState } from './types/PresenceState';
 import type { PublicConfig } from './types/PublicConfig';
 import type { Role } from './types/Role';
-import type { Session } from './types/Session';
+import type { TalkMode } from './types/TalkMode';
 import type { User } from './types/User';
-import type { VoiceToken } from './types/VoiceToken';
+import { engine } from './engine';
 import { createMockApi } from './mockApi';
 import { sceneFromUrl } from './scene';
 
 export type { PresenceEntry };
 
-/** Everybody who is online, by user id. Not in the map = app not running. */
-export type PresenceMap = Record<string, PresenceEntry>;
+/** What the UI may change about its own presence; the channel follows join/leave. */
+export interface PresencePatch {
+  talk?: TalkMode;
+  away?: boolean;
+}
 
 /** Rejections carry an `ApiError` shape: a stable code and a message for the user. */
 export interface Api {
-  /** Who I am; rejects with `no_session` when nobody is logged in here. */
-  me(): Promise<User>;
-  redeemInvite(code: string, displayName: string): Promise<Session>;
+  /**
+   * The login stored on this machine, checked with the server; joins the presence room.
+   * `null` = nobody logged in here yet. Rejects with `unreachable` when the server is away.
+   */
+  resume(): Promise<User | null>;
+  /** First login: an invite link (`yappa://invite/<code>?server=…`) and a display name. */
+  redeem(link: string, displayName: string): Promise<User>;
   logout(): Promise<void>;
   config(): Promise<PublicConfig>;
-  /** Sorted by position. */
+  /** Sorted by position; the cached list when the server is away. */
   channels(): Promise<Channel[]>;
-  voiceToken(channelId: string): Promise<VoiceToken>;
   /**
-   * The whole presence map on every change, once right away. The returned function stops
-   * the updates.
+   * Everybody online — me first, then by name — once right away and on every change. The
+   * returned function stops the updates.
    */
-  presence(handler: (presence: PresenceMap) => void): Promise<() => void>;
-  /** Changes my own attributes in the presence room. */
-  setPresence(patch: Partial<PresenceState>): Promise<void>;
+  presence(handler: (people: PresenceEntry[]) => void): Promise<() => void>;
+  setPresence(patch: PresencePatch): Promise<void>;
+  /** Into a channel: token, engine join and presence in one step. */
+  joinChannel(channelId: string): Promise<void>;
+  leaveChannel(): Promise<void>;
   admin: {
     members(): Promise<Member[]>;
     setRole(userId: string, role: Role): Promise<void>;
@@ -54,4 +61,12 @@ export interface Api {
   };
 }
 
-export const api: Api = createMockApi(sceneFromUrl());
+/** `yappa://invite/…` (control plane) or `yappa1.…` (a developer invite straight to a room). */
+export function inviteKind(text: string): 'link' | 'direct' | null {
+  const compact = text.replace(/\s+/g, '');
+  if (compact.startsWith('yappa://invite/')) return 'link';
+  if (compact.startsWith('yappa1.')) return 'direct';
+  return null;
+}
+
+export const api: Api = createMockApi(sceneFromUrl(), engine);

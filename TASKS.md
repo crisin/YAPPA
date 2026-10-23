@@ -24,9 +24,6 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 **M2 · Login and channels** — invite link, name, lobby, who is where, join by click
 
-- [ ] U2 Voice module, call screen: channel tree with people, person tiles (states as
-      text, `talk` from presence), join on click/Enter, person inspector (volume, local
-      mute); soundboard/app-audio hidden until the engine reports them; against the mock
 - [ ] U5 Bind the client: `api.ts` → the Tauri commands of C1 (`api_*`, `voice_join`,
       `voice_leave`, `presence` event); deep link `yappa://invite/<code>?server=…` +
       single instance, paste as fallback; presence → channel tree; rewrite
@@ -117,6 +114,13 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] U2 Voice module: channel tree TeamSpeak-style (people under their channel, counts,
+      states as words: stumm/PTT/abwesend, speaking ring), join on one click or Enter or
+      from the palette, switch by clicking another channel, leave from the dock; tiles of
+      my channel; login card for invite links (asks for a name) that still takes developer
+      invites; „Ich → Konto“ with logout; UI door reshaped to the C1 commands
+      (`resume`, `redeem`, `joinChannel`, …) with `Gang` state; mock scene `login`; App
+      takes its doors as props so every test picks a scene (2026-10-23)
 - [x] C1 `crates/client` (ADR-007): API client with offline cache, session token in the OS
       credential store (`keyring` 3.6, file fallback), `Presence` over
       `transport::presence::PresenceLink` (snapshot at every connect + events, S6),
