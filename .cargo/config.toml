@@ -12,3 +12,13 @@ rustflags = ["-C", "target-feature=+crt-static"]
 
 [target.aarch64-pc-windows-msvc]
 rustflags = ["-C", "target-feature=+crt-static"]
+
+# libwebrtc's macOS code registers Objective-C categories (e.g. `+[NSString
+# stringForStdString:]`). Without `-ObjC` the linker drops them and every binary that links
+# LiveKit aborts at load time with "unrecognized selector" — found by CI (test list of
+# spike-s1 on macos-latest). The LiveKit Rust SDK documents the same flag.
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "link-args=-ObjC"]
+
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "link-args=-ObjC"]
