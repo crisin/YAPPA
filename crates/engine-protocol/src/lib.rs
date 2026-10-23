@@ -10,10 +10,14 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 /// Version of this contract. The UI refuses to talk to an engine with a different major.
-pub const PROTOCOL_VERSION: u32 = 1;
+/// 2: `Settings` lost `theme` (ADR-007). UI and engine ship in one binary today, so this
+/// guards the day the engine runs as its own process.
+pub const PROTOCOL_VERSION: u32 = 2;
 
 /// Version of the [`Settings`] schema, stored with the settings file for migrations.
-pub const SETTINGS_VERSION: u32 = 1;
+/// 2 (ADR-007): audio and sending only — the theme moved to the app settings
+/// (`crates/client`), which also migrates a version-1 file.
+pub const SETTINGS_VERSION: u32 = 2;
 
 /// UI -> engine.
 #[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq)]
@@ -286,7 +290,8 @@ pub struct CompressorSettings {
     pub makeup_db: f32,
 }
 
-/// Everything the user can set. Simple and pro view both read and write this.
+/// Everything about audio and sending the user can set (ADR-007: no UI preferences here —
+/// those are the app settings). Simple and pro view both read and write this.
 #[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -304,7 +309,6 @@ pub struct Settings {
     pub compressor: CompressorSettings,
     /// Voice track bitrate; the baseline asks for 64–96 kbps with RED, no DTX.
     pub voice_bitrate_kbps: u32,
-    pub theme: String,
 }
 
 impl Default for Settings {
@@ -328,7 +332,6 @@ impl Default for Settings {
                 makeup_db: 3.0,
             },
             voice_bitrate_kbps: 80,
-            theme: "dark".into(),
         }
     }
 }

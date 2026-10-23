@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "inputDevice": null,
   "outputDevice": null,
   "transmitMode": "voiceActivation",
@@ -16,6 +16,5 @@
     "releaseMs": 120.0,
     "makeupDb": 3.0
   },
-  "voiceBitrateKbps": 80,
-  "theme": "dark"
+  "voiceBitrateKbps": 80
 }

@@ -50,9 +50,10 @@ Two smells in the current contracts:
 - `PROTOCOL_VERSION` stays 1 (commands and events are additive); `SETTINGS_VERSION` becomes
   2 with a migration test.
 - `api_types::Invite` (the pasted text) stays as the developer fallback; the user path is
-  `yappa://invite/<code>` via `tauri-plugin-deep-link` + `tauri-plugin-single-instance`.
+  `yappa://invite/<code>?server=<API>` (`InviteLink` in api-types — the link must name the server, a fresh client knows none) via `tauri-plugin-deep-link` + `tauri-plugin-single-instance`.
 - `YAPPA_PROFILE=<name>` picks a config and log subfolder, so two clients run on one PC.
-- `keyring` 4.x (default `v1` feature covers Windows Credential Manager and macOS Keychain);
+- `keyring` 3.6 with `windows-native` + `apple-native` (C1: 4.x pulls the whole Linux
+  D-Bus stack through its default feature);
   if it fails at runtime the token falls back to a file in the config dir with a warning.
 - Revisit: if the hook is blocked by an anti-cheat in a game the gang plays, PTT degrades to
   "hotkey while focused" plus VAD — never breaks the call (platform rule).

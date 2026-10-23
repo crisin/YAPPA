@@ -56,7 +56,7 @@ alle ist der Platz reserviert (Abschnitte 3, 10 und 11), gebaut wird nichts davo
 | Push-to-Talk-Mechanik | `tauri-plugin-global-shortcut` als Kandidat | **Eigener Low-Level-Hook/Raw-Input hinter dem `GlobalHotkey`-Trait** in `crates/platform-windows`. `RegisterHotKey` (was das Plugin nutzt) stellt die Taste dem Spiel nicht zu. S3 prüft es am echten Spiel. | Die PTT-Taste muss im Spiel weiter funktionieren. |
 | Echo-Cancellation | „S1 klärt es“ | **v1 ohne AEC, Headset-Annahme.** Das Rust-SDK (0.9.6) stellt das Audio-Processing-Modul von libwebrtc nicht bereit; eine eigene AEC ist Phase-2-Arbeit. Die UI sagt es beim Onboarding (Lautsprecher → Push-to-Talk empfohlen). | Ehrlich statt halb. |
 | Denoiser | DeepFilterNet als Default | **DeepFilterNet-LL als Default, aber mit Tor:** S2 misst Kette und CPU. Bleibt Default nur, wenn die Kette ≤ 25 ms Zusatzlatenz und ≤ 5 ms CPU pro 10-ms-Block kostet, sonst RNNoise (`nnnoiseless`). Das crates.io-Paket `deep_filter` ist 0.2.5 und veraltet; das Repo steht bei 0.5.7 (MIT/Apache, Inferenz über tract). Also Git-Abhängigkeit auf einen Commit, `cargo deny` bekommt die Quelle erlaubt. | Das Latenzbudget ist eng (Abschnitt 6). |
-| Einladung | Eingefügter Text `yappa1.…` | **Link `yappa://invite/<code>`** über Deep Link plus Einfügen als Fallback. Das heutige Format bleibt als Entwickler-Werkzeug (`cargo xtask livekit token`). | Nicht-ITler klicken Links. |
+| Einladung | Eingefügter Text `yappa1.…` | **Link `yappa://invite/<code>?server=<API>`** (der Code plus die Adresse der Control-Plane, `api_types::InviteLink`) über Deep Link plus Einfügen als Fallback. Das heutige Format bleibt als Entwickler-Werkzeug (`cargo xtask livekit token`). | Nicht-ITler klicken Links. |
 | Soundboard- und App-Audio-Plätze im Call | ausgegraut mit „kommt später“ | **Ausgeblendet**, bis die Engine es kann. Der Platz entsteht durch die Registry, nicht durch leere Knöpfe. | Regel aus `CLAUDE.md`: fehlende Implementierung blendet aus. |
 | LiveKit-Server | v1.13.8 | v1.13.10 (2026-10-14) beim nächsten Compose-Update. | Routine. |
 
@@ -118,7 +118,7 @@ alle ist der Platz reserviert (Abschnitte 3, 10 und 11), gebaut wird nichts davo
 
 | Situation | Was passiert |
 |---|---|
-| Erster Start | Deep Link `yappa://invite/<code>` (oder eingefügt) → Onboarding → `POST /auth/invite` → Session-Token in den Schlüsselbund, Presence-Token → Presence-Raum beitreten → Lobby. |
+| Erster Start | Deep Link `yappa://invite/<code>?server=<API>` (oder eingefügt) → Onboarding → `POST /auth/invite` → Session-Token in den Schlüsselbund, Presence-Token → Presence-Raum beitreten → Lobby. |
 | Normaler Start | Token aus dem Schlüsselbund → `GET /me`, `GET /channels`, `GET /config` (Cache, wenn offline) → Presence-Raum beitreten. |
 | Channel beitreten | `POST /channels/{id}/token` (gecacht, ≈ 12 h gültig) → Engine `Join` → Attribut `channel` im Presence-Raum setzen. |
 | Channel wechseln | Leave + Join ohne Rückfrage, Attribut aktualisieren. |

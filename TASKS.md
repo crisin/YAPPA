@@ -24,18 +24,13 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 **M2 · Login and channels** — invite link, name, lobby, who is where, join by click
 
-- [ ] C1 `crates/client` (ADR-007): API client with cache, session + presence token in
-      `keyring` with file fallback, `transport::PresenceLink` (presence room, attributes
-      `channel`/`app`/`talk`/`away`), `AppSettings` v1 + engine `Settings` v2 with
-      migration, `YAPPA_PROFILE`; Tauri commands `api_*`; the headless example logs in the
-      same way; `cargo xtask livekit presence` to watch the room; build the presence map
-      from `remote_participants()` at connect plus events, never from events alone (S6)
 - [ ] U2 Voice module, call screen: channel tree with people, person tiles (states as
       text, `talk` from presence), join on click/Enter, person inspector (volume, local
       mute); soundboard/app-audio hidden until the engine reports them; against the mock
-- [ ] U5 Bind the client: `api.ts` → Tauri; deep link `yappa://invite/<code>` +
-      single instance, paste as fallback; presence → channel tree; token per channel →
-      join; rewrite `docs/mittesten.md`
+- [ ] U5 Bind the client: `api.ts` → the Tauri commands of C1 (`api_*`, `voice_join`,
+      `voice_leave`, `presence` event); deep link `yappa://invite/<code>?server=…` +
+      single instance, paste as fallback; presence → channel tree; rewrite
+      `docs/mittesten.md`
 
 **M3 · Voice** — noise reduction, gate, PTT in the game, Einfach/Profi
 
@@ -122,6 +117,14 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] C1 `crates/client` (ADR-007): API client with offline cache, session token in the OS
+      credential store (`keyring` 3.6, file fallback), `Presence` over
+      `transport::presence::PresenceLink` (snapshot at every connect + events, S6),
+      `AppSettings` v1 and engine `Settings` v2 with v1 migration, profiles via
+      `YAPPA_PROFILE`; invite links name their server (`InviteLink`); shell commands
+      `api_*`, `voice_join`/`voice_leave` (tokens never reach the webview), `presence`
+      event; headless example logs in and joins channels; `cargo xtask livekit presence`
+      (hidden watcher) (2026-10-23)
 - [x] S6 Control plane (ADR-005): `crates/control` (`yappa-control`: axum + sqlx/SQLite +
       livekit-api) with invites, members, roles, kick, channels, voice and presence tokens,
       `GET /config` with min version / kill switch, signed webhook → event log; bootstrap

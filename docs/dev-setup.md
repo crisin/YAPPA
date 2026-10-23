@@ -60,9 +60,10 @@ Docker, `lk` and `gh` come from the OS package manager (winget / brew).
 | `cargo xtask livekit loss <percent>` | drop that share of packets in both directions (tc/netem in a sidecar); `0` clears |
 | `cargo xtask control [args]` | the control plane (`yappa-control`) against the local LiveKit: dev keys, `target/control-dev.db`, port 8090 (where the dev LiveKit sends webhooks); the first start prints an admin invite; `invite [--admin]`, `policy --min <v> [--kill <v>]` as arguments |
 | `cargo run --release -p spike-s6` | S6 spike: control plane + presence room against the local LiveKit, prints the measurement table |
+| `cargo xtask livekit presence` | watch the presence room as a hidden participant: every join, leave and attribute change |
 | `cargo xtask livekit cut <seconds>` | drop everything for that long, then restore — the pulled cable |
 | `cargo xtask livekit token <name> [--room gang] [--days 30] [--jwt]` | an invite for one person (server address + join token as one line to paste into the app), signed with the keys in `infra/livekit/.env` (dev keys and `ws://localhost:7880` without one); `--jwt` prints the bare token — see [homeserver.md](homeserver.md) |
-| `cargo run --release -p yappa-desktop --example headless -- --invite <text>` | the app's engine without a window: same transport and devices, events as JSON lines on stdout — for measuring and for checking a server |
+| `cargo run --release -p yappa-desktop --example headless -- --login <link> --name <n>` | the app without a window: logs in like the app (profile in `target/headless-profile`); then `-- --channel <id>` joins a channel with the same engine, transport and devices, events as JSON lines; `-- --invite <text>` still works without a control plane |
 | `cargo run --release -p spike-s1 -- measure` | S1 PoC (`yappa-poc`): click latency between two participants; also `devices`, `join --identity <name>` — options at the top of `crates/spike-s1/src/main.rs` |
 
 Windows links the **static C runtime** (`+crt-static` in `.cargo/config.toml`): LiveKit's
@@ -85,7 +86,14 @@ cargo xtask dev                              # paste the invite, join
 A second participant without a second machine: `cargo run --release -p spike-s1 -- join
 --identity klicker --room dev --source click --sink null` publishes clicks into the room.
 
-Two environment variables help while developing (not meant for users):
+A second client on the same PC: `YAPPA_PROFILE=zwei cargo xtask dev` — its own settings,
+login and logs (under `profiles/zwei/`). `YAPPA_NO_KEYRING=1` keeps the session token in a
+file instead of the OS credential store (tests use it).
+
+Watching who is where: `cargo xtask livekit presence` joins the presence room as a hidden
+participant and prints every change.
+
+Two more environment variables help while developing (not meant for users):
 `YAPPA_AUTOJOIN=<invite>` joins right after start, `YAPPA_DEBUG_PANEL=1` opens „Ich →
 Diagnose“ at start.
 
