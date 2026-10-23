@@ -77,6 +77,31 @@ impl Transport for FakeTransport {
     }
 }
 
+/// Defaults, but RNNoise: with the workspace's features unified the engine has the real
+/// DeepFilterNet, and loading it in every test rig (debug build, in parallel) takes longer
+/// than the tests wait. DeepFilterNet is tested in `denoise` and spike S2.
+fn settings() -> Settings {
+    Settings {
+        denoiser: engine_protocol::DenoiserKind::Rnnoise,
+        ..Settings::default()
+    }
+}
+
+/// A send chain that changes nothing — for the tests of the plumbing around it.
+fn transparent() -> Settings {
+    Settings {
+        denoiser: engine_protocol::DenoiserKind::Off,
+        high_pass_hz: 0.0,
+        transmit_mode: engine_protocol::TransmitMode::AlwaysOn,
+        eq: Vec::new(),
+        compressor: engine_protocol::CompressorSettings {
+            enabled: false,
+            ..Settings::default().compressor
+        },
+        ..settings()
+    }
+}
+
 /// A 16-bit sample value as the f32 a device delivers; the pump turns it back exactly.
 fn pcm(value: i16) -> f32 {
     f32::from(value) / f32::from(i16::MAX)
@@ -258,7 +283,7 @@ impl Rig {
 
 #[test]
 fn starts_ready_lists_devices_and_opens_the_defaults() {
-    let rig = rig(Settings::default());
+    let rig = rig(settings());
     rig.wait("ready", |e| matches!(e, Event::Ready { .. }).then_some(()));
     let inputs = rig.wait("devices", |e| match e {
         Event::Devices { inputs, .. } => Some(inputs.clone()),
@@ -329,7 +354,7 @@ fn join_uses_the_bitrate_from_the_settings_and_reports_the_room() {
 
 #[test]
 fn participants_are_listed_sorted_with_voice_and_mute() {
-    let rig = rig(Settings::default());
+    let rig = rig(settings());
     rig.join();
     for (identity, name) in [("u2", "ben"), ("u1", "Anna")] {
         rig.wire.emit(TransportEvent::ParticipantJoined {
@@ -366,7 +391,7 @@ fn participants_are_listed_sorted_with_voice_and_mute() {
 
 #[test]
 fn a_lost_session_is_joined_again_until_the_user_leaves() {
-    let rig = rig(Settings::default());
+    let rig = rig(settings());
     rig.join();
     rig.wire.emit(TransportEvent::ParticipantJoined {
         identity: "u1".into(),
@@ -434,7 +459,7 @@ fn a_lost_session_is_joined_again_until_the_user_leaves() {
 
 #[test]
 fn a_join_that_never_worked_is_not_repeated() {
-    let rig = rig(Settings::default());
+    let rig = rig(settings());
     rig.engine.send(Command::Join {
         url: "ws://test".into(),
         token: "expired".into(),
@@ -459,7 +484,7 @@ fn a_join_that_never_worked_is_not_repeated() {
 
 #[test]
 fn the_microphone_reaches_the_transport_in_blocks_and_mute_sends_silence() {
-    let rig = rig(Settings::default());
+    let rig = rig(transparent());
     rig.wait_until("microphone open", || {
         rig.hardware.microphone.lock().unwrap().is_some()
     });
@@ -510,7 +535,7 @@ fn the_microphone_reaches_the_transport_in_blocks_and_mute_sends_silence() {
 
 #[test]
 fn a_capture_backlog_is_dropped_not_sent_as_a_burst() {
-    let rig = rig(Settings::default());
+    let rig = rig(transparent());
     rig.wait_until("microphone open", || {
         rig.hardware.microphone.lock().unwrap().is_some()
     });
@@ -538,7 +563,7 @@ fn a_capture_backlog_is_dropped_not_sent_as_a_burst() {
 
 #[test]
 fn remote_voices_reach_the_output_with_level_volume_and_a_freed_slot() {
-    let rig = rig(Settings::default());
+    let rig = rig(settings());
     rig.join();
     rig.wait_until("output open", || {
         rig.hardware.speaker.lock().unwrap().is_some()
@@ -591,7 +616,7 @@ fn remote_voices_reach_the_output_with_level_volume_and_a_freed_slot() {
 
 #[test]
 fn changing_the_output_keeps_the_speakers() {
-    let rig = rig(Settings::default());
+    let rig = rig(settings());
     rig.wait_until("output open", || {
         rig.hardware.speaker.lock().unwrap().is_some()
     });
@@ -648,7 +673,7 @@ fn a_failed_microphone_is_reopened_on_the_default() {
 
 #[test]
 fn invalid_settings_are_rejected_and_the_old_ones_stay() {
-    let rig = rig(Settings::default());
+    let rig = rig(settings());
     rig.engine.send(Command::ApplySettings {
         settings: Settings {
             voice_bitrate_kbps: 4,
@@ -665,7 +690,7 @@ fn invalid_settings_are_rejected_and_the_old_ones_stay() {
 
 #[test]
 fn a_ui_that_attaches_late_gets_the_current_state_again() {
-    let rig = rig(Settings::default());
+    let rig = rig(settings());
     rig.join();
     rig.wire.emit(TransportEvent::ParticipantJoined {
         identity: "u1".into(),
@@ -695,7 +720,7 @@ fn a_ui_that_attaches_late_gets_the_current_state_again() {
 
 #[test]
 fn being_thrown_out_is_not_answered_with_a_rejoin() {
-    let rig = rig(Settings::default());
+    let rig = rig(settings());
     rig.join();
     // The same invite was opened on a second machine: joining again would only throw
     // that one out in turn, forever.
@@ -712,7 +737,7 @@ fn being_thrown_out_is_not_answered_with_a_rejoin() {
 
 #[test]
 fn the_pause_between_rejoin_attempts_grows() {
-    let rig = rig(Settings::default());
+    let rig = rig(settings());
     rig.join();
     let joins = || {
         rig.wire
@@ -746,7 +771,7 @@ fn the_pause_between_rejoin_attempts_grows() {
 
 #[test]
 fn joining_another_room_forgets_the_people_of_the_first() {
-    let rig = rig(Settings::default());
+    let rig = rig(settings());
     rig.join();
     rig.wire.emit(TransportEvent::ParticipantJoined {
         identity: "u1".into(),
@@ -770,7 +795,7 @@ fn joining_another_room_forgets_the_people_of_the_first() {
 
 #[test]
 fn a_new_input_channel_reopens_the_microphone_on_it() {
-    let rig = rig(Settings::default());
+    let rig = rig(settings());
     rig.wait_until("microphone open", || {
         rig.hardware.microphone.lock().unwrap().is_some()
     });
@@ -788,4 +813,64 @@ fn a_new_input_channel_reopens_the_microphone_on_it() {
             .contains(&"channel 1".to_string())
     });
     assert_eq!(rig.engine.settings().input_channel, 1);
+}
+
+#[test]
+fn push_to_talk_sends_only_while_the_key_is_held() {
+    let rig = rig(Settings {
+        transmit_mode: engine_protocol::TransmitMode::PushToTalk,
+        ..transparent()
+    });
+    rig.wait_until("microphone open", || {
+        rig.hardware.microphone.lock().unwrap().is_some()
+    });
+    let speak = |blocks: usize| {
+        let mut mic = rig.hardware.microphone.lock().unwrap();
+        for _ in 0..blocks * BLOCK {
+            mic.as_mut().unwrap().push(pcm(8000)).unwrap();
+        }
+    };
+    speak(1);
+    rig.wait_until("one block", || rig.wire.sent.lock().unwrap().len() == 1);
+    assert!(
+        rig.wire.sent.lock().unwrap()[0] == vec![0; BLOCK],
+        "key up: silence"
+    );
+    rig.engine.send(Command::SetPttPressed { pressed: true });
+    // The command and the next block race; give the pump a moment to see the key.
+    std::thread::sleep(Duration::from_millis(20));
+    speak(3);
+    rig.wait_until("three more", || rig.wire.sent.lock().unwrap().len() == 4);
+    let last = rig.wire.sent.lock().unwrap()[3].clone();
+    let blocks: Vec<(i16, i16)> = rig
+        .wire
+        .sent
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|b| (*b.iter().min().unwrap(), *b.iter().max().unwrap()))
+        .collect();
+    assert!(
+        last == vec![8000; BLOCK],
+        "key down: the voice, fully open after the 5 ms ramp {blocks:?}"
+    );
+}
+
+#[test]
+fn the_send_chain_reports_its_stages() {
+    let rig = rig(settings());
+    rig.wait_until("microphone open", || {
+        rig.hardware.microphone.lock().unwrap().is_some()
+    });
+    let stages = rig.wait("stage levels", |e| match e {
+        Event::StageLevels { stages } => Some(stages.clone()),
+        _ => None,
+    });
+    let ids: Vec<&str> = stages.iter().map(|s| s.id.as_str()).collect();
+    assert_eq!(
+        ids,
+        ["input", "highpass", "denoiser", "gate", "eq", "compressor"]
+    );
+    assert!(stages[1].active, "high-pass on by default");
+    assert!(stages[2].active, "a denoiser by default");
 }

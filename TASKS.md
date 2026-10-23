@@ -33,10 +33,6 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 - [ ] Listen to S2 (user): `target/s2/{off,rnnoise,deepfilter}.wav` (rerun
       `cargo run --release -p spike-s2 -- target/s2/noisy_snr0.wav` after a fresh clone);
       record a real gaming-evening noise and run it through
-- [ ] E1 Chain in the pump (ADR-008: the pump builds the denoiser from a `DenoiserKind`,
-      DeepFilterNet is not `Send`): denoiser, gate/VAD with hold and hysteresis, EQ, compressor;
-      `Event::StageLevels`, chain CPU and latency in `Stats`; bench before and after;
-      realtime review
 - [ ] S3 PTT: `GlobalHotkey` in `crates/platform-windows` (low-level hook or Raw Input, not
       the Tauri plugin — `RegisterHotKey` keeps the key from the game), engine
       `SetPttPressed`, verified in a fullscreen game; tray; autostart →
@@ -79,6 +75,9 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
       (needs the `lk` CLI)
 - [ ] Presence: show a person as "maybe gone" when their presence link is stale instead of
       waiting for LiveKit's 20–23 s timeout for a dead client (S6)
+- [ ] Send-chain headroom: the pump with DeepFilterNet peaks at 3.3 ms of the 5 ms budget
+      on a Ryzen 7 7700X (E1) — measure on the gang's slowest PC; if it gets close, run the
+      denoiser on its own thread with a one-block handoff, or default that PC to RNNoise
 - [ ] libDF on tract ≥ 0.21.16 (upstream or our patch), then remove the three advisory
       exceptions in `deny.toml` (ADR-008)
 - [ ] Bumps when the files are touched anyway: LiveKit server v1.13.10, `livekit` 0.9.6
@@ -108,6 +107,13 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] E1 Chain in the pump (ADR-008): `audio-engine::chain` — HPF → denoiser (built on the
+      pump thread) → gate (VAD) / push-to-talk / always on (linear 5 ms ramps) → EQ →
+      compressor; settings reach the pump as `ChainConfig`; `Command::SetPttPressed`,
+      `Event::StageLevels`, `Stats.chain_latency_ms`; the app builds with DeepFilterNet.
+      DeepFilterNet's SNR is no longer fed to the gate (held it open in a silent room).
+      Measured with the real devices: pump incl. chain mean 1.49 ms, max 3.3 ms per block
+      (was 9.8 µs / 62 µs), chain latency 10 ms, gate closed in a silent room (2026-10-23)
 - [x] S2 DSP chain offline: `crates/denoise` (`Denoiser` trait, RNNoise, DeepFilterNet 3 LL
       behind feature `deepfilter`, libDF pinned + tract 0.21.4), `dsp::Gate` (hysteresis,
       hold, fades, speech-probability veto) and `dsp::Compressor` (soft knee);

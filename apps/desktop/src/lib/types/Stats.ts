@@ -29,4 +29,8 @@ playoutSkips: number,
  * DSP chain included) since the last snapshot: the longest and the mean. The budget for
  * the whole chain is 5 ms (planning doc); the "before" of every send-chain change.
  */
-pumpBusyMaxMs: number, pumpBusyMeanMs: number, };
+pumpBusyMaxMs: number, pumpBusyMeanMs: number, 
+/**
+ * What the send chain adds to the latency (the denoiser's own delay), ms.
+ */
+chainLatencyMs: number, };

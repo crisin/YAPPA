@@ -3,13 +3,14 @@
 //! Everything here may block, allocate and log — the real-time work happens in the device
 //! callbacks, which this thread only talks to through rings and atomics.
 
+use crate::chain::{Chain, ChainConfig, STAGES};
 use crate::device::{AudioIo, OpenDevice};
 use crate::mixer::{mixer, MixerControl, MixerRt};
 use crate::stats::network_stats;
 use dsp::{db_to_gain, gain_to_db};
 use engine_protocol::{
     Command, ConnectionState, DeviceStats, Event, NetworkStats, Participant, PeerLevel, Settings,
-    Stats, TrackKind, PROTOCOL_VERSION,
+    StageLevel, Stats, TrackKind, PROTOCOL_VERSION,
 };
 use rtrb::{Consumer, RingBuffer};
 use std::collections::{BTreeMap, HashMap};
@@ -101,11 +102,13 @@ pub fn spawn(
 
     let pump = Arc::new(PumpShared::default());
     let (ring_tx, ring_rx) = mpsc::channel();
+    let (chain_tx, chain_rx) = mpsc::channel();
     let pump_thread = {
         let (pump, voice) = (pump.clone(), transport.voice_out());
+        let first = ChainConfig::from(&settings);
         std::thread::Builder::new()
             .name("yappa-pump".into())
-            .spawn(move || run_pump(&pump, ring_rx, voice.as_ref()))
+            .spawn(move || run_pump(&pump, ring_rx, chain_rx, first, voice.as_ref()))
             .expect("spawn the pump thread")
     };
 
@@ -125,6 +128,7 @@ pub fn spawn(
         playout: None,
         pump,
         ring_tx,
+        chain_tx,
         state: ConnectionState::Disconnected,
         wanted: None,
         was_joined: false,
@@ -167,6 +171,8 @@ struct Engine {
     playout: Option<OpenDevice>,
     pump: Arc<PumpShared>,
     ring_tx: mpsc::Sender<Consumer<f32>>,
+    /// New send-chain settings for the pump.
+    chain_tx: mpsc::Sender<ChainConfig>,
 
     state: ConnectionState,
     /// Where the user wants to be: url and token of the last `Join`, until `Leave`.
@@ -214,6 +220,9 @@ impl Engine {
             if now >= next_levels {
                 next_levels = now + LEVEL_INTERVAL;
                 self.emit_levels(now);
+                if self.capture.is_some() {
+                    self.emit_stage_levels();
+                }
             }
             if now >= next_stats {
                 next_stats = now + STATS_INTERVAL;
@@ -256,11 +265,16 @@ impl Engine {
                 self.open_playout(id.as_deref());
             }
             Command::SetTransmitMode { mode } => {
-                self.settings.lock().unwrap().transmit_mode = mode;
-                tracing::info!(
-                    ?mode,
-                    "transmit mode stored — the gate is not built yet, the microphone is always on"
-                );
+                let config = {
+                    let mut settings = self.settings.lock().unwrap();
+                    settings.transmit_mode = mode;
+                    ChainConfig::from(&*settings)
+                };
+                tracing::info!(?mode, "transmit mode");
+                let _ = self.chain_tx.send(config);
+            }
+            Command::SetPttPressed { pressed } => {
+                self.pump.ptt.store(pressed, Relaxed);
             }
             Command::SetMuted { muted } => {
                 tracing::info!(muted, "microphone mute");
@@ -340,6 +354,10 @@ impl Engine {
         }
         if old.output_gain_db != new.output_gain_db {
             self.mixer.set_master_db(new.output_gain_db);
+        }
+        let chain = ChainConfig::from(&new);
+        if chain != ChainConfig::from(&old) {
+            let _ = self.chain_tx.send(chain);
         }
         if old.output_device != new.output_device {
             self.open_playout(new.output_device.as_deref());
@@ -604,9 +622,23 @@ impl Engine {
         peers.sort_by(|a, b| a.identity.cmp(&b.identity));
         self.emit(Event::Levels {
             input_db: gain_to_db(input),
-            gate_open: !self.pump.muted.load(Relaxed),
+            gate_open: !self.pump.muted.load(Relaxed) && self.pump.gate_open.load(Relaxed),
             peers,
         });
+    }
+
+    /// The send chain stage by stage, for the pro view (sent with every `Levels`).
+    fn emit_stage_levels(&mut self) {
+        let stages = STAGES
+            .iter()
+            .enumerate()
+            .map(|(i, id)| StageLevel {
+                id: (*id).to_string(),
+                level_db: gain_to_db(f32::from_bits(self.pump.stage_levels[i].load(Relaxed))),
+                active: self.pump.stage_active[i].load(Relaxed),
+            })
+            .collect();
+        self.emit(Event::StageLevels { stages });
     }
 
     fn emit_stats(&mut self) {
@@ -637,6 +669,8 @@ impl Engine {
             send_blocks_dropped: self.pump.dropped_blocks.load(Relaxed),
             playout_frames_dropped: self.mixer.dropped_frames(),
             playout_skips: self.mixer.skips(),
+            chain_latency_ms: self.pump.chain_latency.load(Relaxed) as f32
+                / (transport::SAMPLE_RATE as f32 / 1000.0),
             pump_busy_max_ms: self.pump.busy_max_ns.swap(0, Relaxed) as f32 / 1e6,
             pump_busy_mean_ms: if busy_blocks == 0 {
                 0.0
@@ -720,12 +754,41 @@ struct PumpShared {
     busy_max_ns: AtomicU64,
     busy_sum_ns: AtomicU64,
     busy_blocks: AtomicU64,
+    /// Push-to-talk key held (set by the shell's hook through a command).
+    ptt: AtomicBool,
+    /// The chain lets the voice out (gate open, PTT held, always on).
+    gate_open: AtomicBool,
+    /// RMS after each chain stage as `f32` bits, and whether the stage works.
+    stage_levels: [AtomicU32; STAGES.len()],
+    stage_active: [AtomicBool; STAGES.len()],
+    /// The chain's own delay in samples.
+    chain_latency: AtomicU32,
     dropped_blocks: AtomicU32,
+}
+
+/// Which stages work and what the chain delays — right after (re)building it, so the pro
+/// view is correct before the first block, and after every block (the gate moves).
+fn publish_chain(shared: &PumpShared, chain: &Chain) {
+    for i in 0..STAGES.len() {
+        shared.stage_active[i].store(chain.active(i), Relaxed);
+    }
+    shared
+        .chain_latency
+        .store(chain.latency_samples() as u32, Relaxed);
 }
 
 /// Capture ring → 10 ms blocks → transport. Paced by the device: a block goes out as soon
 /// as it is complete. Replacement rings arrive when the microphone is reopened.
-fn run_pump(shared: &PumpShared, rings: mpsc::Receiver<Consumer<f32>>, voice: &dyn VoiceOut) {
+fn run_pump(
+    shared: &PumpShared,
+    rings: mpsc::Receiver<Consumer<f32>>,
+    configs: mpsc::Receiver<ChainConfig>,
+    first: ChainConfig,
+    voice: &dyn VoiceOut,
+) {
+    // Built here: DeepFilterNet cannot move between threads (ADR-008).
+    let mut chain = Chain::new(first);
+    publish_chain(shared, &chain);
     let mut ring: Option<Consumer<f32>> = None;
     // f32 until the hand-over (E0): the DSP chain (S2) works here at the device precision;
     // the transport wants 16-bit PCM.
@@ -736,6 +799,23 @@ fn run_pump(shared: &PumpShared, rings: mpsc::Receiver<Consumer<f32>>, voice: &d
         if let Ok(new) = rings.try_recv() {
             ring = Some(new);
             last = None;
+        }
+        if let Some(config) = configs.try_iter().last() {
+            if chain.reconfigure(config) {
+                // Loading the new denoiser took hundreds of milliseconds; what queued up
+                // meanwhile is stale. Drop it instead of sending one old block first.
+                if let Some(open) = ring.as_mut() {
+                    let stale = open.slots();
+                    if let Ok(chunk) = open.read_chunk(stale) {
+                        chunk.commit_all();
+                    }
+                    shared
+                        .dropped_blocks
+                        .fetch_add((stale / BLOCK) as u32, Relaxed);
+                }
+                last = None;
+            }
+            publish_chain(shared, &chain);
         }
         let Some(open) = ring.as_mut() else {
             std::thread::sleep(Duration::from_millis(20));
@@ -769,6 +849,12 @@ fn run_pump(shared: &PumpShared, rings: mpsc::Receiver<Consumer<f32>>, voice: &d
         shared
             .input_level
             .store(dsp::rms(&block).to_bits(), Relaxed);
+        chain.process(&mut block, shared.ptt.load(Relaxed));
+        shared.gate_open.store(chain.open, Relaxed);
+        for (i, level) in chain.levels.iter().enumerate() {
+            shared.stage_levels[i].store(level.to_bits(), Relaxed);
+        }
+        publish_chain(shared, &chain);
         if shared.muted.load(Relaxed) {
             block.fill(0.0);
         }

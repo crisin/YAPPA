@@ -57,7 +57,10 @@ Einladung steht nicht drin.
 
 ## Bekannte Lücken
 
-- Kein Push-to-Talk und keine Rauschunterdrückung: das Mikrofon ist immer offen.
+- Die **Rauschunterdrückung** ist an, und das Mikrofon geht nur auf, wenn du sprichst
+  (Sprachaktivierung). Kommt deine Stimme abgehackt oder zu spät an – vor allem, wenn du
+  leise sprichst –, sag Bescheid: die Schwelle lässt sich noch nicht in der App einstellen.
+- Noch kein Push-to-Talk-Knopf.
 - Geräte müssen auf 48000 Hz stehen (Windows-Soundeinstellungen → Gerät → Format). Meldet
   yAPPA „kein 48-kHz-Modus", dort umstellen.
 - Kein Text-Chat, kein Soundboard.

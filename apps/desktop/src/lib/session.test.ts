@@ -51,6 +51,15 @@ describe('Session', () => {
     expect(localStorage.length).toBe(0);
   });
 
+  it('keeps the send chain stage by stage for the pro view', () => {
+    const session = new Session(createMockEngine());
+    session.apply({
+      type: 'stageLevels',
+      stages: [{ id: 'gate', levelDb: -30, active: false }],
+    });
+    expect(session.stages).toEqual([{ id: 'gate', levelDb: -30, active: false }]);
+  });
+
   it('forgets room and levels when disconnected, keeps them while reconnecting', () => {
     const session = new Session(createMockEngine());
     session.apply({ type: 'joined', room: 'gang', identity: 'ich' });

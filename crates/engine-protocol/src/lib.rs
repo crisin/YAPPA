@@ -86,6 +86,11 @@ pub enum Command {
     /// The UI (re)attached and missed what happened so far: send the current state again —
     /// ready, devices, connection, room and participants.
     Resync,
+    /// The push-to-talk key went down or up. The hook lives in the shell (platform crate,
+    /// ADR-007); the engine only opens the send path while it is held, in PTT mode.
+    SetPttPressed {
+        pressed: bool,
+    },
 }
 
 /// Engine -> UI.
@@ -133,6 +138,24 @@ pub enum Event {
     Log {
         entry: LogEntry,
     },
+    /// The send chain stage by stage, at the rate of [`Event::Levels`] — for the signal
+    /// chain view in the pro settings.
+    StageLevels {
+        stages: Vec<StageLevel>,
+    },
+}
+
+/// One stage of the send chain as the pro view shows it.
+#[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct StageLevel {
+    /// `input`, `highpass`, `denoiser`, `gate`, `eq`, `compressor`.
+    pub id: String,
+    /// Level after this stage, dBFS.
+    pub level_db: f32,
+    /// The stage works (false: switched off, or the gate is closed).
+    pub active: bool,
 }
 
 #[derive(Serialize, Deserialize, TS, Debug, Clone, Copy, PartialEq, Eq)]
@@ -252,6 +275,9 @@ pub struct Stats {
     pub pump_busy_max_ms: f32,
     #[serde(default)]
     pub pump_busy_mean_ms: f32,
+    /// What the send chain adds to the latency (the denoiser's own delay), ms.
+    #[serde(default)]
+    pub chain_latency_ms: f32,
 }
 
 /// From the transport's WebRTC statistics. "Recent" values cover the time since the

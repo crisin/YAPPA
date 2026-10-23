@@ -17,7 +17,7 @@ pub const BLOCK: usize = 480;
 pub trait Denoiser {
     fn name(&self) -> &'static str;
     /// One block, in place. Returns how sure the model is that this block is speech, 0..1,
-    /// when it can tell — the gate uses it.
+    /// when it really can tell (RNNoise's VAD) — the gate uses it. `None` otherwise.
     fn process(&mut self, block: &mut [f32; BLOCK]) -> Option<f32>;
     /// What the denoiser adds to the send path, in samples (its own algorithmic delay).
     fn latency_samples(&self) -> usize;
@@ -149,10 +149,12 @@ mod deepfilter {
             let noisy = ArrayView2::from_shape((1, BLOCK), &block[..]).ok()?;
             let enhanced = ArrayViewMut2::from_shape((1, BLOCK), &mut self.out[..]).ok()?;
             match self.model.process(noisy, enhanced) {
-                Ok(lsnr) => {
+                Ok(_lsnr) => {
                     block.copy_from_slice(&self.out);
-                    // Local SNR in dB, -15 (noise) … 35 (clean): mapped to 0..1 for the gate.
-                    Some(((lsnr + 5.0) / 20.0).clamp(0.0, 1.0))
+                    // The model's local SNR is not a speech probability: a quiet room has a
+                    // high SNR without anyone talking, and fed to the gate it held it open
+                    // for seconds (E1 measurement). The gate decides on the denoised level.
+                    None
                 }
                 Err(error) => {
                     tracing::warn!(%error, "DeepFilterNet block failed — passing it through");
