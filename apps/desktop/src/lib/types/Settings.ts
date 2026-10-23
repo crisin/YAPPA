@@ -5,7 +5,8 @@ import type { EqBand } from "./EqBand";
 import type { TransmitMode } from "./TransmitMode";
 
 /**
- * Everything the user can set. Simple and pro view both read and write this.
+ * Everything about audio and sending the user can set (ADR-007: no UI preferences here —
+ * those are the app settings). Simple and pro view both read and write this.
  */
 export type Settings = { version: number, inputDevice: string | null, outputDevice: string | null, transmitMode: TransmitMode, 
 /**
@@ -15,4 +16,4 @@ vadThresholdDb: number, vadHoldMs: number, denoiser: DenoiserKind, highPassHz: n
 /**
  * Voice track bitrate; the baseline asks for 64–96 kbps with RED, no DTX.
  */
-voiceBitrateKbps: number, theme: string, };
+voiceBitrateKbps: number, };

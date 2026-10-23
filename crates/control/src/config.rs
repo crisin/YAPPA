@@ -18,6 +18,9 @@ pub struct Config {
     pub update_base_url: String,
     /// Media server the channels live on; one for now (failover is phase 2).
     pub server_id: String,
+    /// Where clients reach this API from outside; goes into invite links
+    /// (`https://voice.example/api` behind Caddy).
+    pub public_url: String,
 }
 
 impl Config {
@@ -26,11 +29,20 @@ impl Config {
         let var = |name: &str| std::env::var(name).ok().filter(|v| !v.trim().is_empty());
         let required = |name: &str| var(name).ok_or_else(|| format!("{name} is not set"));
         let ws = var("LIVEKIT_WS_URL").unwrap_or_else(|| "ws://localhost:7880".into());
+        let listen: SocketAddr = var("YAPPA_LISTEN")
+            .unwrap_or_else(|| "127.0.0.1:8090".into())
+            .parse()
+            .map_err(|e| format!("YAPPA_LISTEN: {e}"))?;
+        // Behind Caddy on the box the API is https://<domain>/api; locally it is this port.
+        let public_url = var("YAPPA_PUBLIC_URL").unwrap_or_else(|| {
+            if ws.starts_with("wss://") {
+                format!("{}/api", http_from_ws(&ws))
+            } else {
+                format!("http://{listen}")
+            }
+        });
         Ok(Self {
-            listen: var("YAPPA_LISTEN")
-                .unwrap_or_else(|| "127.0.0.1:8090".into())
-                .parse()
-                .map_err(|e| format!("YAPPA_LISTEN: {e}"))?,
+            listen,
             database_url: var("YAPPA_DATABASE_URL").unwrap_or_else(|| "sqlite://yappa.db".into()),
             livekit_api_key: required("LIVEKIT_API_KEY")?,
             livekit_api_secret: required("LIVEKIT_API_SECRET")?,
@@ -39,6 +51,7 @@ impl Config {
             update_base_url: var("YAPPA_UPDATE_BASE_URL")
                 .unwrap_or_else(|| "http://localhost:8090/updates".into()),
             server_id: var("YAPPA_SERVER_ID").unwrap_or_else(|| "main".into()),
+            public_url: public_url.trim_end_matches('/').to_string(),
         })
     }
 
@@ -53,6 +66,7 @@ impl Config {
             livekit_http_url: "http://localhost:7880".into(),
             update_base_url: "http://localhost:8090/updates".into(),
             server_id: "main".into(),
+            public_url: "http://127.0.0.1:8090".into(),
         }
     }
 }

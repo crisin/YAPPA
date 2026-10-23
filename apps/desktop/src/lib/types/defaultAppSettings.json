@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "view": "simple",
+  "theme": "dark",
+  "pttKey": null,
+  "notifications": true,
+  "updateChannel": "stable"
+}

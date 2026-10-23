@@ -2,7 +2,7 @@
 //! of on a web page: whoever can run this binary already has the server.
 
 use crate::{open_db, router, routes, store, AppState, Config};
-use api_types::{Role, VersionPolicy};
+use api_types::{InviteLink, Role, VersionPolicy};
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
 
@@ -13,16 +13,29 @@ usage: yappa-control [serve]
 
 environment: LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_WS_URL, [LIVEKIT_HTTP_URL],
              [YAPPA_LISTEN=127.0.0.1:8090], [YAPPA_DATABASE_URL=sqlite://yappa.db],
-             [YAPPA_UPDATE_BASE_URL], [YAPPA_LOG_JSON=1]";
+             [YAPPA_UPDATE_BASE_URL], [YAPPA_PUBLIC_URL=https://<domain>/api],
+             [YAPPA_LOG_JSON=1]";
 
 /// The link a person clicks (or pastes) to join; the desktop app registers the scheme.
-pub fn invite_link(code: &str) -> String {
-    format!("yappa://invite/{code}")
+pub fn invite_link(config: &Config, code: &str) -> String {
+    InviteLink {
+        server: config.public_url.clone(),
+        code: code.into(),
+    }
+    .to_link()
 }
 
+/// `invite` and `policy` need the database and the public address, not the LiveKit keys.
 fn db_only_config() -> Config {
-    let url = std::env::var("YAPPA_DATABASE_URL").unwrap_or_else(|_| "sqlite://yappa.db".into());
-    Config::local(&url)
+    let var = |name: &str| std::env::var(name).ok().filter(|v| !v.trim().is_empty());
+    let mut config =
+        Config::local(&var("YAPPA_DATABASE_URL").unwrap_or_else(|| "sqlite://yappa.db".into()));
+    if let Some(url) = var("YAPPA_PUBLIC_URL") {
+        config.public_url = url.trim_end_matches('/').into();
+    } else if let Some(ws) = var("LIVEKIT_WS_URL").filter(|ws| ws.starts_with("wss://")) {
+        config.public_url = format!("https://{}/api", &ws["wss://".len()..]);
+    }
+    config
 }
 
 /// Runs the API until Ctrl-C / SIGTERM.
@@ -67,7 +80,7 @@ async fn bootstrap(state: &AppState) -> Result<(), String> {
             .await
             .map_err(|e| e.message)?;
         tracing::warn!(
-            link = %invite_link(&invite.code),
+            link = %invite_link(&state.config, &invite.code),
             "no members yet — this admin invite works once, for seven days"
         );
     }
@@ -112,7 +125,7 @@ pub async fn invite(args: &[String]) -> Result<(), String> {
     let invite = routes::new_invite(&state, role, "cli", days)
         .await
         .map_err(|e| e.message)?;
-    println!("{}", invite_link(&invite.code));
+    println!("{}", invite_link(&state.config, &invite.code));
     eprintln!(
         "{} invite, valid until {}, works once",
         if admin { "admin" } else { "member" },

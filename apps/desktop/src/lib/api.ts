@@ -6,6 +6,7 @@ import type { Channel } from './types/Channel';
 import type { EventEntry } from './types/EventEntry';
 import type { InviteCode } from './types/InviteCode';
 import type { Member } from './types/Member';
+import type { PresenceEntry } from './types/PresenceEntry';
 import type { PresenceState } from './types/PresenceState';
 import type { PublicConfig } from './types/PublicConfig';
 import type { Role } from './types/Role';
@@ -15,12 +16,7 @@ import type { VoiceToken } from './types/VoiceToken';
 import { createMockApi } from './mockApi';
 import { sceneFromUrl } from './scene';
 
-/** One person as the presence room shows them: identity, name and their attributes. */
-export interface PresenceEntry {
-  userId: string;
-  displayName: string;
-  state: PresenceState;
-}
+export type { PresenceEntry };
 
 /** Everybody who is online, by user id. Not in the map = app not running. */
 export type PresenceMap = Record<string, PresenceEntry>;

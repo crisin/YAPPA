@@ -305,6 +305,70 @@ impl Invite {
     }
 }
 
+/// The invite a person clicks or pastes (S6/C1): which control plane, and the one-time code.
+/// Text form `yappa://invite/<code>?server=<base URL of the API>`, e.g.
+/// `yappa://invite/k7mp-3xq9-abcd?server=https://voice.example/api`. The desktop app
+/// registers the `yappa` scheme; pasting the same text works too.
+#[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct InviteLink {
+    /// `https://…/api` — every endpoint path is appended to this.
+    pub server: String,
+    pub code: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InviteLinkError {
+    /// Not a `yappa://invite/` link.
+    NotALink,
+    /// The code is missing or has characters a code never has.
+    BadCode,
+    /// No `server=`, or it is not an http(s) address.
+    BadServer,
+}
+
+impl std::fmt::Display for InviteLinkError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::NotALink => "not a yAPPA invite link (it starts with \"yappa://invite/\")",
+            Self::BadCode => "the invite link has no valid code",
+            Self::BadServer => "the invite link has no valid server address",
+        })
+    }
+}
+
+const LINK_PREFIX: &str = "yappa://invite/";
+
+impl InviteLink {
+    pub fn to_link(&self) -> String {
+        format!("{LINK_PREFIX}{}?server={}", self.code, self.server)
+    }
+
+    /// Tolerates what chat programs do to a link: whitespace around it, line breaks inside,
+    /// a trailing slash on the server, upper-case code.
+    pub fn parse(text: &str) -> Result<Self, InviteLinkError> {
+        let compact: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+        let rest = compact
+            .strip_prefix(LINK_PREFIX)
+            .ok_or(InviteLinkError::NotALink)?;
+        let (code, query) = rest.split_once('?').unwrap_or((rest, ""));
+        let code = code.trim_end_matches('/').to_lowercase();
+        if !(4..=64).contains(&code.len())
+            || !code.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+        {
+            return Err(InviteLinkError::BadCode);
+        }
+        let server = query
+            .split('&')
+            .find_map(|pair| pair.strip_prefix("server="))
+            .map(|s| s.trim_end_matches('/').to_string())
+            .filter(|s| s.starts_with("https://") || s.starts_with("http://"))
+            .ok_or(InviteLinkError::BadServer)?;
+        Ok(Self { server, code })
+    }
+}
+
 /// How a person's microphone goes on air; shown on their tile.
 #[derive(Serialize, Deserialize, TS, Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
@@ -348,6 +412,16 @@ pub struct PresenceState {
     pub app: String,
     pub talk: TalkMode,
     pub away: bool,
+}
+
+/// One person as the presence room shows them: identity, name and their state.
+#[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PresenceEntry {
+    pub user_id: String,
+    pub display_name: String,
+    pub state: PresenceState,
 }
 
 impl PresenceState {
@@ -424,6 +498,44 @@ mod tests {
         assert_eq!(
             compare_versions("v0.10.0", "0.9.9"),
             Some(std::cmp::Ordering::Greater)
+        );
+    }
+
+    #[test]
+    fn invite_links_round_trip_and_survive_a_chat_window() {
+        let link = InviteLink {
+            server: "https://voice.example/api".into(),
+            code: "k7mp-3xq9-abcd".into(),
+        };
+        let text = link.to_link();
+        assert_eq!(
+            text,
+            "yappa://invite/k7mp-3xq9-abcd?server=https://voice.example/api"
+        );
+        assert_eq!(InviteLink::parse(&text), Ok(link.clone()));
+        let mangled = "  yappa://invite/K7MP-3XQ9-ABCD?server=https://voice.
+example/api/  ";
+        assert_eq!(InviteLink::parse(mangled), Ok(link));
+    }
+
+    #[test]
+    fn invite_link_errors_say_what_is_wrong() {
+        assert_eq!(InviteLink::parse("hallo"), Err(InviteLinkError::NotALink));
+        assert_eq!(
+            InviteLink::parse("yappa://invite/?server=https://x"),
+            Err(InviteLinkError::BadCode)
+        );
+        assert_eq!(
+            InviteLink::parse("yappa://invite/ab cd!?server=https://x"),
+            Err(InviteLinkError::BadCode)
+        );
+        assert_eq!(
+            InviteLink::parse("yappa://invite/abcd-efgh"),
+            Err(InviteLinkError::BadServer)
+        );
+        assert_eq!(
+            InviteLink::parse("yappa://invite/abcd-efgh?server=ftp://x"),
+            Err(InviteLinkError::BadServer)
         );
     }
 
