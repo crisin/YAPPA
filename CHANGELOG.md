@@ -4,6 +4,7 @@ One line per finished task (definition of done). Newest first.
 
 ## Unreleased
 
+- Decided with the user (ADR-009): audio before the updater — any device rate (Bluetooth headsets join), the chosen microphone comes back by itself, global mute keys, everybody equally loud, a monitor for the own chain, drift compensation; push-to-talk stays hold-only, voice activation stays the default.
 - Review before the first evening (`docs/02-review-2026-10-23.md`): where phase 1 stands, what is proven and what only ran against mocks, what to watch tomorrow; small fixes from it: a failed channel join no longer leaves you shown in the channel, a server that is away at start shows „Erneut versuchen“ instead of the login, errors while switching channels show in the banner, an engine error from before the window opened is shown too, Esc while choosing a key or in a tooltip no longer leaves the page, the offline cache also works behind Caddy/Cloudflare, the tester guide asks for 48 kHz devices (no Bluetooth hands-free).
 - Server setup for machines that already publish apps through a Cloudflare Tunnel (`infra/livekit/tunnel.yml`, guide in the help).
 - Admin in the app: invite links with one click, channels, who runs which version, roles, kick, minimum version and the event log.
