@@ -81,7 +81,9 @@ fn token(root: &Path, args: &[String]) -> Result {
 
     let env = read_env(&root.join(ENV_FILE));
     let get = |key: &str| env.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str());
-    let (key, secret, url) = match (get("LIVEKIT_API_KEY"), get("LIVEKIT_API_SECRET")) {
+    // The server's key name is fixed to `yappa` (home.yml); an older .env may still name it.
+    let named = get("LIVEKIT_API_KEY").unwrap_or("yappa");
+    let (key, secret, url) = match (Some(named), get("LIVEKIT_API_SECRET")) {
         (Some(key), Some(secret)) => {
             let domain =
                 get("YAPPA_DOMAIN").ok_or(format!("YAPPA_DOMAIN missing in {ENV_FILE}"))?;
@@ -119,7 +121,10 @@ fn token(root: &Path, args: &[String]) -> Result {
 fn keys(root: &Path) -> Result<(String, String, String)> {
     let env = read_env(&root.join(ENV_FILE));
     let get = |key: &str| env.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone());
-    match (get("LIVEKIT_API_KEY"), get("LIVEKIT_API_SECRET")) {
+    match (
+        get("LIVEKIT_API_KEY").or_else(|| Some("yappa".into())),
+        get("LIVEKIT_API_SECRET"),
+    ) {
         (Some(key), Some(secret)) => {
             let domain =
                 get("YAPPA_DOMAIN").ok_or(format!("YAPPA_DOMAIN missing in {ENV_FILE}"))?;
