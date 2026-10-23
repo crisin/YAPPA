@@ -90,6 +90,7 @@ pub fn spawn(
 ) -> EngineHandle {
     let (tx, rx) = mpsc::channel();
     let (mixer, mixer_rt) = mixer();
+    mixer.set_master_db(settings.output_gain_db);
     let events = tx.clone();
     transport.attach(
         Box::new(move |event| {
@@ -165,7 +166,7 @@ struct Engine {
     capture: Option<OpenDevice>,
     playout: Option<OpenDevice>,
     pump: Arc<PumpShared>,
-    ring_tx: mpsc::Sender<Consumer<i16>>,
+    ring_tx: mpsc::Sender<Consumer<f32>>,
 
     state: ConnectionState,
     /// Where the user wants to be: url and token of the last `Join`, until `Leave`.
@@ -334,8 +335,11 @@ impl Engine {
             return;
         }
         let old = std::mem::replace(&mut *self.settings.lock().unwrap(), new.clone());
-        if old.input_device != new.input_device {
+        if old.input_device != new.input_device || old.input_channel != new.input_channel {
             self.open_capture(new.input_device.as_deref());
+        }
+        if old.output_gain_db != new.output_gain_db {
+            self.mixer.set_master_db(new.output_gain_db);
         }
         if old.output_device != new.output_device {
             self.open_playout(new.output_device.as_deref());
@@ -503,11 +507,12 @@ impl Engine {
         self.pump.input_level.store(0, Relaxed);
         for candidate in candidates(id) {
             let (producer, ring) = RingBuffer::new(CAPTURE_RING);
-            match self.io.open_capture(candidate, producer) {
+            let channel = self.settings.lock().unwrap().input_channel;
+            match self.io.open_capture(candidate, channel, producer) {
                 Ok(device) => {
                     tracing::info!(
                         device = %device.name, rate = device.sample_rate, channels = device.channels,
-                        "microphone open"
+                        channel = device.channel, asked = channel, "microphone open"
                     );
                     let _ = self.ring_tx.send(ring);
                     self.capture = Some(device);
@@ -622,6 +627,8 @@ impl Engine {
             + counted(&self.capture, |c| c.driver_xruns.load(Relaxed));
         let underruns =
             self.mixer.underruns() + counted(&self.playout, |c| c.driver_xruns.load(Relaxed));
+        let busy_blocks = self.pump.busy_blocks.swap(0, Relaxed);
+        let busy_sum = self.pump.busy_sum_ns.swap(0, Relaxed);
         let stats = Stats {
             network: self.net.clone(),
             capture: device(&self.capture, overruns),
@@ -630,6 +637,12 @@ impl Engine {
             send_blocks_dropped: self.pump.dropped_blocks.load(Relaxed),
             playout_frames_dropped: self.mixer.dropped_frames(),
             playout_skips: self.mixer.skips(),
+            pump_busy_max_ms: self.pump.busy_max_ns.swap(0, Relaxed) as f32 / 1e6,
+            pump_busy_mean_ms: if busy_blocks == 0 {
+                0.0
+            } else {
+                busy_sum as f32 / busy_blocks as f32 / 1e6
+            },
         };
         if self.state != ConnectionState::Disconnected {
             // One line per second in the log file: enough to reconstruct an evening.
@@ -646,6 +659,8 @@ impl Engine {
                 concealed = net.concealed_percent_recent,
                 send_interval_max_ms = stats.send_interval_max_ms,
                 send_blocks_dropped = stats.send_blocks_dropped,
+                pump_busy_max_ms = stats.pump_busy_max_ms,
+                pump_busy_mean_ms = stats.pump_busy_mean_ms,
                 capture_overruns = overruns,
                 playout_underruns = underruns,
                 playout_skips = stats.playout_skips,
@@ -701,14 +716,21 @@ struct PumpShared {
     input_level: AtomicU32,
     /// Longest gap between two blocks since the stats timer last read it.
     interval_max_ns: AtomicU64,
+    /// Work per block since the stats timer last read it: longest, sum, count.
+    busy_max_ns: AtomicU64,
+    busy_sum_ns: AtomicU64,
+    busy_blocks: AtomicU64,
     dropped_blocks: AtomicU32,
 }
 
 /// Capture ring → 10 ms blocks → transport. Paced by the device: a block goes out as soon
 /// as it is complete. Replacement rings arrive when the microphone is reopened.
-fn run_pump(shared: &PumpShared, rings: mpsc::Receiver<Consumer<i16>>, voice: &dyn VoiceOut) {
-    let mut ring: Option<Consumer<i16>> = None;
-    let mut block = [0i16; BLOCK];
+fn run_pump(shared: &PumpShared, rings: mpsc::Receiver<Consumer<f32>>, voice: &dyn VoiceOut) {
+    let mut ring: Option<Consumer<f32>> = None;
+    // f32 until the hand-over (E0): the DSP chain (S2) works here at the device precision;
+    // the transport wants 16-bit PCM.
+    let mut block = [0f32; BLOCK];
+    let mut pcm = [0i16; BLOCK];
     let mut last: Option<Instant> = None;
     while !shared.stop.load(Relaxed) {
         if let Ok(new) = rings.try_recv() {
@@ -740,14 +762,15 @@ fn run_pump(shared: &PumpShared, rings: mpsc::Receiver<Consumer<i16>>, voice: &d
             }
             shared.dropped_blocks.fetch_add(stale as u32, Relaxed);
         }
+        let started = Instant::now();
         if ring.pop_entire_slice(&mut block).is_err() {
             continue;
         }
-        let energy: f64 = block.iter().map(|s| f64::from(*s).powi(2)).sum();
-        let rms = (energy / BLOCK as f64).sqrt() / f64::from(i16::MAX);
-        shared.input_level.store((rms as f32).to_bits(), Relaxed);
+        shared
+            .input_level
+            .store(dsp::rms(&block).to_bits(), Relaxed);
         if shared.muted.load(Relaxed) {
-            block.fill(0);
+            block.fill(0.0);
         }
         let now = Instant::now();
         if let Some(last) = last {
@@ -755,6 +778,13 @@ fn run_pump(shared: &PumpShared, rings: mpsc::Receiver<Consumer<i16>>, voice: &d
             shared.interval_max_ns.fetch_max(gap, Relaxed);
         }
         last = Some(now);
-        voice.send(&block);
+        for (out, s) in pcm.iter_mut().zip(&block) {
+            *out = (s.clamp(-1.0, 1.0) * f32::from(i16::MAX)).round() as i16;
+        }
+        voice.send(&pcm);
+        let busy = started.elapsed().as_nanos() as u64;
+        shared.busy_max_ns.fetch_max(busy, Relaxed);
+        shared.busy_sum_ns.fetch_add(busy, Relaxed);
+        shared.busy_blocks.fetch_add(1, Relaxed);
     }
 }

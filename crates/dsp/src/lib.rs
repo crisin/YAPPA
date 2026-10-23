@@ -6,6 +6,8 @@
 
 mod biquad;
 mod level;
+mod limiter;
 
 pub use biquad::{Biquad, BiquadKind, Coefficients};
 pub use level::{db_to_gain, gain_to_db, rms};
+pub use limiter::Limiter;

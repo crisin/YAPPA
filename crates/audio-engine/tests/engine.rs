@@ -77,12 +77,17 @@ impl Transport for FakeTransport {
     }
 }
 
+/// A 16-bit sample value as the f32 a device delivers; the pump turns it back exactly.
+fn pcm(value: i16) -> f32 {
+    f32::from(value) / f32::from(i16::MAX)
+}
+
 // ── fake sound hardware ─────────────────────────────────────────────────────────────────
 
 #[derive(Default)]
 struct Hardware {
     opened: Mutex<Vec<String>>,
-    microphone: Mutex<Option<Producer<i16>>>,
+    microphone: Mutex<Option<Producer<f32>>>,
     counters: Mutex<Option<Arc<DeviceCounters>>>,
     speaker: Arc<Mutex<Option<MixerRt>>>,
 }
@@ -108,6 +113,7 @@ fn open(name: &str, keep: Box<dyn std::any::Any + Send>) -> OpenDevice {
         name: name.into(),
         sample_rate: 48_000,
         channels: 1,
+        channel: 0,
         counters: Arc::new(DeviceCounters::default()),
         keep,
     }
@@ -129,14 +135,16 @@ impl AudioIo for FakeIo {
     fn open_capture(
         &mut self,
         id: Option<&str>,
-        ring: Producer<i16>,
+        channel: u16,
+        ring: Producer<f32>,
     ) -> Result<OpenDevice, String> {
         let name = id.unwrap_or("mic1");
-        self.0
-            .opened
-            .lock()
-            .unwrap()
-            .push(format!("capture {name}"));
+        let mut opened = self.0.opened.lock().unwrap();
+        opened.push(format!("capture {name}"));
+        if channel > 0 {
+            opened.push(format!("channel {channel}"));
+        }
+        drop(opened);
         if name == "gone" {
             return Err("the selected device is not connected".into());
         }
@@ -458,7 +466,7 @@ fn the_microphone_reaches_the_transport_in_blocks_and_mute_sends_silence() {
     let speak = |blocks: usize| {
         let mut mic = rig.hardware.microphone.lock().unwrap();
         for _ in 0..blocks * BLOCK {
-            mic.as_mut().unwrap().push(8000).unwrap();
+            mic.as_mut().unwrap().push(pcm(8000)).unwrap();
         }
     };
 
@@ -510,7 +518,7 @@ fn a_capture_backlog_is_dropped_not_sent_as_a_burst() {
         let mut mic = rig.hardware.microphone.lock().unwrap();
         let mic = mic.as_mut().unwrap();
         // Eight blocks at once, numbered — the pump never gets a chance in between.
-        let backlog: Vec<i16> = (0..8).flat_map(|n| [n; BLOCK]).collect();
+        let backlog: Vec<f32> = (0..8).flat_map(|n| [pcm(n); BLOCK]).collect();
         mic.push_entire_slice(&backlog).unwrap();
     }
     rig.wait_until("something sent", || {
@@ -758,4 +766,26 @@ fn joining_another_room_forgets_the_people_of_the_first() {
         _ => None,
     });
     rig.wait_until("second join", || rig.wire.calls().len() == 2);
+}
+
+#[test]
+fn a_new_input_channel_reopens_the_microphone_on_it() {
+    let rig = rig(Settings::default());
+    rig.wait_until("microphone open", || {
+        rig.hardware.microphone.lock().unwrap().is_some()
+    });
+    rig.engine.send(Command::ApplySettings {
+        settings: Settings {
+            input_channel: 1,
+            ..Settings::default()
+        },
+    });
+    rig.wait_until("reopened on channel 1", || {
+        rig.hardware
+            .opened
+            .lock()
+            .unwrap()
+            .contains(&"channel 1".to_string())
+    });
+    assert_eq!(rig.engine.settings().input_channel, 1);
 }

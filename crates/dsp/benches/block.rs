@@ -2,7 +2,7 @@
 //! (planning doc: DSP under 5 ms per block). `cargo xtask bench`.
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use dsp::{Biquad, BiquadKind};
+use dsp::{Biquad, BiquadKind, Limiter};
 use std::hint::black_box;
 
 const SR: f32 = 48_000.0;
@@ -28,5 +28,16 @@ fn eq_chain(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, eq_chain);
+fn limiter(c: &mut Criterion) {
+    let mut limiter = Limiter::new(SR, -1.0, 80.0);
+    // Loud enough that the limiter works on every block.
+    let mut block: Vec<f32> = (0..BLOCK)
+        .map(|i| ((i as f32) * 0.05).sin() * 1.5)
+        .collect();
+    c.bench_function("limiter, one 10 ms block", |b| {
+        b.iter(|| limiter.process(black_box(&mut block)))
+    });
+}
+
+criterion_group!(benches, eq_chain, limiter);
 criterion_main!(benches);

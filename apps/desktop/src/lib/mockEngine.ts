@@ -101,6 +101,8 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
     sendBlocksDropped: 0,
     playoutFramesDropped: 0,
     playoutSkips: 0,
+    pumpBusyMaxMs: 0.03,
+    pumpBusyMeanMs: 0.01,
   });
 
   // Ten times per second is enough to see the meters move.
@@ -173,7 +175,13 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
   return {
     info: () =>
       // The version the app would have; protocol 0 says "no real engine".
-      Promise.resolve({ version: '0.1.0', protocolVersion: 0, logDir: '', debugPanel: false }),
+      Promise.resolve({
+        version: '0.1.0',
+        protocolVersion: 0,
+        logDir: '',
+        debugPanel: false,
+        profile: 'default',
+      }),
     settings: () => Promise.resolve(structuredClone(settings)),
     send(command) {
       handle(command);
