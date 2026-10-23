@@ -24,6 +24,7 @@ const GLOSSARY: &str = "docs/hilfe/glossar.md";
 /// needs no change here.
 const PAGES: &[(&str, &str, Option<&str>)] = &[
     ("hilfe", "docs/mittesten.md", None),
+    ("projekt", "docs/testabend.md", None),
     ("hilfe", "docs/hilfe/so-funktioniert-es.md", None),
     ("hilfe", GLOSSARY, None),
     ("projekt", "TASKS.md", Some("Status")),

@@ -251,6 +251,21 @@ describe('Ich module', () => {
     ).toBeInTheDocument();
   });
 
+  it('sets how the microphone goes on air, with a push-to-talk key', async () => {
+    await start();
+    await openMe('Audio und Sprechen');
+    expect(screen.getByRole('radio', { name: /Automatisch/ })).toBeChecked();
+    expect(screen.getByLabelText(/Ab hier geht das Mikro an/)).toHaveValue('-50');
+    await fireEvent.click(screen.getByRole('radio', { name: /Taste halten/ }));
+    expect(
+      await screen.findByText('Ohne Taste geht dein Mikro in diesem Modus nie an.'),
+    ).toBeInTheDocument();
+    await fireEvent.click(screen.getByRole('button', { name: 'Taste festlegen' }));
+    expect(await screen.findByText('Maustaste 4')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Ab hier geht das Mikro an/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Rauschunterdrückung')).toHaveValue('deepFilter');
+  });
+
   it('has the devices with a live microphone test', async () => {
     await start();
     await openMe('Audio und Sprechen');

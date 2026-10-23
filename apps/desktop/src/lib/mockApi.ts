@@ -5,7 +5,9 @@
 import type { Api, PresenceEntry } from './api';
 import type { Engine } from './engine';
 import type { ApiError } from './types/ApiError';
+import type { AppSettings } from './types/AppSettings';
 import type { Channel } from './types/Channel';
+import defaultAppSettings from './types/defaultAppSettings.json';
 import type { EventEntry } from './types/EventEntry';
 import type { InviteCode } from './types/InviteCode';
 import type { Member } from './types/Member';
@@ -148,6 +150,7 @@ export function createMockApi(scene: Scene = DEFAULT_SCENE, engine?: Engine): Ap
     },
   ];
   let nextCode = 1;
+  let appSettings: AppSettings = structuredClone(defaultAppSettings as AppSettings);
 
   /** Me first, then the others by name — the order crates/client hands out. */
   const snapshot = (): PresenceEntry[] => {
@@ -250,6 +253,17 @@ export function createMockApi(scene: Scene = DEFAULT_SCENE, engine?: Engine): Ap
       await engine?.send({ type: 'leave' });
       setMine({ channelId: null });
     },
+    appSettings: () => Promise.resolve(structuredClone(appSettings)),
+    setAppSettings(settings) {
+      appSettings = structuredClone(settings);
+      return Promise.resolve();
+    },
+    // In the browser there is no hook: pretend the side button of the mouse was pressed.
+    capturePttKey() {
+      appSettings = { ...appSettings, pttKey: 'Mouse4' };
+      return Promise.resolve('Mouse4');
+    },
+    hotkeysGlobal: () => Promise.resolve(true),
     inviteLinks(handler) {
       // Scene `invite`: the app was started by clicking the invite link.
       if (scene === 'invite') queueMicrotask(() => handler(MOCK_INVITE_LINK));

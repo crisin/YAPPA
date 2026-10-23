@@ -3,6 +3,7 @@
 // commands of crates/client answer (`tauriApi.ts`); in the browser and in tests the mock
 // gang does.
 // Session and voice tokens never come through this door: joining a channel is one call.
+import type { AppSettings } from './types/AppSettings';
 import type { Channel } from './types/Channel';
 import type { EventEntry } from './types/EventEntry';
 import type { InviteCode } from './types/InviteCode';
@@ -53,6 +54,16 @@ export interface Api {
    * app right away, later ones as they come. The returned function stops listening.
    */
   inviteLinks(handler: (link: string) => void): Promise<() => void>;
+  /** The app's own settings (view, theme, PTT key, …), stored per profile. */
+  appSettings(): Promise<AppSettings>;
+  setAppSettings(settings: AppSettings): Promise<void>;
+  /**
+   * Waits for the next key or mouse button and makes it the push-to-talk key; `null` when
+   * cancelled (Escape) or nothing came within 10 s.
+   */
+  capturePttKey(): Promise<string | null>;
+  /** False when the global hook is not running: the key then only works in the window. */
+  hotkeysGlobal(): Promise<boolean>;
   admin: {
     members(): Promise<Member[]>;
     setRole(userId: string, role: Role): Promise<void>;

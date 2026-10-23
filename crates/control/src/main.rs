@@ -3,6 +3,7 @@
 //!   yappa-control [serve]                         run the API (default)
 //!   yappa-control invite [--admin] [--days N]     print a new invite link
 //!   yappa-control policy --min <version> [--kill <version>]…
+//!   yappa-control channel [list | add <name>]       channels until the admin module exists
 //!                                                 set the minimum version and kill list
 //!
 //! Configuration comes from the environment (`infra/livekit/.env`): `LIVEKIT_API_KEY`,
@@ -31,6 +32,7 @@ async fn main() -> ExitCode {
         None | Some("serve") => control::cli::serve().await,
         Some("invite") => control::cli::invite(&args[1..]).await,
         Some("policy") => control::cli::policy(&args[1..]).await,
+        Some("channel") => control::cli::channel(&args[1..]).await,
         Some("-h" | "--help" | "help") => {
             println!("{}", control::cli::USAGE);
             Ok(())

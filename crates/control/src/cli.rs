@@ -10,6 +10,7 @@ pub const USAGE: &str = "\
 usage: yappa-control [serve]
        yappa-control invite [--admin] [--days N]
        yappa-control policy --min <version> [--kill <version>]...
+       yappa-control channel [list | add <name>]
 
 environment: LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_WS_URL, [LIVEKIT_HTTP_URL],
              [YAPPA_LISTEN=127.0.0.1:8090], [YAPPA_DATABASE_URL=sqlite://yappa.db],
@@ -169,6 +170,46 @@ pub async fn policy(args: &[String]) -> Result<(), String> {
         "min version {} · killed {:?}",
         policy.min_version, policy.killed_versions
     );
+    Ok(())
+}
+
+/// Channels from the box, until the admin module (U6) does it in the app.
+pub async fn channel(args: &[String]) -> Result<(), String> {
+    let config = db_only_config();
+    let db = open_db(&config.database_url)
+        .await
+        .map_err(|e| e.to_string())?;
+    if args.first().map(String::as_str) == Some("add") {
+        let name = args[1..].join(" ");
+        let name = name.trim();
+        if !(2..=32).contains(&name.chars().count()) {
+            return Err("channel add <name>: the name needs 2 to 32 characters".into());
+        }
+        let mut id = crate::ids::channel_slug(name);
+        if store::channel(&db, &id)
+            .await
+            .map_err(|e| e.to_string())?
+            .is_some()
+            || id == "presence"
+        {
+            id = format!("{id}-2");
+        }
+        store::create_channel(&db, &id, name, &config.server_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        store::log_event(
+            &db,
+            "channel_created",
+            None,
+            Some(&id),
+            &format!("CLI legt den Channel {name} an"),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+    for c in store::channels(&db).await.map_err(|e| e.to_string())? {
+        println!("{:>2}  {:<24} {}", c.position, c.name, c.id);
+    }
     Ok(())
 }
 
