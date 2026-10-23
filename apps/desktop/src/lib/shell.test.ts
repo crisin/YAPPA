@@ -28,6 +28,14 @@ function shell(role: 'member' | 'admin' = 'member') {
 }
 
 describe('Shell registry', () => {
+  it('splits the rail into the module list and the bottom slot', () => {
+    const s = new Shell();
+    s.register(module('voice'));
+    s.register(module('me', { slot: 'bottom' }));
+    expect(s.railMain.map((m) => m.id)).toEqual(['voice']);
+    expect(s.railBottom.map((m) => m.id)).toEqual(['me']);
+  });
+
   it('shows modules by role and starts on the first visible one', () => {
     const member = shell();
     expect(member.visible.map((m) => m.id)).toEqual(['voice', 'me']);
@@ -102,6 +110,21 @@ describe('Shell banner slot', () => {
     s.showBanner({ id: 'link', priority: BANNER.offline, text: 'Offline', dismissible: false });
     expect(s.banners).toHaveLength(2);
     expect(s.banner?.text).toBe('Offline');
+  });
+
+  it('tells the cause when a banner is dismissed', () => {
+    const s = shell();
+    let forgotten = 0;
+    s.showBanner({
+      id: 'error',
+      priority: BANNER.error,
+      text: 'Kaputt',
+      dismissible: true,
+      onDismiss: () => forgotten++,
+    });
+    s.dismissBanner('error');
+    s.dismissBanner('error');
+    expect(forgotten).toBe(1);
   });
 
   it('lets people dismiss only dismissible banners', () => {

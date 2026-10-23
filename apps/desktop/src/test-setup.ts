@@ -11,3 +11,12 @@ expect.extend(axeMatchers);
 // "Not implemented" on every run. A null context is what a browser without canvas returns.
 HTMLCanvasElement.prototype.getContext = (() =>
   null) as typeof HTMLCanvasElement.prototype.getContext;
+
+// jsdom has no layout: Bits UI's command list measures itself and scrolls the selection
+// into view. Neither matters for behaviour, both must exist.
+globalThis.ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
+Element.prototype.scrollIntoView ??= function () {};

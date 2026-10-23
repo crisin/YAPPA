@@ -41,7 +41,20 @@ button[aria-pressed='true'] {
   border-color: var(--color-accent);
 }
 
-button:focus-visible {
-  outline: 2px solid var(--color-accent);
+/* For text that only screen readers need (dialog titles, icon explanations). */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+:focus-visible {
+  outline: var(--focus-ring) solid var(--color-focus);
   outline-offset: 2px;
 }
