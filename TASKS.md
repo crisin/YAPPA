@@ -42,6 +42,9 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
       cut, build, sign, `latest.json`, upload to the box), `tauri-plugin-updater` +
       `tauri-plugin-process`, Caddy `/updates`, `GET /config` min version + kill switch →
       banner slot and forced leave; update channel in Profi
+- [ ] U7 System states with D1 (review 2026-10-23): „Update bereit“ banner, kill switch
+      forces a leave, offline state in the dock with „Erneut verbinden“, config re-read
+      hourly; engine messages that reach the banner in German
 - [ ] Lofi round 2 (user): draw reconnect/offline/update banner and lobby radio against the
       running shell (detail questions follow established patterns, vision section 12)
 - [ ] Infra for three stages (vision section 12): one compose set for LiveKit + control +
@@ -51,6 +54,23 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Later
 
+- [ ] Engine edges from the review 2026-10-23, in the order they bite: resampling for
+      devices not at 48 kHz (Bluetooth hands-free = 16 kHz); a lost device is retried and
+      device changes are listened to (today: one reopen on the default, then nothing);
+      a pump panic reaches the UI as an error and falls back to RNNoise; the running
+      denoiser is reported, not the configured one; PTT hook watchdog (Windows drops a slow
+      hook silently, `is_global` keeps saying true) and a missed key-up; engine settings
+      saved on quit, not only on the stats tick; `validate` checks EQ/compressor for NaN;
+      the engine failing to start shows a window with the error instead of dying
+- [ ] Control-plane edges from the review 2026-10-23: cache the presence token and the
+      channel tokens (≈ 12 h, vision section 3) so a start without the control plane still
+      has presence; kick revokes the session and a member can be removed; healthcheck in
+      the compose files; voice grant limited to the microphone source; a Linux CI job that
+      builds `crates/control` (+ the Docker image); actions pinned to SHAs
+- [ ] UI edges from the review 2026-10-23: focus follows a module switch and the inspector;
+      channel buttons stay focusable during a join; per-person volume and mute survive a
+      restart; mute state after a webview reload; tests for the `reconnect`/`offline`/
+      `update` scenes, engine-error banners and a failed join
 - [ ] Engine follow-ups (ADR-003, realtime reviews 2026-10-10 and 2026-10-23): drift
       compensation = hold the playout ring at the cushion; resampling for devices that are
       not at 48 kHz; transport events carry a session number; a "nothing arrives" warning
@@ -100,6 +120,14 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] Review 2026-10-23 (`docs/02-review-2026-10-23.md`): three reviewers over engine,
+      server/client and desktop; verdict „on track, code ahead of testing“; nine small
+      fixes before the first evening (ghost join — presence set before the join and
+      cleared on Disconnected, offline-at-start card, join errors in the banner, engine
+      errors kept per source and handed over on resync, Esc in key capture/tooltips, 502
+      as unreachable for the cache, denoiser warning throttled, 48 kHz pre-check in
+      `mittesten.md`, the flaky `against_control` test — pid reuse hit a stale test DB);
+      the rest on the board as U7 and three „edges“ lines (2026-10-23)
 - [x] Cloudflare Tunnel setup: `infra/livekit/tunnel.yml` (LiveKit + control plane, no
       Caddy; optional `cloudflared` profile), two hostnames (voice → 7880, API → 8090,
       `YAPPA_PUBLIC_URL` set), `docs/cloudflare-tunnel.md` — says plainly that the voice

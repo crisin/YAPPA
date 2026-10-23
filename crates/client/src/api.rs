@@ -103,6 +103,11 @@ impl ApiClient {
             let body: &[u8] = if bytes.is_empty() { b"null" } else { &bytes };
             serde_json::from_slice(body)
                 .map_err(|e| ApiFailure::new("bad_response", &format!("Antwort unlesbar: {e}")))
+        } else if matches!(status.as_u16(), 502..=504) {
+            // Caddy or a tunnel answering for a control plane that is down: for the client
+            // that is no server at all — the offline cache applies (review 2026-10-23).
+            tracing::info!(%status, "control plane unreachable behind the proxy");
+            Err(ApiFailure::new("unreachable", "Server nicht erreichbar."))
         } else {
             let fallback = ApiFailure::new("http_error", &format!("Server antwortet {status}."));
             Err(response

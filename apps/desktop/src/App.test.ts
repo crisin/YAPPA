@@ -339,6 +339,13 @@ describe('Ich module', () => {
       await screen.findByRole('button', { name: 'Erklärung: Jitter' }, { timeout: 3000 }),
     );
     expect(screen.getByRole('tooltip')).toHaveTextContent('Jitter');
+    // Escape closes the tooltip without stepping the shell back.
+    await fireEvent.keyDown(screen.getByRole('button', { name: 'Erklärung: Jitter' }), {
+      key: 'Escape',
+    });
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Pfad' })).toHaveTextContent('Ich / Diagnose');
+    await fireEvent.click(screen.getByRole('button', { name: 'Erklärung: Jitter' }));
     await fireEvent.click(screen.getByRole('button', { name: 'Mehr im Glossar' }));
     expect(await screen.findByRole('heading', { level: 1, name: 'Glossar' })).toBeInTheDocument();
     expect(
@@ -495,6 +502,25 @@ describe('Admin module', () => {
     await fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
     expect(await screen.findByText(/Gespeichert/)).toBeInTheDocument();
     expect(screen.getByRole('list', { name: 'Ereignis-Log' })).toBeInTheDocument();
+  });
+});
+
+describe('Server away at start', () => {
+  it('offers „Erneut versuchen“ instead of the login, and the login on request', async () => {
+    await start('offline');
+    // The banner slot may carry its own „Erneut versuchen“ (config); the card is in main.
+    const main = await screen.findByRole('main', { name: 'Einrichtung' });
+    const card = () => within(main);
+    expect(
+      await card().findByRole('heading', { level: 1, name: 'Server nicht erreichbar' }),
+    ).toBeInTheDocument();
+    expect(card().queryByLabelText('Einladung')).not.toBeInTheDocument();
+    await fireEvent.click(card().getByRole('button', { name: 'Erneut versuchen' }));
+    expect(
+      await card().findByRole('heading', { level: 1, name: 'Server nicht erreichbar' }),
+    ).toBeInTheDocument();
+    await fireEvent.click(card().getByRole('button', { name: 'Mit neuer Einladung anmelden' }));
+    expect(card().getByLabelText('Einladung')).toBeInTheDocument();
   });
 });
 

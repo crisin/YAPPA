@@ -17,7 +17,16 @@ fn info() -> ClientInfo {
 }
 
 fn temp(name: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("yappa-client-{name}-{}", std::process::id()))
+    // Pid plus time: Windows hands pids out again quickly, and a database left behind by an
+    // earlier run already holds the fixed invite code below (UNIQUE constraint failed).
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    std::env::temp_dir().join(format!(
+        "yappa-client-{name}-{}-{nanos}",
+        std::process::id()
+    ))
 }
 
 #[tokio::test]

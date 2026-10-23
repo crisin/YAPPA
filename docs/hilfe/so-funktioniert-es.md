@@ -52,7 +52,10 @@ digitale Teil mit 50 bis 60 ms; der Rest sind Mikrofon- und Ausgabepuffer.
 
 ## Was noch fehlt
 
-Im Moment hat yAPPA Channels, eine **Rauschunterdrückung** (DeepFilterNet) und
-Sprachaktivierung, aber noch kein **Push-to-Talk** und keine **Echo**-Unterdrückung. Die
-Reihenfolge, in der das kommt, steht unter „Status“ im Projekt-Bereich. Was dort unter
-„Später“ steht, ist bewusst noch nicht gebaut.
+Im Moment hat yAPPA Channels, **Rauschunterdrückung** (DeepFilterNet), Sprachaktivierung
+und **Push-to-Talk**, aber noch keine **Echo**-Unterdrückung (deshalb: Headset, oder
+„Taste halten“ mit Lautsprechern), keine automatischen Updates (neue Versionen kommen als
+Installer vom Admin) und kein Symbol im Infobereich — Fenster schließen beendet den Call.
+Mikrofone und Ausgaben müssen auf **48 000 Hz** stehen; Bluetooth-Headsets im
+Freisprechmodus (16 kHz) gehen noch nicht. Die Reihenfolge, in der das kommt, steht unter
+„Status“ im Projekt-Bereich. Was dort unter „Später“ steht, ist bewusst noch nicht gebaut.

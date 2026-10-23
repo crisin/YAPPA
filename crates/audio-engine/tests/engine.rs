@@ -327,6 +327,26 @@ fn a_missing_device_falls_back_to_the_default_and_says_so() {
 }
 
 #[test]
+fn an_error_from_before_the_ui_listened_is_handed_over_on_resync() {
+    // No microphone at start: the error goes out before the window listens. The next
+    // resync carries it again, once.
+    let rig = rig(Settings {
+        input_device: Some("gone".into()),
+        ..Settings::default()
+    });
+    let first = rig.wait("error", |e| match e {
+        Event::Error { message } => Some(message.clone()),
+        _ => None,
+    });
+    rig.engine.send(Command::Resync);
+    let again = rig.wait("error again", |e| match e {
+        Event::Error { message } => Some(message.clone()),
+        _ => None,
+    });
+    assert_eq!(again, first);
+}
+
+#[test]
 fn join_uses_the_bitrate_from_the_settings_and_reports_the_room() {
     let rig = rig(Settings {
         voice_bitrate_kbps: 96,

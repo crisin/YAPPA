@@ -143,15 +143,26 @@ pub fn api_set_presence(app: State<'_, App>, patch: PresencePatch) {
 #[tauri::command]
 pub async fn voice_join(app: State<'_, App>, channel_id: String) -> Reply<()> {
     let token = app.client.voice_token(&channel_id).await?;
-    app.with_engine(|e| {
+    let set_channel = |id: Option<String>| {
+        if let Some(presence) = app.presence.0.lock().expect("lock").as_ref() {
+            presence.update(|state| state.channel_id = id);
+        }
+    };
+    // Presence first, then the join: a failed join ends in `Disconnected`, which clears the
+    // channel again (lib.rs) — that must not be overtaken by a late set from here.
+    set_channel(Some(channel_id));
+    let sent = app.with_engine(|e| {
         e.send(Command::Join {
             url: token.ws_url.clone(),
             token: token.token.clone(),
         });
-    })
-    .ok_or_else(|| ApiFailure::new("engine_down", "Die Audio-Engine läuft nicht."))?;
-    if let Some(presence) = app.presence.0.lock().expect("lock").as_ref() {
-        presence.update(|state| state.channel_id = Some(channel_id));
+    });
+    if sent.is_none() {
+        set_channel(None);
+        return Err(ApiFailure::new(
+            "engine_down",
+            "Die Audio-Engine läuft nicht.",
+        ));
     }
     Ok(())
 }

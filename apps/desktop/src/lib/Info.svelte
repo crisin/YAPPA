@@ -37,7 +37,13 @@
     class="info"
     onmouseenter={show}
     onmouseleave={() => (open = false)}
-    onkeydown={(e) => e.key === 'Escape' && (open = false)}
+    onkeydown={(e) => {
+      // Escape closes the tooltip and nothing else (the shell steps back on a free Escape).
+      if (e.key === 'Escape' && open) {
+        e.preventDefault();
+        open = false;
+      }
+    }}
     role="presentation"
   >
     <button

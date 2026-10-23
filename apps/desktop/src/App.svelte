@@ -120,6 +120,23 @@
     });
   });
 
+  // A problem while switching channels during a call (token refused, server away): the
+  // stage shows the people then, so the banner carries it; outside a room the stage does.
+  $effect(() => {
+    const problem = session.inRoom ? gang.problem : null;
+    untrack(() => {
+      if (problem) {
+        shell.showBanner({
+          id: 'gang',
+          priority: BANNER.error,
+          text: problem,
+          dismissible: true,
+          onDismiss: () => (gang.problem = null),
+        });
+      } else shell.clearBanner('gang');
+    });
+  });
+
   $effect(() => {
     const lost = session.connection === 'reconnecting';
     untrack(() => {
