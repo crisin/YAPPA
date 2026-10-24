@@ -2,7 +2,7 @@
 //! (planning doc: DSP under 5 ms per block). `cargo xtask bench`.
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use dsp::{Biquad, BiquadKind, Limiter};
+use dsp::{Biquad, BiquadKind, Limiter, Resampler};
 use std::hint::black_box;
 
 const SR: f32 = 48_000.0;
@@ -39,5 +39,26 @@ fn limiter(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, eq_chain, limiter);
+/// One 10 ms block through the resampler, the three cases the gang's devices bring (A1).
+fn resampler(c: &mut Criterion) {
+    for (in_rate, out_rate, label) in [
+        (16_000u32, 48_000u32, "16 -> 48 kHz (Bluetooth mic)"),
+        (48_000, 16_000, "48 -> 16 kHz (Bluetooth out)"),
+        (44_100, 48_000, "44.1 -> 48 kHz"),
+    ] {
+        let mut rs = Resampler::new(in_rate, out_rate);
+        let input: Vec<f32> = (0..in_rate / 100 + 64)
+            .map(|i| ((i as f32) * 0.05).sin() * 0.5)
+            .collect();
+        let mut out = vec![0f32; (out_rate / 100) as usize];
+        c.bench_function(&format!("resampler {label}, one 10 ms block"), |b| {
+            b.iter(|| {
+                let mut source = input.iter().copied().cycle();
+                rs.produce(black_box(&mut out), || source.next())
+            })
+        });
+    }
+}
+
+criterion_group!(benches, eq_chain, limiter, resampler);
 criterion_main!(benches);

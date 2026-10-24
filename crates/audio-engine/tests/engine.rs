@@ -174,7 +174,11 @@ impl AudioIo for FakeIo {
             return Err("the selected device is not connected".into());
         }
         *self.0.microphone.lock().unwrap() = Some(ring);
-        let device = open(name, Box::new(()));
+        let mut device = open(name, Box::new(()));
+        // A Bluetooth headset in hands-free mode: the device delivers 16 kHz (A1).
+        if name == "mic16" {
+            device.sample_rate = 16_000;
+        }
         *self.0.counters.lock().unwrap() = Some(device.counters.clone());
         Ok(device)
     }
@@ -500,6 +504,48 @@ fn a_join_that_never_worked_is_not_repeated() {
     rig.wait_state(ConnectionState::Disconnected);
     std::thread::sleep(Duration::from_millis(150));
     assert_eq!(rig.wire.calls().len(), 1);
+}
+
+#[test]
+fn a_16_khz_microphone_is_resampled_into_48_khz_blocks() {
+    use std::f32::consts::TAU;
+    let rig = rig(Settings {
+        input_device: Some("mic16".into()),
+        ..transparent()
+    });
+    rig.wait_until("microphone open", || {
+        rig.hardware.microphone.lock().unwrap().is_some()
+    });
+    // 25 ms of a 1 kHz tone at the device's 16 kHz — two and a half blocks' worth, which
+    // stays under the pump's backlog rule (more than three blocks queued = stale).
+    {
+        let mut mic = rig.hardware.microphone.lock().unwrap();
+        let mic = mic.as_mut().unwrap();
+        for i in 0..400 {
+            let s = (i as f32 / 16_000.0 * 1_000.0 * TAU).sin() * 0.5;
+            mic.push(s).unwrap();
+        }
+    }
+    rig.wait_until("two blocks sent", || {
+        rig.wire.sent.lock().unwrap().len() >= 2
+    });
+    let block = rig.wire.sent.lock().unwrap()[1].clone();
+    assert_eq!(block.len(), BLOCK);
+    // 1 kHz in 10 ms: ten periods, twenty zero crossings; amplitude 0.5 = 16384.
+    let crossings = block
+        .windows(2)
+        .filter(|w| (w[0] < 0) != (w[1] < 0))
+        .count();
+    assert!((18..=22).contains(&crossings), "{crossings} zero crossings");
+    let peak = block.iter().map(|s| i32::from(*s).abs()).max().unwrap();
+    assert!((14_000..=18_000).contains(&peak), "peak {peak}");
+    // The diagnosis shows the device's own rate.
+    rig.wait("stats with the device rate", |e| match e {
+        Event::Stats { stats } if stats.capture.as_ref().map(|c| c.sample_rate) == Some(16_000) => {
+            Some(())
+        }
+        _ => None,
+    });
 }
 
 #[test]

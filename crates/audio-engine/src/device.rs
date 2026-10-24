@@ -3,10 +3,12 @@
 //! The data callbacks only move samples between the device buffer and `rtrb` rings and bump
 //! atomics — no allocation, no locks, no logging. Capture keeps the device's precision
 //! (`f32` all the way to the transport, E0) and takes the configured input channel;
-//! playout puts the mono mix on every channel. Not built yet, on purpose: resampling (a
-//! device that cannot run at 48 kHz is an error).
+//! playout puts the mono mix on every channel. A device that is not at 48 kHz is taken at
+//! its own rate (A1, ADR-009): the capture ring carries that rate and the pump converts;
+//! playout converts in the callback through [`crate::resample::ResampledRender`].
 
 use crate::mixer::MixerRt;
+use crate::resample::{ResampledRender, MAX_CALLBACK_FRAMES};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, Sample, SampleFormat, SizedSample, SupportedStreamConfig};
 use engine_protocol::AudioDevice;
@@ -16,9 +18,6 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering::Relaxed};
 use std::sync::mpsc;
 use std::sync::Arc;
 use transport::SAMPLE_RATE;
-
-/// Largest callback the playout path handles in one go; bigger ones are rendered in pieces.
-const MAX_CALLBACK_FRAMES: usize = 8192;
 
 /// Written by the callbacks, read by the engine's control thread.
 #[derive(Default)]
@@ -54,7 +53,8 @@ pub struct DeviceList {
 /// The engine's view of the sound hardware. `None` as id means the system default.
 pub trait AudioIo: Send {
     fn devices(&self) -> DeviceList;
-    /// Mono 48 kHz samples of input `channel` (clamped to what the device has) into `ring`.
+    /// Mono samples of input `channel` (clamped to what the device has) into `ring`, at the
+    /// device's own rate (`OpenDevice::sample_rate`); the pump converts to 48 kHz.
     fn open_capture(
         &mut self,
         id: Option<&str>,
@@ -133,10 +133,15 @@ impl AudioIo for CpalIo {
             Some(id) => find(&host, id)?,
             None => host.default_input_device().ok_or("no microphone found")?,
         };
-        // The fewest channels that still contain the wanted one; else any 48 kHz mode.
-        let config = pick_48k(device.supported_input_configs().map_err(text)?, channel + 1)
-            .or_else(|| pick_48k(device.supported_input_configs().ok()?, 1))
-            .ok_or_else(|| no_48k(&device))?;
+        // The fewest channels that still contain the wanted one; else any usable mode.
+        let preferred = device.default_input_config().ok().map(|c| c.sample_rate());
+        let config = pick_mode(
+            device.supported_input_configs().map_err(text)?,
+            channel + 1,
+            preferred,
+        )
+        .or_else(|| pick_mode(device.supported_input_configs().ok()?, 1, preferred))
+        .ok_or_else(|| no_mode(&device))?;
         let channel = usize::from(channel).min(usize::from(config.channels()) - 1);
         let used = channel as u16;
         let counters = Arc::new(DeviceCounters::default());
@@ -173,8 +178,13 @@ impl AudioIo for CpalIo {
                 .default_output_device()
                 .ok_or("no output device found")?,
         };
-        let config = pick_48k(device.supported_output_configs().map_err(text)?, 1)
-            .ok_or_else(|| no_48k(&device))?;
+        let preferred = device.default_output_config().ok().map(|c| c.sample_rate());
+        let config = pick_mode(
+            device.supported_output_configs().map_err(text)?,
+            1,
+            preferred,
+        )
+        .ok_or_else(|| no_mode(&device))?;
         let counters = Arc::new(DeviceCounters::default());
         let stream = match config.sample_format() {
             SampleFormat::F32 => playout::<f32>(&device, &config, holder, counters.clone()),
@@ -233,6 +243,9 @@ where
     let channels = usize::from(config.channels());
     let on_error = error_flag(counters.clone());
     let mut mono = vec![0f32; MAX_CALLBACK_FRAMES];
+    // A device not at 48 kHz gets the mix converted on the way out (A1).
+    let mut resampled =
+        (config.sample_rate() != SAMPLE_RATE).then(|| ResampledRender::new(config.sample_rate()));
     let callback = move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
         counters
             .callback_frames
@@ -242,8 +255,13 @@ where
         };
         for piece in data.chunks_mut(MAX_CALLBACK_FRAMES * channels) {
             let mono = &mut mono[..piece.len() / channels];
-            mono.fill(0.0);
-            mixer.render(mono);
+            match resampled.as_mut() {
+                None => {
+                    mono.fill(0.0);
+                    mixer.render(mono);
+                }
+                Some(converter) => converter.render(mono, |at_48k| mixer.render(at_48k)),
+            }
             for (frame, sample) in piece.chunks_exact_mut(channels).zip(mono.iter()) {
                 frame.fill(T::from_sample(*sample));
             }
@@ -295,26 +313,42 @@ fn find(host: &cpal::Host, id: &str) -> Result<cpal::Device, String> {
         .ok_or_else(|| "the selected device is not connected".to_string())
 }
 
-/// The mode with the fewest channels (at least `min_channels`) that runs at 48 kHz in a
-/// format we convert.
-fn pick_48k(
+/// The mode with the fewest channels (at least `min_channels`) in a format we convert: at
+/// 48 kHz when the device has it, else at the device's own rate (`preferred`, its default
+/// config — on Windows the shared-mode format), else the highest rate it offers. Anything
+/// but 48 kHz is resampled by the engine (A1, ADR-009).
+fn pick_mode(
     configs: impl Iterator<Item = cpal::SupportedStreamConfigRange>,
     min_channels: u16,
+    preferred: Option<u32>,
 ) -> Option<SupportedStreamConfig> {
-    configs
+    let usable: Vec<_> = configs
         .filter(|c| {
             matches!(
                 c.sample_format(),
                 SampleFormat::F32 | SampleFormat::I16 | SampleFormat::I32
             ) && c.channels() >= min_channels
         })
-        .filter_map(|c| c.try_with_sample_rate(SAMPLE_RATE))
-        .min_by_key(|c| c.channels())
+        .collect();
+    let at = |rate: u32| {
+        usable
+            .iter()
+            .filter_map(|c| c.try_with_sample_rate(rate))
+            .min_by_key(|c| c.channels())
+    };
+    at(SAMPLE_RATE)
+        .or_else(|| preferred.and_then(at))
+        .or_else(|| {
+            usable
+                .into_iter()
+                .map(|c| c.with_max_sample_rate())
+                .min_by_key(|c| c.channels())
+        })
 }
 
-fn no_48k(device: &cpal::Device) -> String {
+fn no_mode(device: &cpal::Device) -> String {
     format!(
-        "'{}' has no 48 kHz mode — set it to 48000 Hz in the system sound settings",
+        "'{}' offers no mode yAPPA can use (f32, i16 or i32 samples)",
         device_name(device)
     )
 }
