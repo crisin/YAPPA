@@ -1,0 +1,52 @@
+# yAPPA behind an EXISTING Cloudflare Tunnel: LiveKit + control plane only — no Caddy,
+# no cloudflared service. Same as tunnel.yml without the optional cloudflared profile, so
+# no CLOUDFLARE_TUNNEL_TOKEN is needed. Step by step: docs/cloudflare-tunnel.md.
+# Needs infra/livekit/.env with LIVEKIT_API_SECRET, YAPPA_VOICE_HOST and YAPPA_API_HOST.
+#
+#   docker compose -f tunnel-extern.yml up -d --build
+#
+# In your existing tunnel, add two public hostnames:
+#   $YAPPA_VOICE_HOST -> http://<server>:7880   (LiveKit signalling)
+#   $YAPPA_API_HOST   -> http://<server>:8090   (control plane)
+# <server> is localhost if cloudflared runs on the host (or with host networking), otherwise
+# the server's LAN address (cloudflared in its own Docker network cannot see localhost here).
+#
+# Voice is UDP and does not go through the tunnel: the router forwards UDP 7882 and TCP 7881
+# to this machine. Host networking on purpose: LiveKit must see the real addresses, and media
+# must not pass through Docker's NAT. Linux only.
+name: yappa-tunnel
+
+services:
+  livekit:
+    image: livekit/livekit-server:v1.13.8
+    command: ["--config=/etc/livekit.yaml"]
+    environment:
+      # Key name fixed, as in home.yml: LiveKit signs its webhooks with it.
+      LIVEKIT_KEYS: "yappa: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in .env}"
+    # Signalling 7880 (only the tunnel talks to it), TCP 7881 and UDP 7882 for media,
+    # public IPv4 via STUN, webhooks to localhost:8090.
+    volumes:
+      - ./livekit.home.yaml:/etc/livekit.yaml:ro
+    network_mode: host
+    restart: unless-stopped
+
+  # Invites, channels, tokens, event log, published on its own hostname. The first start
+  # prints an admin invite: `docker compose -f tunnel-extern.yml logs control | grep invite`.
+  control:
+    build:
+      context: ../..
+      dockerfile: infra/control/Dockerfile
+    environment:
+      LIVEKIT_API_KEY: "yappa"
+      LIVEKIT_API_SECRET: "${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in .env}"
+      LIVEKIT_WS_URL: "wss://${YAPPA_VOICE_HOST:?set YAPPA_VOICE_HOST in .env}"
+      LIVEKIT_HTTP_URL: "http://localhost:7880"
+      YAPPA_PUBLIC_URL: "https://${YAPPA_API_HOST:?set YAPPA_API_HOST in .env}"
+      YAPPA_UPDATE_BASE_URL: "https://${YAPPA_API_HOST}/updates"
+    volumes:
+      - control_data:/data
+    network_mode: host
+    restart: unless-stopped
+
+volumes:
+  control_data:
