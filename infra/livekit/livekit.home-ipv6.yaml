@@ -1,0 +1,21 @@
+# LiveKit server config, stage 1 on a connection WITHOUT a public IPv4 (DS-Lite / CGNAT):
+# the server is reachable over IPv6 only. Select it in .env with
+# LIVEKIT_CONFIG_FILE=livekit.home-ipv6.yaml; docs/homeserver.md "Nur IPv6".
+# Keys come from the LIVEKIT_KEYS environment variable (infra/livekit/.env) — never from here.
+port: 7880 # signalling; only Caddy talks to it, the router does not forward it
+rtc:
+  tcp_port: 7881 # ICE over TCP, the fallback when a client's network blocks UDP
+  udp_port: 7882 # one muxed UDP port for all media
+  # No STUN: behind CGNAT it would only find the carrier's NAT address, which nobody can
+  # reach. LiveKit announces its local addresses instead — the global IPv6 among them is
+  # the one the gang connects to (the router's IPv6 firewall is open for it), the LAN
+  # IPv4 serves the house.
+  use_external_ip: false
+logging:
+  level: info
+# Joins and leaves for the control plane's event log (ADR-005). LiveKit signs them with
+# this key name — fixed to `yappa` in home.yml, so nothing to match by hand.
+webhook:
+  api_key: yappa
+  urls:
+    - http://localhost:8090/livekit/webhook

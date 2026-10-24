@@ -19,8 +19,8 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 - [ ] First evening with the gang (user): home server up (`docs/homeserver.md`), installer
       + invites out (`docs/mittesten.md`), collect diagnostics files; write down what broke
-- [ ] Homeserver walkthrough (user, hands-on): follow `docs/homeserver.md` on the mini PC
-      behind the FRITZ!Box — DS-Lite check first; note in the guide what did not match
+- [ ] Homeserver: first call from outside over the IPv6-only server (a gang member with
+      IPv6, phone hotspot is enough); then ask the cable provider for a public IPv4
 
 **M2 · Login and channels** — invite link, name, lobby, who is where, join by click
 
@@ -135,6 +135,12 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] Homeserver walkthrough (user, hands-on, 2026-10-24): on the dev PC instead of the mini
+      PC, Ubuntu in WSL2 (mirrored network) instead of a VM. FRITZ!Box 6660 Cable sits
+      behind CGNAT (box IPv4 `100.96.…`, no DS-Lite flag), so the server runs IPv6-only
+      with `livekit.home-ipv6.yaml`; Let's Encrypt reached port 443 over IPv6 and issued
+      the certificate, the admin invite came up. Guide amended: reliable CGNAT check, IPv6-only section, WSL2 variant,
+      FRITZ!Box traps.
 - [x] A1 Resampling (ADR-009): `dsp::Resampler` — windowed-sinc polyphase, 128 phases,
       32 taps (×ratio when going down), pull API without allocation; capture ring carries
       the device rate and the pump converts, playout converts in the callback
