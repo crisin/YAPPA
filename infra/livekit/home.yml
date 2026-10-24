@@ -16,7 +16,8 @@ services:
       # mismatch would silently cost the event log. Only the secret comes from .env.
       LIVEKIT_KEYS: "yappa: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in .env}"
     volumes:
-      - ./livekit.home.yaml:/etc/livekit.yaml:ro
+      # IPv6-only connection (DS-Lite/CGNAT)? LIVEKIT_CONFIG_FILE=livekit.home-ipv6.yaml in .env.
+      - ./${LIVEKIT_CONFIG_FILE:-livekit.home.yaml}:/etc/livekit.yaml:ro
     network_mode: host
     restart: unless-stopped
 

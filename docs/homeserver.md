@@ -1,16 +1,18 @@
 # Homeserver einrichten (Stufe 1)
 
-yAPPA auf dem Mini-PC zu Hause, erreichbar für die Gang über die FRITZ!Box. Diese
-Anleitung ist für genau diesen Aufbau geschrieben: FRITZ!Box 6660 Cable, Mini-PC mit
-Windows, darauf eine Linux-VM. Erst ausprobieren ohne Mini-PC? → [Alles nur lokal](#alles-nur-lokal).
-Läuft auf dem Server schon ein Cloudflare Tunnel für andere Apps? →
+yAPPA auf einem PC zu Hause, erreichbar für die Gang über die FRITZ!Box. Diese Anleitung
+ist für genau diesen Aufbau geschrieben: FRITZ!Box 6660 Cable, ein Windows-PC, darauf
+Linux — als VM (Schritt 2) oder als WSL2 ([Variante WSL2](#variante-wsl2-statt-vm)). Erst
+ausprobieren ohne Freigaben? → [Alles nur lokal](#alles-nur-lokal). Läuft auf dem Server
+schon ein Cloudflare Tunnel für andere Apps? →
 [yAPPA hinter einem Cloudflare Tunnel](cloudflare-tunnel.md).
 
-> **Stand 2026-10-23:** Lokal geprüft sind LiveKit, die Control-Plane (`yappa-control`, als
-> Docker-Image gebaut), Einladungslinks, Beitritt und Presence. Nicht geprüft: Caddy mit
-> Let's-Encrypt-Zertifikat, die FRITZ!Box-Freigaben und der Zugriff von außen. Menünamen der
-> FRITZ!Box können je nach FRITZ!OS-Version leicht abweichen. Was beim ersten Durchlauf
-> hakt, bitte hier nachtragen.
+> **Stand 2026-10-24:** Einmal komplett durchgelaufen auf dem Entwicklungs-PC (Windows 11,
+> WSL2-Ubuntu, FRITZ!Box 6660 Cable): Freigaben, Let's-Encrypt-Zertifikat über Caddy (die
+> Prüfer von Let's Encrypt kamen über IPv6 auf Port 443), Admin-Einladung. Der Anschluss hatte **keine öffentliche IPv4**
+> (CGNAT), deshalb läuft dieser Server [nur über IPv6](#nur-ipv6-wenn-der-anschluss-keine-oeffentliche-ipv4-hat).
+> Noch nicht geprüft: ein Call von außen über diesen Weg. Menünamen der FRITZ!Box können je
+> nach FRITZ!OS-Version leicht abweichen.
 
 ## Was am Ende läuft
 
@@ -34,13 +36,18 @@ Portfreigaben für IPv4 funktionieren nicht.
 
 1. FRITZ!Box-Oberfläche (`http://fritz.box`) → **Internet → Online-Monitor**.
 2. Steht dort **„DS-Lite"** oder „IPv4 über DS-Lite-Tunnel", hast du keine eigene IPv4.
-3. Gegenprobe: Die dort angezeigte IPv4-Adresse muss dieselbe sein, die eine Seite wie
-   `https://ifconfig.me` anzeigt. Beginnt sie mit `100.64.` bis `100.127.`, ist es
-   ebenfalls keine öffentliche Adresse.
+3. Die verlässliche Probe ist die IPv4-Adresse, die die FRITZ!Box **selbst** hat: **Internet
+   → Freigaben → Portfreigaben**, bei irgendeiner Freigabe die Spalte „IP-Adresse im
+   Internet" (notfalls eine Freigabe anlegen, nachsehen, wieder löschen). Beginnt sie mit
+   `100.64.` bis `100.127.` (oder mit `10.`, `192.168.`), hängt der Anschluss hinter
+   **CGNAT**: keine eigene IPv4, auch wenn der Online-Monitor nichts von DS-Lite sagt.
+   Seiten wie `https://ifconfig.me` helfen hier **nicht** — sie zeigen die Adresse des
+   Anbieter-NATs, die sieht öffentlich aus, ist es für dich aber nicht.
 
-**Bei DS-Lite:** Beim Anbieter nach „Dual Stack" oder einer „öffentlichen IPv4-Adresse"
-fragen (bei Kabelanbietern oft auf Zuruf möglich). Geht das nicht, ist der Homeserver für
-diesen Anschluss raus und wir nehmen einen VPS (Stufe 2) — dann hier nicht weitermachen.
+**Bei DS-Lite oder CGNAT:** Beim Anbieter nach „Dual Stack" oder einer „öffentlichen
+IPv4-Adresse" fragen (bei Kabelanbietern oft auf Zuruf möglich). Bis dahin, oder wenn das
+nicht geht, gibt es zwei Wege: [nur über IPv6](#nur-ipv6-wenn-der-anschluss-keine-oeffentliche-ipv4-hat)
+(funktioniert, aber nur für Leute, die selbst IPv6 haben) oder ein VPS (Stufe 2).
 
 ## 2. Die Linux-VM
 
@@ -92,10 +99,21 @@ die VM auswählen → vier Freigaben anlegen:
 
 - Bei jeder Freigabe „Internetzugriff über IPv4 und IPv6" wählen, wenn es angeboten wird.
 - „Selbstständige Portfreigaben für dieses Gerät erlauben" bleibt **aus**.
+- Bei der MyFRITZ!-Freigabe gibt es kein Port-Feld: die Anwendung „HTTPS-Server" **ist**
+  TCP 443. „Verzeichnis" leer lassen.
 - Die MyFRITZ!-Freigabe zeigt nach dem Speichern eine eigene Adresse für die VM an, in der
   Form `<vm-name>.xxxxxxxx.myfritz.net`. **Diese Adresse ist ab jetzt deine `YAPPA_DOMAIN`.**
   Die Adresse der FRITZ!Box selbst (`xxxxxxxx.myfritz.net`) zeigt bei IPv6 auf die Box
   statt auf die VM; damit kann die Zertifikatsausstellung scheitern.
+- **IPv6 Interface-ID** oben auf der Geräteseite prüfen: Das muss das Ende der
+  IPv6-Adresse sein, die die VM wirklich hat (`ip -6 addr`, die mit `2a…`/`2001:…`). Die
+  Box merkt sich dort gern eine alte. Stimmt sie nicht, zeigt die MyFRITZ!-Adresse per IPv6
+  ins Leere.
+- Die Tabelle zeigt jede Freigabe **zweimal** (einmal IPv4, einmal IPv6) — das ist eine
+  Freigabe, nicht zwei. Löschen entfernt beide.
+- **Fehlercode 1** beim Übernehmen: Löschen einer alten Freigabe und Anlegen einer neuen auf
+  demselben Port nicht in einem Rutsch, sondern erst löschen, Übernehmen, Seite neu laden,
+  dann anlegen.
 
 Port 7880 wird **nicht** freigegeben — den spricht nur Caddy innerhalb der VM an.
 
@@ -213,7 +231,10 @@ Ein Neustart der Control-Plane beendet keinen laufenden Call.
 | Beitritt klappt, aber niemand hört sich | UDP 7882 kommt nicht an | Freigabe UDP 7882; `nodeIP` im LiveKit-Log ist die öffentliche Adresse |
 | Ein Einzelner hört nichts, die anderen schon | sein Netz sperrt UDP | Freigabe TCP 7881 muss stehen |
 | Geht von außen, aber nicht aus dem eigenen WLAN | Rückweg über die FRITZ!Box | über Hotspot gegenprüfen |
-| LiveKit-Log: `nodeIP` ist eine `192.168.…`-Adresse | öffentliche Adresse nicht ermittelt | hat die VM Internet? `use_external_ip: true` in `livekit.home.yaml` |
+| LiveKit-Log: `nodeIP` ist eine `192.168.…`-Adresse | öffentliche Adresse nicht ermittelt | hat die VM Internet? `use_external_ip: true` in `livekit.home.yaml` (bei [nur IPv6](#nur-ipv6-wenn-der-anschluss-keine-oeffentliche-ipv4-hat) ist das so gewollt) |
+| Freigaben stehen, trotzdem kommt nichts an; „IP-Adresse im Internet" beginnt mit `100.` | CGNAT | Schritt 1; [nur IPv6](#nur-ipv6-wenn-der-anschluss-keine-oeffentliche-ipv4-hat) oder Anbieter |
+| WSL: Container starten dauernd neu, `journalctl` sagt „power off" | Distro wird ohne Terminal beendet | Keep-alive-Aufgabe ([Variante WSL2](#variante-wsl2-statt-vm), Punkt 5) |
+| WSL: vom PC selbst geht `https://<YAPPA_DOMAIN>` nicht, von außen schon | Windows erreicht WSL nicht über die eigene IPv6 | Hosts-Eintrag ([Variante WSL2](#variante-wsl2-statt-vm), Punkt 6) |
 
 ## Was offen ist
 
@@ -221,6 +242,90 @@ Ein Neustart der Control-Plane beendet keinen laufenden Call.
   rein. Kommt mit Stufe 2 (eigene Subdomain und Zertifikat nötig).
 - Keine Überwachung: fällt der Mini-PC aus, merkt es niemand außer den Leuten im Call.
 - Die VM selbst braucht Updates (`sudo apt update && sudo apt upgrade`).
+
+## Nur IPv6, wenn der Anschluss keine öffentliche IPv4 hat
+
+Bei CGNAT oder DS-Lite kommen IPv4-Pakete aus dem Internet gar nicht erst bis zur FRITZ!Box.
+IPv6 schon: Die Box öffnet mit den Freigaben aus Schritt 4 ihre IPv6-Firewall für den
+Server, und LiveKit (ab 1.13) bietet den Clients seine IPv6-Adresse direkt als Kandidaten
+an. Was das kostet:
+
+- **Jeder in der Gang braucht IPv6** an seinem Anschluss. Die großen deutschen Anbieter
+  (Telekom, Vodafone, 1&1, o2, alle drei Mobilfunknetze) haben es. Firmennetze, manche
+  Uni-WLANs und einzelne kleine Anbieter nicht — wer es nicht hat, kommt nicht rein, und es
+  gibt keinen Ausweichweg. Beim Anbieter trotzdem eine öffentliche IPv4 anfragen; sobald sie
+  da ist, `LIVEKIT_CONFIG_FILE` wieder leeren.
+- Wechselt das IPv6-Präfix des Anschlusses (bei Kabel selten), einmal
+  `docker compose -f home.yml restart livekit`. MyFRITZ! zieht den DNS-Eintrag selbst nach.
+
+Einrichten, zusätzlich zu den Schritten oben:
+
+1. In der `.env` eine dritte Zeile: `LIVEKIT_CONFIG_FILE=livekit.home-ipv6.yaml`. Das ist
+   dieselbe LiveKit-Konfiguration ohne STUN-Abfrage (`use_external_ip: false`): per STUN
+   fände LiveKit nur die Adresse des Anbieter-NATs und würde sie den Clients nennen.
+2. Die MyFRITZ!-Freigabe ist hier Pflicht (keine normale Portfreigabe 443): Nur sie gibt
+   dem Server einen Namen, dessen IPv6-Eintrag auf den Server zeigt. Die Interface-ID
+   (Schritt 4) muss stimmen.
+3. Prüfen wie in Schritt 6; `nodeIP` im LiveKit-Log darf eine lokale Adresse sein. Von außen
+   geht der Test nur von einem Gerät **mit** IPv6 — Handy im Mobilfunk ist eins.
+
+## Variante: WSL2 statt VM
+
+So lief der Durchlauf vom 2026-10-24 auf einem Windows-11-PC. Geht ohne Hyper-V/VirtualBox,
+hat aber Eigenheiten: WSL läuft nur, solange jemand angemeldet ist, und fährt die Distro
+herunter, sobald kein Terminal mehr offen ist — beides unten abgefangen.
+
+1. **Ubuntu 24.04 in WSL2** mit systemd (`/etc/wsl.conf`: `[boot] systemd=true`) und
+   Docker **in** der Distro (`curl -fsSL https://get.docker.com | sudo sh`), nicht Docker
+   Desktop. Läuft Docker Desktop daneben, bei ihm die WSL-Integration für diese Distro aus.
+2. **Netzwerk spiegeln:** `%USERPROFILE%\.wslconfig`
+
+   ```ini
+   [wsl2]
+   networkingMode=mirrored
+   dnsTunneling=true
+   autoProxy=true
+
+   [experimental]
+   hostAddressLoopback=true
+   ```
+
+   dann `wsl --shutdown`. Die Distro hat danach dieselben Adressen wie der PC; die
+   Freigaben in der FRITZ!Box zeigen einfach auf den PC. (Docker Desktop startet dabei
+   seine Engine neu.)
+3. **Firewall** (Administrator-PowerShell): Für WSL zählt die Hyper-V-Firewall, nicht die
+   normale.
+
+   ```powershell
+   $wsl = '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}'
+   New-NetFirewallHyperVRule -Name yappa-wsl-tcp -DisplayName "yAPPA (TCP) in WSL" -Direction Inbound -VMCreatorId $wsl -Protocol TCP -LocalPorts 80,443,7881 -Action Allow
+   New-NetFirewallHyperVRule -Name yappa-wsl-udp -DisplayName "yAPPA (UDP) in WSL" -Direction Inbound -VMCreatorId $wsl -Protocol UDP -LocalPorts 7882 -Action Allow
+   Set-NetFirewallHyperVVMSetting -Name $wsl -LoopbackEnabled True
+   ```
+
+   `LoopbackEnabled` ist nötig, damit der PC selbst (die App darauf) an den Server kommt.
+4. **Temporäre IPv6-Adressen aus** (Administrator-PowerShell), sonst bietet LiveKit auch eine
+   täglich wechselnde Adresse an, die in der FRITZ!Box nicht freigegeben ist:
+   `netsh interface ipv6 set privacy state=disabled`, danach `wsl --shutdown`, damit die
+   Spiegelung die stabile Adresse als Quelladresse nimmt (`ip -6 route get 2600::` in der
+   Distro muss `src 2a…` zeigen, nicht `fdf8…`).
+5. **Distro offen halten** — eine Aufgabe bei der Anmeldung (normale PowerShell):
+
+   ```powershell
+   $a = New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\conhost.exe" -Argument "--headless wsl.exe -d Ubuntu-24.04 --exec sleep infinity"
+   $t = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+   $s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit 0 -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
+   Register-ScheduledTask -TaskName "yAPPA WSL keep-alive" -Action $a -Trigger $t -Settings $s -Force
+   Start-ScheduledTask -TaskName "yAPPA WSL keep-alive"
+   ```
+
+   Ohne das steht im Journal der Distro „The system will power off now" wenige Sekunden
+   nach dem letzten Terminal, und die Container starten beim nächsten Befehl neu.
+6. **Die App auf demselben PC:** Windows erreicht WSL über die eigene IPv6-Adresse nicht,
+   über IPv4 und `localhost` schon. In `C:\Windows\System32\drivers\etc\hosts` eine Zeile
+   `192.168.178.xx <YAPPA_DOMAIN>` (die LAN-Adresse des PCs), damit die App auf diesem
+   Rechner den Server findet. Andere Geräte im Haus brauchen das nicht.
+7. Ab hier wie ab Schritt 3 (Netzwerkpuffer) — alles in der Distro, `docker compose` genauso.
 
 ## Alles nur lokal
 
