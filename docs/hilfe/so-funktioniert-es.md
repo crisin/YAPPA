@@ -56,6 +56,6 @@ Im Moment hat yAPPA Channels, **Rauschunterdrückung** (DeepFilterNet), Sprachak
 und **Push-to-Talk**, aber noch keine **Echo**-Unterdrückung (deshalb: Headset, oder
 „Taste halten“ mit Lautsprechern), keine automatischen Updates (neue Versionen kommen als
 Installer vom Admin) und kein Symbol im Infobereich — Fenster schließen beendet den Call.
-Mikrofone und Ausgaben müssen auf **48 000 Hz** stehen; Bluetooth-Headsets im
-Freisprechmodus (16 kHz) gehen noch nicht. Die Reihenfolge, in der das kommt, steht unter
+Bluetooth-Headsets gehen, klingen im Freisprechmodus aber wie Telefon (16 kHz – das ist
+Bluetooth, nicht yAPPA); yAPPA rechnet jede Geräterate auf seine 48 kHz um. Die Reihenfolge, in der das kommt, steht unter
 „Status“ im Projekt-Bereich. Was dort unter „Später“ steht, ist bewusst noch nicht gebaut.

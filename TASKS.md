@@ -38,11 +38,6 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 **A · Audio block** (ADR-009, interview 2026-10-23) — before M4; order is the decision
 
-- [ ] A1 Resampling: capture and playout at any device rate, engine stays at 48 kHz; a
-      44.1 kHz device or a Bluetooth headset at 16 kHz (hands-free) joins instead of being
-      refused; device list and onboarding say that a Bluetooth microphone sounds like a
-      phone; at most one block of latency per side; latency and CPU measured before/after;
-      realtime review
 - [ ] A2 Device return: `DeviceWatcher` trait in `crates/platform` (Windows
       `IMMNotificationClient`, macOS CoreAudio listeners, absence = today); a lost device
       is retried, the chosen device is taken back when it returns, the banner says so
@@ -140,6 +135,17 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] A1 Resampling (ADR-009): `dsp::Resampler` — windowed-sinc polyphase, 128 phases,
+      32 taps (×ratio when going down), pull API without allocation; capture ring carries
+      the device rate and the pump converts, playout converts in the callback
+      (`audio-engine::resample::ResampledRender`, one render per callback with the exact
+      demand); `pick_mode` takes 48 kHz, else the device's default rate, else its highest;
+      48 kHz path unchanged. Cost 12.3–12.5 µs per 10 ms block for 16→48, 48→16 and
+      44.1→48 kHz (0.25 % of the budget); latency half a kernel per side (1.0 ms at 16 kHz,
+      0.4 ms at 44.1 kHz) plus at most two samples; realtime review's four findings
+      applied. „Audio und Sprechen“ says when the mic runs at 16 kHz (Bluetooth hands-free,
+      phone quality) or 44.1 kHz. Fake 16 kHz mic in the engine tests; not yet tried on a
+      real Bluetooth headset (2026-10-24)
 - [x] ADR-009 Audio first: interview with the user (eleven questions: hardware, default
       speaking mode, lost device, weakest PC, network, loudness, PTT mechanics, mute keys,
       monitor, D1 order) → audio block A1–A6 on the board before M4; D1/U7 wait;

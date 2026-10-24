@@ -55,7 +55,7 @@ and invites are never logged.
 - An invite is a bearer secret with a long life. Acceptable for a handful of testers,
   replaced by S6. Revoking one means new server keys for everybody.
 - Known gaps, accepted for the test client and visible in the debug panel instead of
-  hidden: no resampling (48 kHz devices only), no drift compensation between a speaker's
+  hidden: no resampling (48 kHz devices only — closed by A1, ADR-009), no drift compensation between a speaker's
   clock and our output (playout jumps when a buffer runs over, counted as "skips"), the
   transmit mode is stored but the microphone is always on, no DSP chain yet (S2).
 - cpal's `realtime` feature is on (thread priority for the audio threads); it brings

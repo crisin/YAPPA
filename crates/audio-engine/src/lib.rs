@@ -15,6 +15,7 @@ pub mod chain;
 pub mod device;
 pub mod engine;
 pub mod mixer;
+mod resample;
 pub mod stats;
 
 pub use device::{AudioIo, CpalIo};

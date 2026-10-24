@@ -44,8 +44,7 @@ push-to-talk that works in a game, EQ, compressor, limiter), settings in „Einf
 „Profi“ with the signal chain, admin in the app (invites, channels, roles, versions, event
 log), diagnosis with export, in-app help. Server: LiveKit + control plane + Caddy in one
 compose for a home server, or behind a Cloudflare Tunnel; one command for a local server.
-Not yet: auto-update (installers by hand), tray, echo cancelling, devices that are not at
-48 kHz. Review of where things stand: [docs/02-review-2026-10-23.md](docs/02-review-2026-10-23.md).
+Not yet: auto-update (installers by hand), tray, echo cancelling. Review of where things stand: [docs/02-review-2026-10-23.md](docs/02-review-2026-10-23.md).
 Why Rust and not something else: [ADR-002](docs/adr/002-language-alternatives.md).
 
 ## Quickstart

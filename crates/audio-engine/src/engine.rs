@@ -7,6 +7,7 @@ use crate::chain::{Chain, ChainConfig, STAGES};
 use crate::device::{AudioIo, OpenDevice};
 use crate::mixer::{mixer, MixerControl, MixerRt};
 use crate::stats::network_stats;
+use dsp::Resampler;
 use dsp::{db_to_gain, gain_to_db};
 use engine_protocol::{
     Command, ConnectionState, DeviceStats, Event, NetworkStats, Participant, PeerLevel, Settings,
@@ -27,8 +28,10 @@ use transport::{
 /// How often levels go to the UI.
 const LEVEL_INTERVAL: Duration = Duration::from_millis(33);
 const STATS_INTERVAL: Duration = Duration::from_secs(1);
-/// Capture ring between the device callback and the pump: 100 ms.
-const CAPTURE_RING: usize = 10 * BLOCK;
+/// Capture ring in device samples. Made before the device's rate is known, so it is sized
+/// for the fastest one we take: 100 ms at 192 kHz, 400 ms at 48 kHz. The pump's backlog
+/// rule keeps the latency low regardless of the size.
+const CAPTURE_RING: usize = 40 * BLOCK;
 /// A remote voice counts as speaking above this level, and for a short while after.
 const SPEAKING_DB: f32 = -45.0;
 const SPEAKING_HOLD: Duration = Duration::from_millis(250);
@@ -185,7 +188,8 @@ struct Engine {
     capture: Option<OpenDevice>,
     playout: Option<OpenDevice>,
     pump: Arc<PumpShared>,
-    ring_tx: mpsc::Sender<Consumer<f32>>,
+    /// The capture ring and the device's sample rate, for the pump.
+    ring_tx: mpsc::Sender<(Consumer<f32>, u32)>,
     /// New send-chain settings for the pump.
     chain_tx: mpsc::Sender<ChainConfig>,
 
@@ -562,7 +566,7 @@ impl Engine {
                         device = %device.name, rate = device.sample_rate, channels = device.channels,
                         channel = device.channel, asked = channel, "microphone open"
                     );
-                    let _ = self.ring_tx.send(ring);
+                    let _ = self.ring_tx.send((ring, device.sample_rate));
                     self.capture = Some(device);
                     // The asked-for device works: a stored error is resolved. A fallback to
                     // the default keeps it — "your microphone is not connected" stays true.
@@ -828,7 +832,7 @@ fn publish_chain(shared: &PumpShared, chain: &Chain) {
 /// as it is complete. Replacement rings arrive when the microphone is reopened.
 fn run_pump(
     shared: &PumpShared,
-    rings: mpsc::Receiver<Consumer<f32>>,
+    rings: mpsc::Receiver<(Consumer<f32>, u32)>,
     configs: mpsc::Receiver<ChainConfig>,
     first: ChainConfig,
     voice: &dyn VoiceOut,
@@ -837,16 +841,33 @@ fn run_pump(
     let mut chain = Chain::new(first);
     publish_chain(shared, &chain);
     let mut ring: Option<Consumer<f32>> = None;
+    // A microphone that is not at 48 kHz delivers its own rate into the ring; the
+    // conversion happens here on the pump, never in the device callback (A1, ADR-009).
+    // `None` for a 48 kHz device: that path stays as it was.
+    let mut resampler: Option<Resampler> = None;
     // f32 until the hand-over (E0): the DSP chain (S2) works here at the device precision;
     // the transport wants 16-bit PCM.
     let mut block = [0f32; BLOCK];
     let mut pcm = [0i16; BLOCK];
+    // How much of `block` the resampler has filled so far (0 on the 48 kHz path).
+    let mut written = 0usize;
     let mut last: Option<Instant> = None;
     while !shared.stop.load(Relaxed) {
-        if let Ok(new) = rings.try_recv() {
+        if let Ok((new, rate)) = rings.try_recv() {
             ring = Some(new);
+            resampler = (rate != transport::SAMPLE_RATE)
+                .then(|| Resampler::new(rate, transport::SAMPLE_RATE));
+            if let Some(rs) = &resampler {
+                let latency_ms = rs.latency_samples() as f32 * 1000.0 / rate as f32;
+                tracing::info!(rate, latency_ms, "microphone is resampled to 48 kHz");
+            }
+            written = 0;
             last = None;
         }
+        // One 48 kHz block's worth of input, in the microphone's own samples.
+        let block_in = resampler
+            .as_ref()
+            .map_or(BLOCK, |rs| rs.input_needed(BLOCK));
         if let Some(config) = configs.try_iter().last() {
             if chain.reconfigure(config) {
                 // Loading the new denoiser took hundreds of milliseconds; what queued up
@@ -858,7 +879,7 @@ fn run_pump(
                     }
                     shared
                         .dropped_blocks
-                        .fetch_add((stale / BLOCK) as u32, Relaxed);
+                        .fetch_add((stale / block_in) as u32, Relaxed);
                 }
                 last = None;
             }
@@ -869,7 +890,7 @@ fn run_pump(
             continue;
         };
         let queued = open.slots();
-        if queued < BLOCK {
+        if queued < block_in {
             // The microphone was closed and nothing replaced it: the meter must not keep
             // showing the last level.
             if open.is_abandoned() {
@@ -882,17 +903,27 @@ fn run_pump(
         let ring = open;
         // A backlog (we stalled, or capture ran before anyone read it) must not go out as
         // a burst: it would sit in every listener's jitter buffer as standing delay.
-        if queued > 3 * BLOCK {
-            let stale = (queued - BLOCK) / BLOCK;
-            if let Ok(chunk) = ring.read_chunk(stale * BLOCK) {
+        if queued > 3 * block_in {
+            let stale = (queued - block_in) / block_in;
+            if let Ok(chunk) = ring.read_chunk(stale * block_in) {
                 chunk.commit_all();
             }
             shared.dropped_blocks.fetch_add(stale as u32, Relaxed);
         }
         let started = Instant::now();
-        if ring.pop_entire_slice(&mut block).is_err() {
+        let complete = match resampler.as_mut() {
+            None => ring.pop_entire_slice(&mut block).is_ok(),
+            Some(rs) => {
+                // Should the ring run dry mid-block (it does not: `input_needed` is exact),
+                // the next round continues where this one stopped instead of starting over.
+                written += rs.produce(&mut block[written..], || ring.pop().ok());
+                written == BLOCK
+            }
+        };
+        if !complete {
             continue;
         }
+        written = 0;
         shared
             .input_level
             .store(dsp::rms(&block).to_bits(), Relaxed);

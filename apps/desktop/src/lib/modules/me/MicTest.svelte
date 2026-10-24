@@ -12,6 +12,9 @@
   const deviceId = (value: string) => (value === '' ? null : value);
   const settings = $derived(session.settings);
   const channels = $derived(session.stats?.capture?.channels ?? 1);
+  // The device's own rate: anything but 48 kHz is resampled (A1). 16 kHz is the Bluetooth
+  // hands-free profile — the gang should know why it sounds like a phone.
+  const rate = $derived(session.stats?.capture?.sampleRate ?? 48000);
 </script>
 
 <div class="label"><label for="input">Mikrofon</label><Info term="pegel" /></div>
@@ -38,6 +41,13 @@
   </select>
 {/if}
 <Meter db={session.inputDb} active={session.sending} label="Mikrofontest" />
+{#if rate !== 48000}
+  <p class="note" role="status">
+    {rate <= 16000
+      ? `Dein Mikro läuft mit ${Math.round(rate / 1000)} kHz – das ist der Bluetooth-Freisprechmodus und klingt wie Telefon. USB oder Klinke klingt deutlich besser.`
+      : `Dein Mikro läuft mit ${(rate / 1000).toLocaleString('de-DE')} kHz – yAPPA rechnet auf 48 kHz um.`}
+  </p>
+{/if}
 {#if note}
   <p class="note">
     {session.muted

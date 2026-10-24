@@ -28,10 +28,11 @@ nächsten Start bist du sofort drin.
 **Bitte Headset benutzen.** Mit Lautsprechern hören die anderen sich selbst als Echo – eine
 Echounterdrückung gibt es noch nicht.
 
-**Kein Bluetooth-Headset im Freisprechmodus.** yAPPA braucht Geräte mit 48 000 Hz;
-Bluetooth-Headsets schalten beim Mikrofon auf 16 kHz und werden abgelehnt. USB oder Klinke
-geht. Lehnt yAPPA dein Gerät ab („has no 48 kHz mode“), in Windows unter *Sound →
-Eigenschaften des Geräts → Erweitert* das Format auf **48000 Hz** stellen.
+**Bluetooth-Headsets gehen, klingen aber wie Telefon.** Sobald das Mikrofon eines
+Bluetooth-Headsets benutzt wird, schaltet es in den Freisprechmodus: 16 kHz, mono – das
+macht Bluetooth, nicht yAPPA. USB oder Klinke klingt deutlich besser. Geräte auf 44,1 kHz
+gehen ebenfalls; yAPPA rechnet um. Unter **Ich → Audio und Sprechen** steht, mit welcher
+Rate dein Mikro läuft.
 
 ## Was die Knöpfe tun
 
