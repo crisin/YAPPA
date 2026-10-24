@@ -1,0 +1,640 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>yAPPA – Flyer</title>
+<meta name="description" content="yAPPA: unser eigener Voice-Chat. Was es ist, wie du reinkommst, was morgen zählt.">
+<style>
+  :root {
+    --ink: #14161c;
+    --ink-2: #1c1f26;
+    --ink-3: #262a33;
+    --line: #333845;
+    --text: #e8e9ec;
+    --muted: #9298a4;
+    --sage: #7cc4a4;
+    --sage-ink: #0d1512;
+    --sky: #7fb2e5;
+    --amber: #e3b75c;
+    --coral: #e5736b;
+    --display: "Bahnschrift", "Avenir Next Condensed", "Arial Narrow", "Roboto Condensed", system-ui, sans-serif;
+    --body: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif;
+    --gutter: clamp(16px, 4vw, 40px);
+    --measure: 62ch;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--ink); color: var(--text); scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: var(--body);
+    font-size: 17px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { animation-duration: 0.001s !important; transition-duration: 0.001s !important; }
+  }
+  :focus-visible { outline: 3px solid var(--sky); outline-offset: 3px; border-radius: 4px; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  a { color: var(--sage); }
+
+  /* ── Stage ─────────────────────────────────────────────────────────────── */
+  .stage {
+    position: relative;
+    min-height: 88vh;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    padding: var(--gutter);
+    overflow: hidden;
+    border-bottom: 1px solid var(--line);
+  }
+  .stage canvas {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    display: block;
+  }
+  .stage > * { position: relative; }
+  .marquee {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 16px;
+    color: var(--muted); font-size: 15px;
+  }
+  .marquee b { color: var(--text); font-weight: 600; }
+  .title {
+    align-self: center;
+    max-width: 18ch;
+    margin: 0;
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: clamp(56px, 13vw, 168px);
+    line-height: 0.9;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+  .title small {
+    display: block;
+    margin-top: 0.35em;
+    font-size: clamp(20px, 2.6vw, 32px);
+    font-weight: 400;
+    line-height: 1.2;
+    letter-spacing: 0;
+    color: var(--muted);
+    max-width: 30ch;
+  }
+  .stage-foot {
+    display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center;
+    color: var(--muted); font-size: 15px;
+  }
+  .stage-foot .listen {
+    background: var(--sage); color: var(--sage-ink); border: 0;
+    padding: 10px 16px; border-radius: 999px; font-weight: 600;
+  }
+  .stage-foot .listen[aria-pressed="true"] { background: var(--coral); color: #1a0d0c; }
+  .stage-foot .hint { max-width: 48ch; }
+
+  /* ── Setlist ───────────────────────────────────────────────────────────── */
+  main { padding: 0 var(--gutter) 80px; }
+  section { padding: 56px 0 24px; border-bottom: 1px solid var(--line); }
+  section:last-of-type { border-bottom: 0; }
+  h2 {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: clamp(34px, 5vw, 56px);
+    line-height: 1;
+    letter-spacing: -0.01em;
+    margin: 0 0 20px;
+  }
+  .lead { max-width: var(--measure); font-size: 19px; color: var(--text); margin: 0 0 28px; }
+  p { max-width: var(--measure); }
+  .muted { color: var(--muted); }
+
+  /* why: three statements + ping */
+  .why { display: grid; gap: 28px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  .why h3 { font-family: var(--display); font-size: 26px; margin: 0 0 6px; font-weight: 700; }
+  .why p { margin: 0; color: var(--muted); }
+  .ping { margin-top: 32px; }
+  .lane { display: grid; grid-template-columns: 11ch 1fr 7ch; align-items: center; gap: 12px; margin: 10px 0; }
+  .lane .track { position: relative; height: 10px; background: var(--ink-3); border-radius: 999px; overflow: hidden; }
+  .lane .dot {
+    position: absolute; top: 0; left: 0; width: 10px; height: 10px; border-radius: 50%;
+    background: var(--sage); transform: translateX(0);
+  }
+  .lane.other .dot { background: var(--muted); }
+  .lane .ms { font-variant-numeric: tabular-nums; text-align: right; color: var(--muted); }
+  .ping button {
+    margin-top: 8px; background: transparent; border: 1px solid var(--line); border-radius: 999px;
+    padding: 8px 14px; color: var(--text);
+  }
+  .ping small { display: block; margin-top: 10px; color: var(--muted); max-width: var(--measure); }
+
+  /* steps */
+  .steps { counter-reset: step; list-style: none; padding: 0; margin: 0; display: grid; gap: 18px; max-width: 70ch; }
+  .steps li {
+    counter-increment: step;
+    display: grid; grid-template-columns: 56px 1fr; gap: 16px; align-items: start;
+  }
+  .steps li::before {
+    content: counter(step);
+    font-family: var(--display); font-size: 44px; font-weight: 700; line-height: 1;
+    color: var(--sage);
+  }
+  .steps h3 { margin: 4px 0 4px; font-size: 19px; font-weight: 600; }
+  .steps p { margin: 0; color: var(--muted); }
+  .steps code {
+    font-family: ui-monospace, Consolas, monospace; font-size: 0.92em;
+    background: var(--ink-3); padding: 1px 6px; border-radius: 4px; color: var(--text);
+  }
+
+  /* chain */
+  .chain { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin: 0 0 18px; }
+  .chain button {
+    display: grid; gap: 8px; align-content: start;
+    background: var(--ink-2); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 10px; text-align: left; min-height: 112px;
+  }
+  .chain button[aria-expanded="true"] { border-color: var(--sage); background: var(--ink-3); }
+  .chain .name { font-family: var(--display); font-size: 18px; font-weight: 700; line-height: 1.1; }
+  .chain .meter { height: 6px; background: var(--ink-3); border-radius: 999px; overflow: hidden; }
+  .chain .meter i { display: block; height: 100%; width: 0; background: var(--sage); transform-origin: left; }
+  .chain .state { font-size: 13px; color: var(--muted); }
+  .chain-note {
+    background: var(--ink-2); border: 1px solid var(--line); border-radius: 10px;
+    padding: 16px 18px; max-width: none;
+  }
+  .chain-note h3 { margin: 0 0 6px; font-size: 19px; }
+  .chain-note p { margin: 0; color: var(--muted); max-width: 70ch; }
+  @media (max-width: 720px) {
+    .chain { grid-template-columns: repeat(3, 1fr); }
+  }
+
+  /* mic check */
+  .mic { display: grid; gap: 18px; max-width: 70ch; }
+  .level { height: 18px; background: var(--ink-3); border-radius: 999px; overflow: hidden; position: relative; }
+  .level i { display: block; height: 100%; width: 0; background: var(--sage); }
+  .level b {
+    position: absolute; top: -6px; bottom: -6px; width: 2px; background: var(--amber);
+    left: 50%; pointer-events: none;
+  }
+  .gate {
+    font-family: var(--display); font-size: 28px; font-weight: 700; line-height: 1;
+  }
+  .gate.open { color: var(--sage); }
+  .gate.closed { color: var(--muted); }
+  .mic label { display: block; color: var(--muted); font-size: 15px; }
+  .mic input[type="range"] { width: 100%; accent-color: var(--amber); }
+  .mic .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .mic .row button {
+    background: transparent; border: 1px solid var(--line); border-radius: 999px;
+    padding: 8px 14px;
+  }
+
+  /* checklist */
+  .check { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; max-width: 70ch; }
+  .check li label { display: grid; grid-template-columns: 26px 1fr; gap: 12px; align-items: start; cursor: pointer; }
+  .check input { width: 20px; height: 20px; margin: 3px 0 0; accent-color: var(--sage); }
+  .check li.done label { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line); }
+  .check small { display: block; color: var(--muted); }
+  .progress { margin: 18px 0 0; color: var(--muted); font-size: 15px; }
+
+  /* roadmap */
+  .map { display: grid; gap: 10px; max-width: 70ch; padding: 0; margin: 0; list-style: none; }
+  .map li { display: grid; grid-template-columns: 14px 1fr; gap: 14px; align-items: start; }
+  .map li::before { content: ""; width: 14px; height: 14px; border-radius: 50%; margin-top: 7px; background: var(--line); }
+  .map li.done::before { background: var(--sage); }
+  .map li.now::before { background: var(--amber); box-shadow: 0 0 0 4px rgba(227, 183, 92, 0.2); }
+  .map b { font-weight: 600; }
+  .map span { color: var(--muted); }
+
+  /* facts */
+  .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 24px 32px; max-width: 80ch; }
+  .facts div { border-top: 2px solid var(--line); padding-top: 10px; }
+  .facts .n { font-family: var(--display); font-size: 40px; font-weight: 700; line-height: 1; }
+  .facts .n em { font-style: normal; font-size: 20px; color: var(--muted); }
+  .facts p { margin: 6px 0 0; color: var(--muted); font-size: 15px; }
+
+  footer { padding: 24px var(--gutter) 48px; color: var(--muted); font-size: 15px; border-top: 1px solid var(--line); }
+  footer p { margin: 6px 0; }
+</style>
+</head>
+<body>
+
+<header class="stage">
+  <canvas id="wave" aria-hidden="true"></canvas>
+  <div class="marquee">
+    <span><b>yAPPA</b> – unser eigener Voice-Chat</span>
+    <span>Testabend, Runde 1</span>
+  </div>
+  <h1 class="title">
+    Hört ihr mich?
+    <small>yAPPA ist Sprachchat auf unserem eigenen Server. Für die Gang, ohne Firma dazwischen, und die Stimme kommt zuerst.</small>
+  </h1>
+  <div class="stage-foot">
+    <button class="listen" id="listen" aria-pressed="false">Mikro für die Welle freigeben</button>
+    <span class="hint" id="listen-hint">Die Welle oben läuft im Leerlauf. Mit deinem Mikro zeigt sie deine Stimme – nur hier im Browser, nichts geht irgendwohin.</span>
+  </div>
+</header>
+
+<main>
+
+  <section id="warum">
+    <h2>Warum noch ein Voice-Chat</h2>
+    <p class="lead">Discord ist okay. Aber es gehört jemand anderem, es weiß nicht, was ein Gaming-Abend braucht, und an der Stimme dreht man dort nichts. yAPPA baut Chris für genau uns.</p>
+    <div class="why">
+      <div>
+        <h3>Unser Server</h3>
+        <p>Läuft auf einem Mini-PC zu Hause. Wer reindarf, entscheidet ein Einladungslink, nicht ein Konzern. Geht der Server aus, geht nur unser Server aus.</p>
+      </div>
+      <div>
+        <h3>Die Stimme zuerst</h3>
+        <p>Rauschunterdrückung mit einem neuronalen Netz, das Lüfter und Tastatur rausnimmt. Ein Kompressor gleicht laut und leise an. Push-to-Talk, das auch im Vollbildspiel funktioniert.</p>
+      </div>
+      <div>
+        <h3>Ehrlich, was fehlt</h3>
+        <p>Keine Echo-Unterdrückung – also Headset. Updates kommen noch per Installer. Teilen von Spielton und Musik kommt später. Das steht so auch in der App.</p>
+      </div>
+    </div>
+
+    <div class="ping" id="ping">
+      <div class="lane other">
+        <span>Discord</span>
+        <div class="track"><i class="dot"></i></div>
+        <span class="ms" data-target="125">–</span>
+      </div>
+      <div class="lane">
+        <span>yAPPA, Ziel</span>
+        <div class="track"><i class="dot"></i></div>
+        <span class="ms" data-target="95">–</span>
+      </div>
+      <div class="lane">
+        <span>yAPPA, gemessen</span>
+        <div class="track"><i class="dot"></i></div>
+        <span class="ms" data-target="55">–</span>
+      </div>
+      <button type="button" id="ping-go">Mund zu Ohr abspielen</button>
+      <small>Millisekunden von deinem Mund bis zum Ohr des anderen. Discord nennt keinen Wert; nach seinen 20-ms-Paketen plus Puffer liegt es innerhalb Europas bei 100 bis 150. yAPPAs Budget sind 70 bis 120, der digitale Weg ohne Luft wurde mit 50 bis 60 gemessen. Morgen messen wir den echten Weg, mit Kabel von Lautsprecher zu Mikro.</small>
+    </div>
+  </section>
+
+  <section id="rein">
+    <h2>So kommst du rein</h2>
+    <p class="lead">Drei Schritte, dann stehst du in der Lobby. Danach merkt sich yAPPA dich auf diesem Rechner.</p>
+    <ol class="steps">
+      <li>
+        <div>
+          <h3>Installer starten</h3>
+          <p>Du bekommst eine <code>yAPPA B_…-setup.exe</code> von Chris. Windows warnt vor einer unbekannten App: <code>Weitere Informationen</code>, dann <code>Trotzdem ausführen</code>. Die App ist noch nicht signiert, das ist alles.</p>
+        </div>
+      </li>
+      <li>
+        <div>
+          <h3>Deinen Link klicken</h3>
+          <p>Er beginnt mit <code>yappa://invite/</code> und gilt genau einmal, für dich. yAPPA öffnet sich mit dem Link im Feld. Öffnet dein Chat-Programm ihn nicht, kopier ihn und füg ihn in der App ein.</p>
+        </div>
+      </li>
+      <li>
+        <div>
+          <h3>Name, Mikro, Reden</h3>
+          <p>Name eintragen. Dann sagst du etwas und schaust, ob sich der Balken bewegt. Dann wählst du Headset oder Lautsprecher, und yAPPA stellt passend ein, wann dein Mikro angeht. Ab in die Lobby.</p>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <section id="weg">
+    <h2>Der Weg deiner Stimme</h2>
+    <p class="lead">Sechs Stufen, bevor ein Wort von dir rausgeht. Klick eine an. Die Balken zeigen Pegel – mit freigegebenem Mikro deine, sonst eine Vorführung.</p>
+    <div class="chain" id="chain" role="group" aria-label="Stufen der Signalkette">
+      <button type="button" data-stage="input" aria-expanded="true"><span class="name">Eingang</span><span class="meter"><i></i></span><span class="state">48 kHz</span></button>
+      <button type="button" data-stage="hpf" aria-expanded="false"><span class="name">Hochpass</span><span class="meter"><i></i></span><span class="state">80 Hz</span></button>
+      <button type="button" data-stage="dfn" aria-expanded="false"><span class="name">Rausch­unter­drückung</span><span class="meter"><i></i></span><span class="state">DeepFilterNet</span></button>
+      <button type="button" data-stage="gate" aria-expanded="false"><span class="name">Gate</span><span class="meter"><i></i></span><span class="state" id="gate-state">zu</span></button>
+      <button type="button" data-stage="eq" aria-expanded="false"><span class="name">EQ</span><span class="meter"><i></i></span><span class="state">flach</span></button>
+      <button type="button" data-stage="comp" aria-expanded="false"><span class="name">Kompressor</span><span class="meter"><i></i></span><span class="state">3:1</span></button>
+    </div>
+    <div class="chain-note" id="chain-note">
+      <h3>Eingang</h3>
+      <p>Dein Mikro, in 10-Millisekunden-Häppchen bei 48 kHz. Ein Bluetooth-Headset liefert nur 16 kHz; yAPPA rechnet das um, aber es klingt wie Telefon – das macht Bluetooth, nicht wir.</p>
+    </div>
+  </section>
+
+  <section id="mikro">
+    <h2>Mikro-Check</h2>
+    <p class="lead">Ein kleiner Vorgeschmack auf „Automatisch“: Das Mikro geht an, wenn du über der Schwelle sprichst, und bleibt sonst zu. Das hier ist der Browser, nicht yAPPAs Kette, aber das Prinzip ist dasselbe.</p>
+    <div class="mic">
+      <div class="row">
+        <button type="button" id="mic-go">Mikro-Check starten</button>
+        <span class="muted" id="mic-hint">Dein Browser fragt einmal nach Erlaubnis. Nichts wird aufgenommen oder gesendet.</span>
+      </div>
+      <div class="level" aria-label="Pegel" role="meter" aria-valuemin="-60" aria-valuemax="0" aria-valuenow="-60" id="level"><i></i><b id="threshold-mark"></b></div>
+      <div class="gate closed" id="gate">Mikro zu</div>
+      <label for="threshold">Ab hier geht das Mikro an: <span id="threshold-value">-40</span> dB
+        <input type="range" id="threshold" min="-60" max="-20" value="-40" step="1">
+      </label>
+      <p class="muted">Klingst du abgehackt, schieb nach links. Gehen Tastatur oder Lüfter durch, nach rechts. In yAPPA steht derselbe Regler unter „Ich, Audio und Sprechen“, nur dass dort vorher die Rauschunterdrückung die Tastatur schon rausgenommen hat.</p>
+    </div>
+  </section>
+
+  <section id="morgen">
+    <h2>Was morgen zählt</h2>
+    <p class="lead">Es ist der erste Abend mit echten Menschen. Alles, was komisch ist, ist wertvoll. Hak ab, was du hast – das bleibt in deinem Browser.</p>
+    <ul class="check" id="check">
+      <li><label><input type="checkbox" data-key="headset"> <span>Headset dran. <small>Mit Lautsprechern hören dich die anderen doppelt, als Echo. Wer nur Boxen hat, nimmt „Taste halten“.</small></span></label></li>
+      <li><label><input type="checkbox" data-key="bt"> <span>Kein Bluetooth-Mikro, wenn es geht. <small>Es funktioniert, klingt aber wie Telefon. USB oder Klinke klingt deutlich besser.</small></span></label></li>
+      <li><label><input type="checkbox" data-key="ptt"> <span>Push-to-Talk-Taste festgelegt, falls du Taste halten willst. <small>Eine Seitentaste der Maus ist ideal. Die Taste kommt weiter im Spiel an.</small></span></label></li>
+      <li><label><input type="checkbox" data-key="diag"> <span>Weißt, wo die Diagnose ist. <small>Ich, Profi, Diagnose. Wenn etwas knackt oder hängt: „Diagnose-Datei speichern“ und die Uhrzeit dazu sagen.</small></span></label></li>
+      <li><label><input type="checkbox" data-key="tell"> <span>Sagst, was komisch war, auch wenn es klein ist. <small>„Um 21:14 hat Ben kurz geblubbert“ ist genau die Art Hinweis, die hilft.</small></span></label></li>
+    </ul>
+    <p class="progress" id="progress"></p>
+  </section>
+
+  <section id="fahrplan">
+    <h2>Fahrplan</h2>
+    <p class="lead">Was fertig ist, was als Nächstes kommt, was bewusst wartet. Die Reihenfolge hat Chris mit den Antworten auf elf Fragen festgelegt.</p>
+    <ul class="map">
+      <li class="done"><div><b>Server, Einladungen, Channels, wer ist wo</b> <span>– läuft.</span></div></li>
+      <li class="done"><div><b>Die Stimme: Rauschunterdrückung, Gate, EQ, Kompressor, Push-to-Talk</b> <span>– läuft, 1,5 ms Rechenzeit je 10 ms Ton.</span></div></li>
+      <li class="done"><div><b>Einfach und Profi, Einrichtung in drei Schritten, Admin in der App</b> <span>– läuft.</span></div></li>
+      <li class="done"><div><b>Jede Geräterate, auch Bluetooth</b> <span>– gerade fertig geworden, morgen zum ersten Mal mit echtem Headset.</span></div></li>
+      <li class="now"><div><b>Gerät weg, Gerät wieder da</b> <span>– das gewählte Mikro kommt von selbst zurück.</span></div></li>
+      <li><div><b>Alle gleich laut</b> <span>– automatischer Ausgleich je Person, bei dir im Ohr.</span></div></li>
+      <li><div><b>Stumm und Taub auf einer Taste</b>, <b>Mithören der eigenen Kette</b>, <b>Drift über lange Abende</b></div></li>
+      <li><div><b>Automatische Updates</b> <span>– bis dahin kommt jede Version als Installer.</span></div></li>
+      <li><div><b>Später</b> <span>– Soundboard, Spielton und Musik teilen, Lobby-Radio, Echo-Unterdrückung für Boxen, Handy.</span></div></li>
+    </ul>
+  </section>
+
+  <section id="zahlen">
+    <h2>Kleingedrucktes</h2>
+    <div class="facts">
+      <div><div class="n">20</div><p>Leute passen in einen Channel. Wir sind weniger, der Mixer kann es trotzdem.</p></div>
+      <div><div class="n">10<em> ms</em></div><p>groß ist ein Häppchen Ton. Alles in der Kette muss in dieser Zeit fertig sein.</p></div>
+      <div><div class="n">1,5<em> ms</em></div><p>braucht die ganze Kette dafür. Budget wären 5.</p></div>
+      <div><div class="n">80<em> kbit/s</em></div><p>Opus pro Stimme, mit einer Kopie des vorigen Pakets in jedem Paket, damit ein verlorenes nicht zu hören ist.</p></div>
+      <div><div class="n">1</div><p>Einladungslink pro Person, gilt sieben Tage, funktioniert genau einmal.</p></div>
+      <div><div class="n">0</div><p>Firmen, die mithören. Server, Code und Fehler gehören uns.</p></div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <p>yAPPA ist in Rust gebaut, der Server läuft auf LiveKit. Appa aus Avatar, und yappen ist, was wir da tun.</p>
+  <p>Fragen, Wünsche, Beschwerden: Chris. Alles, was ihr morgen merkt, landet auf dem Board.</p>
+</footer>
+
+<script>
+(() => {
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ── Shared signal: the mic when allowed, a demo otherwise ────────────────
+  // level in dB (−60..0), waveform samples for the canvas, "voiced" flag.
+  const signal = { db: -60, voiced: false, wave: new Float32Array(256), live: false };
+  let audioCtx = null, analyser = null, timeData = null, stream = null;
+
+  async function startMic() {
+    if (signal.live) return true;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioCtx.createMediaStreamSource(stream);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0.5;
+      source.connect(analyser);
+      timeData = new Float32Array(analyser.fftSize);
+      signal.live = true;
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  function stopMic() {
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    if (audioCtx) audioCtx.close();
+    stream = audioCtx = analyser = null;
+    signal.live = false;
+  }
+
+  let t = 0;
+  function tick() {
+    t += 1 / 60;
+    if (signal.live && analyser) {
+      analyser.getFloatTimeDomainData(timeData);
+      let sum = 0;
+      for (let i = 0; i < timeData.length; i++) sum += timeData[i] * timeData[i];
+      const rms = Math.sqrt(sum / timeData.length);
+      signal.db = Math.max(-60, 20 * Math.log10(rms + 1e-6));
+      const step = timeData.length / signal.wave.length;
+      for (let i = 0; i < signal.wave.length; i++) signal.wave[i] = timeData[Math.floor(i * step)];
+    } else {
+      // Demo: a voice-like envelope – phrases with pauses – over a few harmonics.
+      const phrase = (Math.sin(t * 0.7) + Math.sin(t * 1.9) * 0.6) > 0.2 ? 1 : 0.08;
+      const env = phrase * (0.55 + 0.45 * Math.sin(t * 7.3));
+      signal.db = -60 + 48 * env;
+      for (let i = 0; i < signal.wave.length; i++) {
+        const x = i / signal.wave.length * 6.283 * 3 + t * 9;
+        signal.wave[i] = env * 0.5 * (Math.sin(x) + 0.5 * Math.sin(2.01 * x + 1) + 0.25 * Math.sin(3.7 * x));
+      }
+    }
+    signal.voiced = signal.db > threshold;
+    drawWave();
+    drawChain();
+    drawMic();
+    requestAnimationFrame(tick);
+  }
+
+  // ── The wave on stage ────────────────────────────────────────────────────
+  const canvas = document.getElementById('wave');
+  const ctx = canvas.getContext('2d');
+  let mouse = { x: 0.5, y: 0.5 };
+  let wild = 0;
+  function resize() {
+    const r = canvas.getBoundingClientRect();
+    canvas.width = Math.floor(r.width * devicePixelRatio);
+    canvas.height = Math.floor(r.height * devicePixelRatio);
+  }
+  addEventListener('resize', resize); resize();
+  canvas.parentElement.addEventListener('pointermove', e => {
+    const r = canvas.getBoundingClientRect();
+    mouse = { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
+  });
+  function drawWave() {
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    const lines = 5;
+    const amp = (0.12 + 0.55 * (1 - mouse.y)) * (1 + wild) * h * 0.45;
+    const gain = signal.live ? 2.2 : 1;
+    for (let l = 0; l < lines; l++) {
+      ctx.beginPath();
+      const alpha = l === 0 ? 0.9 : 0.18;
+      ctx.strokeStyle = l === 0 ? (signal.voiced ? '#7cc4a4' : '#8b909a') : '#7fb2e5';
+      ctx.globalAlpha = alpha;
+      ctx.lineWidth = (l === 0 ? 2.5 : 1) * devicePixelRatio;
+      const offset = (l - (lines - 1) / 2) * 0.06;
+      for (let i = 0; i < signal.wave.length; i++) {
+        const x = i / (signal.wave.length - 1) * w;
+        const bend = Math.sin(i / signal.wave.length * Math.PI);
+        const y = h * (0.52 + offset) + signal.wave[i] * gain * amp * bend * (1 + l * 0.15) * (0.6 + 0.8 * mouse.x);
+        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      }
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    if (wild > 0) wild = Math.max(0, wild - 0.02);
+  }
+
+  const listen = document.getElementById('listen');
+  const listenHint = document.getElementById('listen-hint');
+  listen.addEventListener('click', async () => {
+    if (signal.live) {
+      stopMic();
+      listen.textContent = 'Mikro für die Welle freigeben';
+      listen.setAttribute('aria-pressed', 'false');
+      listenHint.textContent = 'Die Welle läuft wieder im Leerlauf.';
+      return;
+    }
+    const ok = await startMic();
+    if (ok) {
+      listen.textContent = 'Mikro wieder loslassen';
+      listen.setAttribute('aria-pressed', 'true');
+      listenHint.textContent = 'Das bist du. Sag was. Grün heißt: über der Schwelle, das Mikro wäre an.';
+    } else {
+      listenHint.textContent = 'Kein Mikro bekommen – die Seite braucht die Erlaubnis dafür (oder ein Mikro). Die Welle bleibt im Leerlauf.';
+    }
+  });
+
+  // Easter egg: type "yapp" anywhere.
+  let typed = '';
+  addEventListener('keydown', e => {
+    if (e.key.length !== 1) return;
+    typed = (typed + e.key.toLowerCase()).slice(-4);
+    if (typed === 'yapp') { wild = 2.5; typed = ''; }
+  });
+
+  // ── Ping race ────────────────────────────────────────────────────────────
+  const pingGo = document.getElementById('ping-go');
+  pingGo.addEventListener('click', () => {
+    const lanes = document.querySelectorAll('#ping .lane');
+    const start = performance.now();
+    const slow = 14; // real ms stretched for the eye
+    lanes.forEach(lane => {
+      const dot = lane.querySelector('.dot');
+      const ms = lane.querySelector('.ms');
+      const target = +ms.dataset.target;
+      const width = lane.querySelector('.track').clientWidth - 10;
+      function frame(now) {
+        const elapsed = (now - start) / slow;
+        const p = Math.min(1, elapsed / target);
+        dot.style.transform = `translateX(${p * width}px)`;
+        ms.textContent = Math.round(p * target) + ' ms';
+        if (p < 1 && !reduced) requestAnimationFrame(frame);
+        else { dot.style.transform = `translateX(${width}px)`; ms.textContent = target + ' ms'; }
+      }
+      requestAnimationFrame(frame);
+    });
+  });
+
+  // ── Chain ────────────────────────────────────────────────────────────────
+  const notes = {
+    input: ['Eingang', 'Dein Mikro, in 10-Millisekunden-Häppchen bei 48 kHz. Ein Bluetooth-Headset liefert nur 16 kHz; yAPPA rechnet das um, aber es klingt wie Telefon – das macht Bluetooth, nicht wir.'],
+    hpf: ['Hochpass', 'Nimmt alles unter 80 Hz weg: Trittschall, Tischklopfen, das Rumpeln vom Schreibtisch. Stimmen fangen höher an, denen fehlt nichts.'],
+    dfn: ['Rauschunterdrückung', 'DeepFilterNet, ein kleines neuronales Netz, lernt in Echtzeit, was Stimme ist und was nicht. Lüfter, Tastatur, der Kühlschrank: weg. Kostet 0,7 ms pro Häppchen. Wer einen alten Rechner hat, schaltet im Profi-Bereich auf das leichtere RNNoise.'],
+    gate: ['Gate', 'Entscheidet, ob gerade gesendet wird. „Automatisch“: an, wenn du über der Schwelle sprichst, mit kurzem Nachlauf, damit Satzenden nicht abreißen. „Taste halten“: nur solange du drückst. Ein- und Ausblenden dauert 5 ms, deshalb klickt nichts.'],
+    eq: ['EQ', 'Bis zu fünf Bänder, standardmäßig flach. Wer seine Stimme etwas präsenter will, dreht hier im Profi-Bereich. Die Filter behalten ihren Zustand, wenn du am Regler ziehst, deshalb knackt es nicht.'],
+    comp: ['Kompressor', 'Macht Laut leiser und Leise lauter, Verhältnis 3:1, ab −18 dB. So flüstert und brüllt niemand, und wenn 19 Leute gleichzeitig lachen, fängt am Ende ein Limiter die Summe ab.'],
+  };
+  const chain = document.getElementById('chain');
+  const note = document.getElementById('chain-note');
+  chain.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    chain.querySelectorAll('button').forEach(x => x.setAttribute('aria-expanded', String(x === b)));
+    const [h, p] = notes[b.dataset.stage];
+    note.innerHTML = '';
+    const h3 = document.createElement('h3'); h3.textContent = h;
+    const pp = document.createElement('p'); pp.textContent = p;
+    note.append(h3, pp);
+  });
+  const meters = [...chain.querySelectorAll('.meter i')];
+  const gateState = document.getElementById('gate-state');
+  function drawChain() {
+    const level = (signal.db + 60) / 60;              // 0..1
+    const after = signal.voiced ? level : 0;          // what passes the gate
+    const shaped = after > 0 ? 0.35 + after * 0.6 : 0; // the compressor evens it out
+    const values = [level, level * 0.96, level * 0.9, after, after, shaped];
+    meters.forEach((m, i) => { m.style.width = (values[i] * 100).toFixed(1) + '%'; });
+    gateState.textContent = signal.voiced ? 'offen' : 'zu';
+  }
+
+  // ── Mic check ────────────────────────────────────────────────────────────
+  let threshold = -40;
+  const slider = document.getElementById('threshold');
+  const thresholdValue = document.getElementById('threshold-value');
+  const mark = document.getElementById('threshold-mark');
+  const levelBar = document.querySelector('#level i');
+  const levelEl = document.getElementById('level');
+  const gateEl = document.getElementById('gate');
+  const micGo = document.getElementById('mic-go');
+  const micHint = document.getElementById('mic-hint');
+  function placeMark() { mark.style.left = ((threshold + 60) / 60 * 100) + '%'; thresholdValue.textContent = threshold; }
+  slider.addEventListener('input', () => { threshold = +slider.value; placeMark(); });
+  placeMark();
+  micGo.addEventListener('click', async () => {
+    if (signal.live) {
+      stopMic();
+      micGo.textContent = 'Mikro-Check starten';
+      listen.textContent = 'Mikro für die Welle freigeben';
+      listen.setAttribute('aria-pressed', 'false');
+      micHint.textContent = 'Beendet. Der Balken zeigt wieder die Vorführung.';
+      return;
+    }
+    const ok = await startMic();
+    if (ok) {
+      micGo.textContent = 'Mikro-Check beenden';
+      listen.textContent = 'Mikro wieder loslassen';
+      listen.setAttribute('aria-pressed', 'true');
+      micHint.textContent = 'Sprich normal. Dann schweig kurz: Das Mikro sollte zugehen. Dann tipp auf der Tastatur: Es sollte zu bleiben.';
+    } else {
+      micHint.textContent = 'Kein Mikro bekommen. Ohne Erlaubnis zeigt der Balken die Vorführung.';
+    }
+  });
+  function drawMic() {
+    const p = (signal.db + 60) / 60;
+    levelBar.style.width = (p * 100).toFixed(1) + '%';
+    levelEl.setAttribute('aria-valuenow', Math.round(signal.db));
+    gateEl.textContent = signal.voiced ? 'Mikro an' : 'Mikro zu';
+    gateEl.className = 'gate ' + (signal.voiced ? 'open' : 'closed');
+  }
+
+  // ── Checklist, remembered in this browser ────────────────────────────────
+  const KEY = 'yappa-flyer-check';
+  const boxes = [...document.querySelectorAll('#check input')];
+  const progress = document.getElementById('progress');
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { saved = {}; }
+  function paint() {
+    let n = 0;
+    boxes.forEach(b => { b.closest('li').classList.toggle('done', b.checked); if (b.checked) n++; });
+    progress.textContent = n === boxes.length ? 'Alles dran. Bis morgen!' : `${n} von ${boxes.length} abgehakt.`;
+  }
+  boxes.forEach(b => {
+    b.checked = !!saved[b.dataset.key];
+    b.addEventListener('change', () => {
+      saved[b.dataset.key] = b.checked;
+      try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) { /* no storage: the ticks last until the tab closes */ }
+      paint();
+    });
+  });
+  paint();
+
+  if (reduced) {
+    // One still frame instead of motion; the mic still updates the numbers.
+    const still = () => { drawWave(); drawChain(); drawMic(); };
+    still();
+    setInterval(() => { if (signal.live) { analyser.getFloatTimeDomainData(timeData); still(); } }, 500);
+  } else {
+    requestAnimationFrame(tick);
+  }
+})();
+</script>
+</body>
+</html>
