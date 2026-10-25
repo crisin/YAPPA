@@ -790,7 +790,13 @@ fn a_capture_backlog_is_dropped_not_sent_as_a_burst() {
 
 #[test]
 fn remote_voices_reach_the_output_with_level_volume_and_a_freed_slot() {
-    let rig = rig(settings());
+    // Leveling off: the leveler would pull a steady −6 dBFS down by 6 dB/s from the first
+    // block on, and the exact 0.25 below only holds while it has not moved — on a slow CI
+    // box the volume command arrives after that (flaky on windows-latest, 2026-10-25).
+    let rig = rig(Settings {
+        auto_level: false,
+        ..settings()
+    });
     rig.join();
     rig.wait_until("output open", || {
         rig.hardware.speaker.lock().unwrap().is_some()

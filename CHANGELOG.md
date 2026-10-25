@@ -4,6 +4,8 @@ One line per finished task (definition of done). Newest first.
 
 ## Unreleased
 
+- CI grün nach 0.2.0: Clippy auf macOS (ungenutzte Signal-Variante und ein `drop` auf dem leeren Backend im Geräte-Watcher) und ein flatternder Engine-Test (die Lautstärke-Probe lief mit eingeschaltetem Angleich, der auf einer langsamen CI-Maschine schneller war als der Befehl). Keine Änderung am Verhalten.
+
 ## 0.2.0 (2026-10-25)
 
 - Updates kommen von selbst (D1, ADR-006): Die App schaut beim Start und stündlich unter `<Update-Host>/<Kanal>/latest.json` nach (Host aus `GET /config`, Kanal aus „Ich → Profi → Updates“), lädt eine neuere Version im Hintergrund, prüft die Signatur und installiert erst auf Klick im Banner oder auf der Updates-Seite – nie mitten im Call, danach Neustart. Ist die Version für den Server zu alt oder abgeschaltet, verlässt die App den Call von selbst, und der Hinweis bleibt, bis das Update drauf ist. Für die Entwicklerseite: `cargo xtask release <stable|beta|nightly>` setzt die Version, schneidet den Changelog, baut und signiert die Installer (minisign-Schlüssel nur in `.env`, `cargo xtask release keygen` erzeugt ihn), schreibt `latest.json` und lädt alles hoch – standardmäßig zu den GitHub Releases (Entscheidung 2026-10-25, Nachtrag in ADR-006: der Homeserver ist nur über IPv6 erreichbar), wahlweise in den Ordner, den Caddy auf dem Homeserver unter `/updates/` ausliefert (`home.yml`), oder per scp. Glossar: „Update-Kanal“. Nebenbei heißt die App im Installer und im Startmenü jetzt „yAPPA“ statt „yAPPA B“ (die alte „yAPPA B“ bleibt als eigener Eintrag stehen, bis man sie deinstalliert; Einstellungen und Login bleiben, der Datenordner ist derselbe).
