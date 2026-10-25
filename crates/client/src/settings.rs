@@ -9,7 +9,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use ts_rs::TS;
 
-pub const APP_SETTINGS_VERSION: u32 = 1;
+/// 1: first split (ADR-007). 2: `on_close` and `autostart` — both take their defaults in a
+/// version-1 file, the number only says the file has been rewritten by this build.
+pub const APP_SETTINGS_VERSION: u32 = 2;
 
 /// Which settings view „Ich“ shows. A property of the settings, not of the modules.
 #[derive(Serialize, Deserialize, TS, Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -84,6 +86,19 @@ pub enum Listening {
     Speakers,
 }
 
+/// What the X of the window does. The default keeps the app (and a running call) alive in
+/// the notification area, so a reflex click never ends a call.
+#[derive(Serialize, Deserialize, TS, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum OnClose {
+    /// Hide the window; the tray icon brings it back.
+    #[default]
+    Tray,
+    /// End the app, call included.
+    Quit,
+}
+
 /// Everything about the app that is not audio. Unknown fields are ignored and missing ones
 /// take their defaults, so older and newer files both load.
 #[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq)]
@@ -104,6 +119,10 @@ pub struct AppSettings {
     pub update_channel: UpdateChannel,
     /// Headset or speakers (A5); `Unknown` for a file from before.
     pub listening: Listening,
+    /// What closing the window does.
+    pub on_close: OnClose,
+    /// Start with the login to the OS (minimized into the notification area).
+    pub autostart: bool,
 }
 
 impl Default for AppSettings {
@@ -118,6 +137,8 @@ impl Default for AppSettings {
             notifications: true,
             update_channel: UpdateChannel::Stable,
             listening: Listening::Unknown,
+            on_close: OnClose::Tray,
+            autostart: false,
         }
     }
 }
@@ -202,7 +223,7 @@ pub fn load(profile: &Profile) -> Loaded {
             let _ = std::fs::copy(&from, from.with_extension("json.bak"));
         }
     }
-    let mut app: AppSettings = profile.read_json(APP_SETTINGS_FILE).unwrap_or_default();
+    let (mut app, app_migrated) = migrate_app(profile.read_json(APP_SETTINGS_FILE));
     let app_file_exists = profile.path(APP_SETTINGS_FILE).exists();
     let (engine, theme, migrated) = migrate_engine(raw);
     if let Some(theme) = theme.filter(|_| !app_file_exists) {
@@ -211,7 +232,7 @@ pub fn load(profile: &Profile) -> Loaded {
     Loaded {
         engine,
         app,
-        migrated,
+        migrated: migrated || app_migrated,
     }
 }
 
@@ -221,6 +242,27 @@ pub fn save_engine(profile: &Profile, settings: &Settings) {
 
 pub fn save_app(profile: &Profile, settings: &AppSettings) {
     profile.write_json(APP_SETTINGS_FILE, settings);
+}
+
+/// `(settings, migrated?)`. Every field of an older app file takes its default when it is
+/// missing (serde), so a migration is only the version number — and a file that cannot be
+/// read at all starts over with defaults.
+fn migrate_app(raw: Option<Value>) -> (AppSettings, bool) {
+    let Some(value) = raw else {
+        return (AppSettings::default(), false);
+    };
+    let version = value.get("version").and_then(Value::as_u64).unwrap_or(0);
+    match serde_json::from_value::<AppSettings>(value) {
+        Ok(mut app) if version < u64::from(APP_SETTINGS_VERSION) => {
+            app.version = APP_SETTINGS_VERSION;
+            (app, true)
+        }
+        Ok(app) => (app, false),
+        Err(problem) => {
+            tracing::warn!(%problem, "app settings unusable — starting with defaults");
+            (AppSettings::default(), false)
+        }
+    }
 }
 
 /// `(settings, theme from a v1 file, migrated?)`.
@@ -373,6 +415,72 @@ mod tests {
         assert_eq!(partial.view, SettingsView::Pro);
         assert_eq!(partial.theme, "dark");
         assert_eq!(partial.update_channel, UpdateChannel::Stable);
+    }
+
+    /// A file as version 1 wrote it (0.2.0): no `onClose`, no `autostart`.
+    #[test]
+    fn a_version_one_app_file_keeps_its_values_and_closes_into_the_tray() {
+        let v1 = json!({
+            "version": 1,
+            "view": "pro",
+            "theme": "light",
+            "pttKey": "Mouse4",
+            "muteKey": null,
+            "deafenKey": "F8",
+            "notifications": false,
+            "updateChannel": "beta",
+            "listening": "headset"
+        });
+        let (app, migrated) = migrate_app(Some(v1));
+        assert!(migrated);
+        assert_eq!(app.version, APP_SETTINGS_VERSION);
+        assert_eq!(
+            app.on_close,
+            OnClose::Tray,
+            "a reflex click on X never ends a call"
+        );
+        assert!(!app.autostart);
+        assert_eq!(app.view, SettingsView::Pro);
+        assert_eq!(app.theme, "light");
+        assert_eq!(app.ptt_key.as_deref(), Some("Mouse4"));
+        assert_eq!(app.deafen_key.as_deref(), Some("F8"));
+        assert!(!app.notifications);
+        assert_eq!(app.update_channel, UpdateChannel::Beta);
+        assert_eq!(app.listening, Listening::Headset);
+
+        let current = serde_json::to_value(AppSettings {
+            on_close: OnClose::Quit,
+            autostart: true,
+            ..AppSettings::default()
+        })
+        .unwrap();
+        let (app, migrated) = migrate_app(Some(current));
+        assert!(!migrated);
+        assert_eq!((app.on_close, app.autostart), (OnClose::Quit, true));
+
+        let (broken, migrated) = migrate_app(Some(json!({ "version": 2, "view": 7 })));
+        assert_eq!(broken, AppSettings::default());
+        assert!(!migrated);
+    }
+
+    #[test]
+    fn loading_a_profile_rewrites_a_version_one_app_file_once() {
+        let dir = std::env::temp_dir().join(format!("yappa-appset-{}", std::process::id()));
+        let profile = Profile::new(&dir, Some("t"));
+        profile.write_json(
+            APP_SETTINGS_FILE,
+            &json!({ "version": 1, "theme": "light", "updateChannel": "nightly" }),
+        );
+        let loaded = load(&profile);
+        assert!(loaded.migrated);
+        assert_eq!(loaded.app.theme, "light");
+        assert_eq!(loaded.app.update_channel, UpdateChannel::Nightly);
+        assert_eq!(loaded.app.on_close, OnClose::Tray);
+        save_app(&profile, &loaded.app);
+        let again = load(&profile);
+        assert!(!again.migrated);
+        assert_eq!(again.app, loaded.app);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

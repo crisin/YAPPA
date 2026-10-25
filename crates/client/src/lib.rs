@@ -29,7 +29,7 @@ pub mod update;
 pub use api::{ApiClient, ApiFailure};
 pub use presence::{Presence, PresenceView};
 pub use profile::Profile;
-pub use settings::{AppSettings, KeyAction, SettingsView, UpdateChannel};
+pub use settings::{AppSettings, KeyAction, OnClose, SettingsView, UpdateChannel};
 pub use update::{update_endpoint, UpdateStatus};
 
 use api_types::{

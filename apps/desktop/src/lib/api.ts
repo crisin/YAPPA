@@ -59,7 +59,8 @@ export interface Api {
   inviteLinks(handler: (link: string) => void): Promise<() => void>;
   /** The app's own settings (view, theme, PTT key, …), stored per profile. */
   appSettings(): Promise<AppSettings>;
-  setAppSettings(settings: AppSettings): Promise<void>;
+  /** Returns what was stored: the shell may correct a setting the OS refused (autostart). */
+  setAppSettings(settings: AppSettings): Promise<AppSettings>;
   /**
    * Waits for the next key or mouse button and makes it the key of `action` (push-to-talk,
    * mute, deafen); `null` when cancelled (Escape) or nothing came within 10 s. Rejects with

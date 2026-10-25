@@ -92,8 +92,6 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
       waiting for LiveKit's 20–23 s timeout for a dead client (S6)
 - [ ] Control-plane image from CI (`ghcr.io/crisin/yappa-control`), so the box pulls instead
       of compiling Rust (needs 4 GB RAM today); `home.yml` keeps `build:` as the fallback
-- [ ] Tray icon and autostart (from S3): yAPPA in the notification area, start with Windows
-      as an option in „Ich“
 - [ ] Send-chain headroom: the pump with DeepFilterNet peaks at 3.3 ms of the 5 ms budget
       on a Ryzen 7 7700X (E1) — measure on the gang's slowest PC; if it gets close, run the
       denoiser on its own thread with a one-block handoff, or default that PC to RNNoise
@@ -132,6 +130,17 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] Tray icon and autostart (2026-10-25): the cat sits in the notification area (Tauri
+      `tray-icon`); left click shows the window, the menu has „Fenster zeigen“, „Stumm“ and
+      „Taub“ (check marks follow the engine's `MuteState`) and „Beenden“ — the only thing
+      that ends the app, through the same `RunEvent::Exit` path that drops engine and
+      presence. App setting `on_close: tray | quit` (default tray, so a reflex click on X
+      never ends a call; `WindowEvent::CloseRequested` is prevented and the window hidden)
+      and `autostart: bool` (`tauri-plugin-autostart`, Run key / launch agent, started with
+      `--minimized` so the app stays in the tray); both under „Ich → Darstellung“. App
+      settings file version 2 with a migration test (a version-1 file loads with the
+      defaults). Without a tray (OS refused) the close goes through as before. Glossary
+      „Infobereich“, tester guide and „So funktioniert es“ updated.
 - [x] Soundboard POC (ADR-010, 2026-10-25): a `yappa-sounds` thread in the engine plays
       files (symphonia: WAV, FLAC, OGG, MP3, M4A → 48 kHz mono via the A1 resampler, cut
       at 60 s, cached) one 10 ms block at a time, self-paced a block ahead, up to eight

@@ -271,7 +271,7 @@ export function createMockApi(scene: Scene = DEFAULT_SCENE, engine?: Engine): Ap
     appSettings: () => Promise.resolve(structuredClone(appSettings)),
     setAppSettings(settings) {
       appSettings = structuredClone(settings);
-      return Promise.resolve();
+      return Promise.resolve(structuredClone(appSettings));
     },
     // In the browser there is no hook: pretend a key was pressed — the mouse side button
     // for push-to-talk, F7 and F8 for mute and deafen. One key does one thing, as in Rust.

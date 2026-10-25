@@ -101,7 +101,7 @@ export class AppState {
   async updateAppSettings(patch: Partial<AppSettings>) {
     const next = { ...(await this.api.appSettings()), ...patch };
     this.appSettings = next;
-    await this.api.setAppSettings(next);
+    this.appSettings = await this.api.setAppSettings(next);
   }
 
   setTheme(theme: Theme) {
