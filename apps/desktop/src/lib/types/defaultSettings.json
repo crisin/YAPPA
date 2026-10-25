@@ -24,5 +24,6 @@
     "dtx": false
   },
   "inputChannel": 0,
-  "outputGainDb": 0.0
+  "outputGainDb": 0.0,
+  "autoLevel": true
 }

@@ -5,7 +5,7 @@
  */
 export type StageLevel = { 
 /**
- * `input`, `highpass`, `denoiser`, `gate`, `eq`, `compressor`.
+ * `input`, `highpass`, `denoiser`, `gate`, `eq`, `compressor`, `limiter`.
  */
 id: string, 
 /**

@@ -397,8 +397,8 @@ describe('Settings: Einfach und Profi', () => {
     const { container } = await start();
     await openMe('Signalkette');
     const stages = screen.getByRole('list', { name: 'Stufen der Signalkette' });
-    expect(within(stages).getAllByRole('button')).toHaveLength(6);
-    expect(within(stages).getAllByRole('meter')).toHaveLength(6);
+    expect(within(stages).getAllByRole('button')).toHaveLength(7);
+    expect(within(stages).getAllByRole('meter')).toHaveLength(7);
     expect(await screen.findByText('Rechenzeit je 10-ms-Block')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('10 ms')).toBeInTheDocument(), { timeout: 3000 });
 

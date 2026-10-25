@@ -114,6 +114,8 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
     pumpBusyMaxMs: 0.03,
     pumpBusyMeanMs: 0.01,
     chainLatencyMs: 10,
+    speakers:
+      connected && people.length > 0 ? [{ identity: people[0].identity, levelerDb: 4.5 }] : [],
   });
 
   // Ten times per second is enough to see the meters move.
@@ -139,6 +141,7 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
         { id: 'gate', ...level(muted ? -120 : -41 + 10 * wave, !muted) },
         { id: 'eq', ...level(muted ? -120 : -40 + 10 * wave) },
         { id: 'compressor', ...level(muted ? -120 : -36 + 6 * wave) },
+        { id: 'limiter', ...level(muted ? -120 : -36 + 6 * wave) },
       ],
     });
     if (ticks % 10 === 0) emit({ type: 'stats', stats: stats() });

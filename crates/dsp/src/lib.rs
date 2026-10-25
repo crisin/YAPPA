@@ -8,6 +8,7 @@ mod biquad;
 mod compressor;
 mod gate;
 mod level;
+mod leveler;
 mod limiter;
 mod resampler;
 
@@ -15,5 +16,6 @@ pub use biquad::{Biquad, BiquadKind, Coefficients};
 pub use compressor::{Compressor, CompressorParams};
 pub use gate::{Gate, GateParams};
 pub use level::{db_to_gain, gain_to_db, rms};
+pub use leveler::{Leveler, LevelerParams};
 pub use limiter::Limiter;
 pub use resampler::Resampler;

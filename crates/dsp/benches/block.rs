@@ -2,7 +2,7 @@
 //! (planning doc: DSP under 5 ms per block). `cargo xtask bench`.
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use dsp::{Biquad, BiquadKind, Limiter, Resampler};
+use dsp::{Biquad, BiquadKind, Leveler, LevelerParams, Limiter, Resampler};
 use std::hint::black_box;
 
 const SR: f32 = 48_000.0;
@@ -39,6 +39,17 @@ fn limiter(c: &mut Criterion) {
     });
 }
 
+/// One speaker's block through the receive-side leveler (A4): measure and scale.
+fn leveler(c: &mut Criterion) {
+    let mut leveler = Leveler::new(SR, LevelerParams::default());
+    let mut block: Vec<f32> = (0..BLOCK)
+        .map(|i| ((i as f32) * 0.05).sin() * 0.05)
+        .collect();
+    c.bench_function("leveler, one 10 ms block", |b| {
+        b.iter(|| leveler.process(black_box(&mut block)))
+    });
+}
+
 /// One 10 ms block through the resampler, the three cases the gang's devices bring (A1).
 fn resampler(c: &mut Criterion) {
     for (in_rate, out_rate, label) in [
@@ -60,5 +71,5 @@ fn resampler(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, eq_chain, limiter, resampler);
+criterion_group!(benches, eq_chain, limiter, leveler, resampler);
 criterion_main!(benches);

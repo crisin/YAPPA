@@ -1,19 +1,36 @@
 //! The send chain (planning doc, "Sendekette"): high-pass → denoiser → gate / push-to-talk
-//! → EQ → compressor, one 10 ms block at a time on the pump thread.
+//! → EQ → compressor → limiter, one 10 ms block at a time on the pump thread.
 //!
 //! The pump is not a real-time thread (it hands blocks to the transport, which encodes), so
 //! the chain may allocate when it is reconfigured — never per block. The denoiser is built
 //! here, on the thread that runs it: DeepFilterNet is not `Send` (ADR-008).
 
 use denoise::Denoiser;
-use dsp::{Biquad, BiquadKind, Coefficients, Compressor, CompressorParams, Gate, GateParams};
+use dsp::{
+    Biquad, BiquadKind, Coefficients, Compressor, CompressorParams, Gate, GateParams, Limiter,
+};
 use engine_protocol::{CompressorSettings, DenoiserKind, EqBand, Settings, TransmitMode};
 use transport::{BLOCK, SAMPLE_RATE};
 
 const SR: f32 = SAMPLE_RATE as f32;
 
 /// Stage ids, in order — also the order of [`Chain::levels`].
-pub const STAGES: [&str; 6] = ["input", "highpass", "denoiser", "gate", "eq", "compressor"];
+pub const STAGES: [&str; 7] = [
+    "input",
+    "highpass",
+    "denoiser",
+    "gate",
+    "eq",
+    "compressor",
+    "limiter",
+];
+
+/// The safety limiter at the end of the chain (A4): the compressor's makeup and a hot
+/// microphone used to push peaks past full scale, which the transport clamped — "Possible
+/// clipping detected" in the diagnosis of 2026-10-24. 1 dB below full scale, recovers
+/// within 80 ms, no lookahead (adds no latency). Always on; not a setting.
+const LIMITER_CEILING_DB: f32 = -1.0;
+const LIMITER_RELEASE_MS: f32 = 80.0;
 
 /// Fade for push-to-talk and the always-on mode switch: 5 ms, inaudible but click-free.
 const PTT_FADE_MS: f32 = 5.0;
@@ -100,6 +117,7 @@ pub struct Chain {
     gate: Gate,
     eq: Vec<Biquad>,
     compressor: Compressor,
+    limiter: Limiter,
     /// Push-to-talk / always-on gain, faded.
     manual_gain: f32,
     /// Gain change per sample: a linear 5 ms ramp, fully open after exactly 5 ms.
@@ -108,7 +126,7 @@ pub struct Chain {
     /// state and the pump drops the backlog that built up while it loaded.
     fade_in_next: bool,
     /// RMS after each stage of the last block, 0..1, in [`STAGES`] order.
-    pub levels: [f32; 6],
+    pub levels: [f32; STAGES.len()],
     /// Is the voice going out (gate open, PTT held, or always on)?
     pub open: bool,
 }
@@ -126,6 +144,7 @@ impl Chain {
             gate: Gate::new(SR, gate_params(&config)),
             eq: eq(&config.eq),
             compressor: Compressor::new(SR, compressor_params(&config.compressor)),
+            limiter: Limiter::new(SR, LIMITER_CEILING_DB, LIMITER_RELEASE_MS),
             denoiser,
             // Always on starts open; push-to-talk starts closed.
             manual_gain: if config.transmit_mode == TransmitMode::AlwaysOn {
@@ -135,7 +154,7 @@ impl Chain {
             },
             manual_step: 1.0 / (PTT_FADE_MS / 1000.0 * SR),
             fade_in_next: false,
-            levels: [0.0; 6],
+            levels: [0.0; STAGES.len()],
             open: false,
             config,
         }
@@ -247,6 +266,8 @@ impl Chain {
             self.compressor.process(block);
         }
         self.levels[5] = rms(block);
+        self.limiter.process(block);
+        self.levels[6] = rms(block);
     }
 
     fn fade(&mut self, block: &mut [f32], on: bool) {
@@ -385,6 +406,24 @@ mod tests {
         let mut b = [0.5f32; BLOCK];
         chain.process(&mut b, false);
         assert!(chain.levels[2] < 0.5, "faded in, not at full level");
+    }
+
+    /// A hot microphone plus the compressor's +3 dB makeup must never leave the chain above
+    /// full scale (the clipping warnings of 2026-10-24).
+    #[test]
+    fn the_limiter_keeps_a_hot_voice_under_full_scale() {
+        let mut hot = config(TransmitMode::AlwaysOn);
+        hot.compressor.enabled = false; // the compressor alone would tame a steady tone
+        let mut chain = Chain::new(hot);
+        assert!(chain.active(6));
+        let ceiling = dsp::db_to_gain(LIMITER_CEILING_DB);
+        for _ in 0..20 {
+            let mut b = voice(1.2);
+            chain.process(&mut b, false);
+            assert!(b.iter().all(|s| s.abs() <= ceiling + 1e-6), "{}", b[100]);
+        }
+        assert!(chain.levels[5] > chain.levels[6], "the limiter worked");
+        assert!(chain.levels[6] > 0.5, "and still a loud voice went out");
     }
 
     #[test]

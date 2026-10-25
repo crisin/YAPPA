@@ -1173,8 +1173,17 @@ fn the_send_chain_reports_its_stages() {
     let ids: Vec<&str> = stages.iter().map(|s| s.id.as_str()).collect();
     assert_eq!(
         ids,
-        ["input", "highpass", "denoiser", "gate", "eq", "compressor"]
+        [
+            "input",
+            "highpass",
+            "denoiser",
+            "gate",
+            "eq",
+            "compressor",
+            "limiter"
+        ]
     );
     assert!(stages[1].active, "high-pass on by default");
     assert!(stages[2].active, "a denoiser by default");
+    assert!(stages[6].active, "the limiter is always on");
 }
