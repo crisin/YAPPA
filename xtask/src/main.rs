@@ -15,6 +15,8 @@
 //!                      token <name> = join token for one person
 //!   local [--lan]      LiveKit + control plane for development in one go (LAN: other PCs)
 //!   control [--lan] [args]  only the control plane; args go to yappa-control
+//!   release <channel>  version, changelog cut, build, sign, latest.json, upload (ADR-006);
+//!                      `release keygen` makes the updater's signing key
 //!   coverage           line coverage as HTML (target/llvm-cov/html)
 //!   hook <name>        entry points for Claude Code hooks (see .claude/settings.json)
 
@@ -22,6 +24,7 @@ mod control;
 mod docs;
 mod hook;
 mod livekit;
+mod release;
 mod tokens;
 mod tools;
 
@@ -69,6 +72,7 @@ fn main() -> ExitCode {
             ],
         ),
         Some("coverage") => coverage(&root),
+        Some("release") => release::run(&root, &args[1..]),
         Some("livekit") => livekit::run(&root, &args[1..]),
         Some("control") => control::run(&root, &args[1..]),
         Some("local") => control::local(&root, &args[1..]),
@@ -77,7 +81,7 @@ fn main() -> ExitCode {
             eprintln!(
                 "usage: cargo xtask <dev [--ui] | build [--debug] | setup | doctor \
                  | check [--fast|--ci] | test | gen-types | tokens | docs | bench | coverage \
-                 | livekit [up|down|logs|loss <%>|cut <s>|token <name>] | local [--lan] | control [--lan] [args] | hook <post-edit|session-start>>"
+                 | livekit [up|down|logs|loss <%>|cut <s>|token <name>] | local [--lan] | control [--lan] [args] \n                 | release <channel> [--bump …] | hook <post-edit|session-start>>"
             );
             return ExitCode::from(2);
         }
@@ -269,7 +273,7 @@ fn generated_clean(root: &Path) -> Result {
     }
 }
 
-fn step(name: &str, f: impl FnOnce() -> Result) -> Result {
+fn step<T>(name: &str, f: impl FnOnce() -> Result<T>) -> Result<T> {
     println!("── {name}");
     f().map_err(|e| format!("{name} failed: {e}"))
 }

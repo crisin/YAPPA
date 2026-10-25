@@ -10,6 +10,7 @@ import type { EventEntry } from './types/EventEntry';
 import type { InviteCode } from './types/InviteCode';
 import type { Member } from './types/Member';
 import type { PublicConfig } from './types/PublicConfig';
+import type { UpdateStatus } from './types/UpdateStatus';
 import type { User } from './types/User';
 
 export const tauriApi: Api = {
@@ -37,6 +38,8 @@ export const tauriApi: Api = {
   setAppSettings: (settings) => invoke<void>('set_app_settings', { settings }),
   captureKey: (action) => invoke<string | null>('capture_key', { action }),
   hotkeysGlobal: () => invoke<boolean>('hotkeys_global'),
+  checkUpdate: () => invoke<UpdateStatus>('check_update'),
+  installUpdate: () => invoke<void>('install_update'),
   admin: {
     members: () => invoke<Member[]>('admin_members'),
     setRole: (userId, role) => invoke<void>('admin_set_role', { userId, role }),

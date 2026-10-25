@@ -25,6 +25,12 @@ ignore = [
   # Unmaintained, no known vulnerability: build-time templating of tract-linalg, and a macro crate.
   { id = "RUSTSEC-2026-0319", reason = "anymap2, build dependency of tract-linalg 0.21.4 (ADR-008)" },
   { id = "RUSTSEC-2024-0436", reason = "paste, proc-macro via tract 0.21.4 (ADR-008)" },
+  # zip 4 via tauri-plugin-updater 2.14 (D1): the three extraction advisories concern
+  # attacker-controlled archives; the updater only extracts bundles whose minisign
+  # signature it verified against our public key first. Go when the plugin moves to zip 9.
+  { id = "RUSTSEC-2026-0367", reason = "zip 4 in tauri-plugin-updater; only signature-verified bundles are extracted (ADR-006)" },
+  { id = "RUSTSEC-2026-0368", reason = "zip 4 in tauri-plugin-updater; only signature-verified bundles are extracted (ADR-006)" },
+  { id = "RUSTSEC-2026-0369", reason = "zip 4 in tauri-plugin-updater; only signature-verified bundles are extracted (ADR-006)" },
 ]
 
 [licenses]

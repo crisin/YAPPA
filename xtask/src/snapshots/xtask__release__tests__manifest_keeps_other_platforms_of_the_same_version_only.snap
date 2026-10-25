@@ -1,0 +1,19 @@
+---
+source: xtask/src/release.rs
+expression: "serde_json::to_string_pretty(&merged).unwrap()"
+---
+{
+  "version": "0.2.0",
+  "notes": "- Notes",
+  "pub_date": "2026-10-25T12:00:00Z",
+  "platforms": {
+    "darwin-aarch64": {
+      "signature": "sig",
+      "url": "https://h/stable/yAPPA.app.tar.gz"
+    },
+    "windows-x86_64": {
+      "signature": "sig",
+      "url": "https://h/stable/yAPPA_0.2.0_x64-setup.exe"
+    }
+  }
+}

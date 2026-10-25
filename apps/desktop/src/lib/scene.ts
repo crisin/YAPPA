@@ -9,7 +9,8 @@ export const SCENES = {
   member: 'Wie Ben es sieht: Mitglied ohne Admin-Rolle',
   reconnect: 'Die Verbindung bricht alle paar Sekunden weg und kommt wieder',
   offline: 'Weder Control-Plane noch LiveKit sind erreichbar',
-  update: 'Der Server verlangt eine neuere Mindestversion',
+  update: 'Der Server verlangt eine neuere Mindestversion, das Update liegt bereit',
+  'update-ready': 'Ein Update ist heruntergeladen und wartet auf den Klick',
 } as const;
 
 export type Scene = keyof typeof SCENES;

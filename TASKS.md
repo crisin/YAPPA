@@ -41,13 +41,11 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 **M4 · Operations** — auto-update, admin, onboarding, banners (after the audio block, ADR-009)
 
-- [ ] D1 Release pipeline (ADR-006): `cargo xtask release <channel>` (version, changelog
-      cut, build, sign, `latest.json`, upload to the box), `tauri-plugin-updater` +
-      `tauri-plugin-process`, Caddy `/updates`, `GET /config` min version + kill switch →
-      banner slot and forced leave; update channel in Profi
-- [ ] U7 System states with D1 (review 2026-10-23): „Update bereit“ banner, kill switch
-      forces a leave, offline state in the dock with „Erneut verbinden“, config re-read
-      hourly; engine messages that reach the banner in German
+- [ ] U7 System states (review 2026-10-23): offline state in the dock with „Erneut
+      verbinden“; engine messages that reach the banner in German; install the downloaded
+      update on the next start as well (today it waits for the click and is gone after a
+      restart); „Was ist neu“ from the changelog in the banner (today only on the Updates
+      page)
 - [ ] Lofi round 2 (user): draw reconnect/offline/update banner and lobby radio against the
       running shell (detail questions follow established patterns, vision section 12)
 - [ ] Infra for three stages (vision section 12): one compose set for LiveKit + control +
@@ -128,6 +126,24 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] D1 Release pipeline (ADR-006, 2026-10-25): `cargo xtask release <channel>` —
+      version bump (`Cargo.toml` as the one source, npm files follow), changelog cut
+      Unreleased → `## <version> (<date>)` with the notes as release notes, signed
+      `cargo xtask build` (`createUpdaterArtifacts`, minisign key only in `.env`,
+      `release keygen` makes it outside the repo), `latest.json` in the updater's static
+      format merged with the other OS's entry of the same version, upload to GitHub
+      Releases by default (`v<version>` + rolling `<channel>`; user decision 2026-10-25,
+      ADR-006 amendment — the box is IPv6-only) or to a folder (Caddy `/updates/` from
+      `infra/livekit/updates/`, WSL path from the dev PC) or scp; git stays the user's. Shell:
+      `tauri-plugin-updater` + `tauri-plugin-process`, endpoint
+      `<update_base_url>/<channel>/latest.json` per check, download + signature check at
+      once, install on click (`install_update`, leaves the engine first, restart). UI:
+      hourly config + check, „Update bereit“ banner (dismissible, leaves the call before
+      installing), blocked/killed banner forces the leave and offers the install, Updates
+      page with check button, status and „Was ist neu“; scenes `update` / `update-ready`.
+      Unit tests for bump, changelog cut, manifest merge (snapshot), targets, `.env`; UI
+      tests for the banners and the page. Not yet run end to end against a real host (the
+      first `release stable` is the user's, after the review); macOS artifacts untested
 - [x] A5 Monitor „Mich selbst hören“ (ADR-009, 2026-10-25): a slot kind of its own in the
       mixer — the pump pushes the send chain's f32 output (after the limiter, before the
       mute) through a `MonitorFeed` into an `rtrb` ring of 200 ms, the output callback adds

@@ -12,6 +12,7 @@ import type { AppSettings } from './types/AppSettings';
 import type { PublicConfig } from './types/PublicConfig';
 import type { SettingsView } from './types/SettingsView';
 import type { TransmitMode } from './types/TransmitMode';
+import { Updater } from './updater.svelte';
 
 /** The sections of the module „Ich“. `pro` ones show only in the Profi view; both views write
  * the same settings (concept: Einfach/Profi is a property of the settings). */
@@ -59,12 +60,14 @@ export class AppState {
   readonly api: Api;
   readonly gang: Gang;
   readonly admin: Admin;
+  readonly updater: Updater;
 
   constructor(session: Session, shell: Shell, api: Api) {
     this.session = session;
     this.shell = shell;
     this.api = api;
     this.gang = new Gang(api);
+    this.updater = new Updater(api);
     this.admin = new Admin(api, this.gang, (config) => (this.config = config));
     try {
       const stored = localStorage.getItem(THEME_KEY);
@@ -127,6 +130,13 @@ export class AppState {
    * presence follows), straight at the engine for a pasted developer invite. */
   leaveVoice() {
     return this.gang.status === 'in' ? this.gang.leave() : this.session.leave();
+  }
+
+  /** Installs the downloaded update (D1): never in the middle of a call — the call is left
+   * first — then the app restarts. */
+  async installUpdate() {
+    if (this.session.inRoom) await this.leaveVoice();
+    await this.updater.install();
   }
 
   /** The speaking mode, in the engine and as presence (others see „PTT“ on my tile). */

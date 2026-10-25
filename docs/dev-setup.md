@@ -42,9 +42,11 @@ Docker, `lk` and `gh` come from the OS package manager (winget / brew).
 | --- | --- |
 | `cargo xtask dev` | desktop app with hot reload (`tauri dev`) |
 | `cargo xtask dev --ui` | UI only in the browser on :1420, engine and control plane mocked |
-| `cargo xtask dev --ui --scene <name>` | same, opened in a mock scene: `call` (default), `login` (first start), `invite` (started by a clicked link), `lobby`, `member`, `reconnect`, `offline`, `update` — see `apps/desktop/src/lib/scene.ts`; also `?scene=<name>` in the URL |
+| `cargo xtask dev --ui --scene <name>` | same, opened in a mock scene: `call` (default), `login` (first start), `invite` (started by a clicked link), `lobby`, `member`, `reconnect`, `offline`, `update` (too old, update ready), `update-ready` — see `apps/desktop/src/lib/scene.ts`; also `?scene=<name>` in the URL |
 | `cargo xtask build` | production build: release profile (thin LTO, stripped) + installers, lists them with size |
 | `cargo xtask build --debug` | installer from the debug profile |
+| `cargo xtask release <stable\|beta\|nightly> [--bump patch\|minor\|major \| --version x.y.z] [--target …] [--no-upload] [--skip-build]` | the release (ADR-006): version, changelog cut, signed build, `latest.json`, upload — see "Release" below |
+| `cargo xtask release keygen` | the updater's minisign key pair, once, outside the repo |
 | `cargo xtask check` | the gate: fmt, tokens, docs, prettier, svelte-check, clippy `-D warnings`, nextest + doctests, vitest, cargo-deny |
 | `cargo xtask check --fast` | pre-commit subset: fmt, tokens, docs, prettier, clippy |
 | `cargo xtask check --ci` | full + `npm ci` + fails if generated files are not committed |
@@ -116,6 +118,67 @@ symbols. The app version has one source: `[workspace.package] version` in `Cargo
 
 Git hooks (`.githooks`, activated by `setup` via `core.hooksPath`): **pre-commit** runs
 `check --fast`, **pre-push** the full `check`.
+
+## Release — from the merge to the gang (ADR-006)
+
+`cargo xtask release <channel>` does the whole step from the dev PC (later from CI with the
+same code). What it does, in order:
+
+1. **Version.** `--bump patch|minor|major` or `--version x.y.z` writes the new version into
+   `Cargo.toml` (`[workspace.package]`, the one source), `apps/desktop/package.json` and
+   `package-lock.json`, and `cargo update --workspace` follows in `Cargo.lock`. Without
+   either flag the current version is released again (a second channel of the same build).
+2. **Changelog cut.** The lines under `## Unreleased` in `CHANGELOG.md` move into a new
+   `## <version> (<date>)` section; they are the release notes (`latest.json` and the
+   GitHub release page). Nothing under Unreleased and no section for the version → the
+   release stops. The in-app help is regenerated.
+3. **Build + sign.** `cargo xtask build` with the updater key in the environment
+   (`TAURI_SIGNING_PRIVATE_KEY`): Tauri writes a `.sig` next to every installer
+   (`createUpdaterArtifacts` in `tauri.conf.json`). `--skip-build` reuses the last build.
+4. **`latest.json`** in the updater's static format (`version`, `notes`, `pub_date`,
+   `platforms.<os>-<arch>.{url, signature}`), written to `target/release/bundle/`. A
+   release runs on one OS at a time, so the other platform's entry is kept from the
+   manifest already on the host — only if it is the same version.
+5. **Upload** to `YAPPA_RELEASE_TARGET` (`.env`, or `--target`), installers first, the
+   manifest last. Default (ADR-006 amendment 2026-10-25): `github` — GitHub Releases of
+   this repo, `v<version>` holds the installers, the rolling release `<channel>` holds
+   `latest.json` (`gh auth login` first; `github:owner/repo` for another repo). Second
+   target: a folder Caddy serves on the box (on this PC a WSL path such as
+   `\\wsl.localhost\Ubuntu\home\<user>\yappa\infra\livekit\updates`) or `user@host:/path`
+   over scp. `--no-upload` leaves everything in `target/release/bundle/`.
+
+Git stays yours: the command changes the working tree and ends with what to commit and tag
+(`git tag v<version>`). The app reads `<update_base_url>/<channel>/latest.json` — the base
+from `GET /config` (`YAPPA_UPDATE_BASE_URL` of the control plane), the channel from
+„Ich → Profi → Updates“ — at start and hourly, downloads a newer version in the background,
+checks its signature against the public key in `tauri.conf.json`, and installs on click,
+never in a call.
+
+`.env` in the repo root (gitignored; only `release` reads it — the server's own `.env` is
+`infra/livekit/.env`):
+
+```ini
+# The Tauri updater's minisign key (ADR-006). `cargo xtask release keygen` writes the pair
+# to ~/.yappa/updater.key(.pub) and prints these lines; the public key goes into
+# apps/desktop/src-tauri/tauri.conf.json (plugins.updater.pubkey). Never commit the private
+# key; back it up — without it no installed app accepts an update. In CI the key string
+# itself is the secret TAURI_SIGNING_PRIVATE_KEY.
+TAURI_SIGNING_PRIVATE_KEY_PATH=
+TAURI_SIGNING_PRIVATE_KEY_PASSWORD=
+
+# Where `cargo xtask release <channel>` puts latest.json and the installers. Empty =
+# github (the default: GitHub Releases of this repo); github:owner/repo, a folder Caddy
+# serves as /updates (the box), or user@host:/path over scp.
+YAPPA_RELEASE_TARGET=
+
+# Only for the folder/scp targets: the public address of that folder — what the control
+# plane hands out as update_base_url (then also set it in infra/livekit/.env:
+# YAPPA_UPDATE_BASE_URL=https://<YAPPA_DOMAIN>/updates).
+YAPPA_UPDATE_BASE_URL=
+```
+
+The variables in the environment win over `.env`. Replacing the key (`release keygen
+--force`) means every installed app stops accepting updates until it is reinstalled by hand.
 
 ## In-app help — docs from the repo
 

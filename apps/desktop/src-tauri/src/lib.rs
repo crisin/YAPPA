@@ -5,6 +5,7 @@
 pub mod admin;
 pub mod api;
 pub mod logging;
+pub mod updater;
 
 use api_types::{ClientInfo, Invite};
 use audio_engine::{CpalIo, EngineConfig, EngineHandle};
@@ -51,6 +52,8 @@ pub struct App {
     /// Audio device hot-plug notifications from the OS (A2); `None` where the OS has none
     /// — the engine then polls while a device is missing. Kept so it is dropped at exit.
     _devices: Option<platform::DeviceWatcher>,
+    /// A downloaded update waiting for the click (D1).
+    update: updater::UpdateSlot,
 }
 
 impl App {
@@ -324,6 +327,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         presence: api::PresenceSlot::default(),
         hotkeys,
         _devices: devices,
+        update: updater::UpdateSlot::default(),
     });
     // Registered after `manage`: the callback needs the App state.
     let handle = app.handle().clone();
@@ -371,6 +375,10 @@ pub fn run() {
             show_window(handle);
         }))
         .plugin(tauri_plugin_deep_link::init())
+        // Updates (D1): the endpoint is set per check from the server's config and the
+        // chosen channel (`updater.rs`); the public key sits in tauri.conf.json.
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(setup)
         .invoke_handler(tauri::generate_handler![
             app_info,
@@ -407,6 +415,8 @@ pub fn run() {
             admin::admin_delete_channel,
             admin::admin_events,
             admin::admin_set_policy,
+            updater::check_update,
+            updater::install_update,
             pending_invite_link
         ])
         .build(tauri::generate_context!())

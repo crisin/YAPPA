@@ -317,6 +317,18 @@ schaltet nicht von selbst ein.
 
 Mehr dazu: [Rückkopplung (Wikipedia)](https://de.wikipedia.org/wiki/Rückkopplung_(Akustik))
 
+## Update-Kanal
+
+Welche Versionen deine App von selbst bekommt: „Stabil“ hat die Gang schon einen Abend
+lang benutzt, „Beta“ ist etwas früher dran, „Nightly“ ist jeder neue Stand und kann
+kaputt sein. Einstellen unter „Ich → Profi → Updates“.
+
+Die App schaut beim Start und dann jede Stunde beim eigenen Server nach, lädt eine neuere
+Version im Hintergrund herunter und prüft ihre Signatur. Installiert wird erst, wenn du
+im Hinweis oben oder auf der Updates-Seite klickst – nie mitten im Call; danach startet
+die App neu. Ist deine Version für den Server zu alt, verlässt sie den Call von selbst,
+und der Hinweis bleibt, bis das Update drauf ist.
+
 ## Rauschunterdrückung
 
 Entfernt Lüfter, Tastatur und Straßenlärm aus dem Mikrofonsignal, bevor es gesendet wird.

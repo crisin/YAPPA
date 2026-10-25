@@ -55,8 +55,8 @@ digitale Teil mit 50 bis 60 ms; der Rest sind Mikrofon- und Ausgabepuffer.
 
 Im Moment hat yAPPA Channels, **Rauschunterdrückung** (DeepFilterNet), Sprachaktivierung
 und **Push-to-Talk**, aber noch keine **Echo**-Unterdrückung (deshalb: Headset, oder
-„Taste halten“ mit Lautsprechern), keine automatischen Updates (neue Versionen kommen als
-Installer vom Admin) und kein Symbol im Infobereich — Fenster schließen beendet den Call.
+„Taste halten“ mit Lautsprechern) und kein Symbol im Infobereich — Fenster schließen
+beendet den Call. Updates holt sich die App selbst (**Update-Kanal** im Glossar).
 Bluetooth-Headsets gehen, klingen im Freisprechmodus aber wie Telefon (16 kHz – das ist
 Bluetooth, nicht yAPPA); yAPPA rechnet jede Geräterate auf seine 48 kHz um. Steckst du
 dein Headset im Call ab (oder das Bluetooth bricht weg), läuft yAPPA auf dem Standardgerät

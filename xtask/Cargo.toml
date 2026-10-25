@@ -1,6 +1,6 @@
 [package]
 name = "xtask"
-description = "Repo tasks: cargo xtask check | gen-types | tokens | docs"
+description = "Repo tasks: cargo xtask check | gen-types | tokens | docs | release"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,6 +14,9 @@ serde.workspace = true
 serde_json.workspace = true
 # `cargo xtask docs`: markdown from the repo -> the in-app help.
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
+
+[dev-dependencies]
+insta.workspace = true
 
 [lints]
 workspace = true

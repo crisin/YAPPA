@@ -29,6 +29,9 @@ services:
       YAPPA_DOMAIN: "${YAPPA_DOMAIN:?set YAPPA_DOMAIN in .env}"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Updates (ADR-006): `cargo xtask release <channel>` puts latest.json and the
+      # installers into updates/<channel>/; Caddy serves them under /updates/.
+      - ./updates:/srv/updates:ro
       - caddy_data:/data
       - caddy_config:/config
     network_mode: host
@@ -46,7 +49,10 @@ services:
       LIVEKIT_API_SECRET: "${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in .env}"
       LIVEKIT_WS_URL: "wss://${YAPPA_DOMAIN:?set YAPPA_DOMAIN in .env}"
       LIVEKIT_HTTP_URL: "http://localhost:7880"
-      YAPPA_UPDATE_BASE_URL: "https://${YAPPA_DOMAIN}/updates"
+      # Where the app looks for <channel>/latest.json (ADR-006 amendment 2026-10-25):
+      # GitHub Releases by default; the box's own /updates/ folder as the second target
+      # (`YAPPA_UPDATE_BASE_URL=https://<YAPPA_DOMAIN>/updates` in .env).
+      YAPPA_UPDATE_BASE_URL: "${YAPPA_UPDATE_BASE_URL:-https://github.com/crisin/YAPPA/releases/download}"
     volumes:
       - control_data:/data
     network_mode: host
