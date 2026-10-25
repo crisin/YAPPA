@@ -48,6 +48,9 @@ pub struct App {
     presence: api::PresenceSlot,
     /// Global hotkeys (push-to-talk), running for the app's lifetime.
     hotkeys: platform::Hotkeys,
+    /// Audio device hot-plug notifications from the OS (A2); `None` where the OS has none
+    /// — the engine then polls while a device is missing. Kept so it is dropped at exit.
+    _devices: Option<platform::DeviceWatcher>,
 }
 
 impl App {
@@ -261,6 +264,16 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         }
     });
     hotkeys.set_ptt(loaded.app.ptt_key.clone());
+    // Headset plugged in or out (A2): the engine reads its device list again and takes the
+    // chosen device back. The watcher calls from its own thread.
+    let for_devices = Arc::downgrade(&engine);
+    let devices = platform::DeviceWatcher::start(move || {
+        if let Some(engine) = for_devices.upgrade() {
+            if let Some(engine) = engine.lock().unwrap().as_ref() {
+                engine.send(Command::RefreshDevices);
+            }
+        }
+    });
 
     app.manage(App {
         pending_link: Mutex::new(first_link),
@@ -270,6 +283,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         app_settings: Mutex::new(loaded.app),
         presence: api::PresenceSlot::default(),
         hotkeys,
+        _devices: devices,
     });
     // Registered after `manage`: the callback needs the App state.
     let handle = app.handle().clone();

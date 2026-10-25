@@ -38,9 +38,6 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 **A · Audio block** (ADR-009, interview 2026-10-23) — before M4; order is the decision
 
-- [ ] A2 Device return: `DeviceWatcher` trait in `crates/platform` (Windows
-      `IMMNotificationClient`, macOS CoreAudio listeners, absence = today); a lost device
-      is retried, the chosen device is taken back when it returns, the banner says so
 - [ ] A3 Global mute and deafen keys in „Tasten“ through the existing hook; dock shows
       the state (user: before the next evening)
 - [ ] A4 Loudness levelling at the receiver: `dsp::Leveler` per mixer slot (≈ 400 ms
@@ -135,6 +132,18 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] A2 Device return (ADR-009, 2026-10-25): `platform::DeviceWatcher` — Windows
+      `IMMNotificationClient` on the MMDevice enumerator, bursts coalesced on a thread of
+      its own (300 ms quiet), the shell turns a change into `RefreshDevices`; macOS has no
+      watcher yet (`start` gives `None`) and degrades to the engine's polling. Engine: a
+      failed stream is reopened on the chosen device first, then the default; while a side
+      runs on a stand-in the device list is polled once a second and the chosen device
+      taken back as soon as it is listed; with „Standardgerät“ chosen a new system default
+      is followed on refresh. New `Event::DeviceState` (`DeviceSlot` per side: open name,
+      fallback, missing name) replaces the error banner for a missing device: the UI shows
+      a banner and a line in the microphone/output settings that go by themselves when the
+      device is back. Fakes cover unplug, return, refresh and a moved default; the real
+      pull-and-plug of a USB headset in a call is the user's review step.
 - [x] Unreachable reason (first evening 2026-10-24): `client::api` classifies a missing
       answer (connect/timeout/TLS/other), resolves the host once more to tell "no such
       name" from "IPv6-only server" from "server down", logs the error chain at warn;

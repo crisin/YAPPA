@@ -1,10 +1,15 @@
 //! OS integration behind small interfaces (CLAUDE.md rule 3). Today: global hotkeys for
-//! push-to-talk (spike S3, ADR-007). The hook sees every key and mouse button system-wide —
+//! push-to-talk (spike S3, ADR-007) and audio device hot-plug notifications ([`devices`],
+//! A2). The hook sees every key and mouse button system-wide —
 //! also while a game in fullscreen has the focus — and passes it on, so the game still
 //! gets the key.
 //!
 //! A hotkey is a stable name: a keyboard key as `KeyV`, `F13`, `CapsLock`, … and a mouse
 //! button as `Mouse4`, `Mouse5`, `MouseMiddle`. Left and right click are never offered.
+
+pub mod devices;
+
+pub use devices::DeviceWatcher;
 
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};

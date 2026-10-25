@@ -13,5 +13,16 @@ publish.workspace = true
 rdev = "0.5"
 tracing.workspace = true
 
+# Device hot-plug (A2): `IMMNotificationClient` on the MMDevice enumerator. Same version
+# cpal already uses, so no second copy. MIT OR Apache-2.0.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_Media_Audio",
+  "Win32_System_Com",
+] }
+# The `implement` macro refers to this crate by name.
+windows-core = "0.62"
+
 [lints]
 workspace = true

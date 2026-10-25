@@ -81,7 +81,9 @@ pub enum Command {
         token: String,
     },
     Leave,
-    /// Ask for a fresh [`Event::Devices`] (a headset was plugged in).
+    /// Ask for a fresh [`Event::Devices`] and take the chosen device back if it is there
+    /// again (A2). The shell sends this on every hot-plug the OS reports; the UI on
+    /// „Geräte neu einlesen“.
     RefreshDevices,
     /// The UI (re)attached and missed what happened so far: send the current state again —
     /// ready, devices, connection, room and participants.
@@ -143,6 +145,26 @@ pub enum Event {
     StageLevels {
         stages: Vec<StageLevel>,
     },
+    /// Which device is actually open on each side (A2): the chosen one, or the default
+    /// standing in while the chosen one is away. Sent when it changes and on `Resync`.
+    DeviceState {
+        input: DeviceSlot,
+        output: DeviceSlot,
+    },
+}
+
+/// One side of the sound hardware as it stands right now (A2).
+#[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct DeviceSlot {
+    /// Name of the open device; `None` = nothing is open on this side.
+    pub open: Option<String>,
+    /// The chosen device is away: the system default stands in (or nothing). Cleared by
+    /// itself when the chosen device is back and open again.
+    pub fallback: bool,
+    /// Name of the missing chosen device, when the engine has seen it before.
+    pub missing: Option<String>,
 }
 
 /// One stage of the send chain as the pro view shows it.

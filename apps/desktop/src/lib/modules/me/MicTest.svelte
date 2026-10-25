@@ -4,6 +4,7 @@
   import { getApp } from '../../app.svelte';
   import Info from '../../Info.svelte';
   import Meter from '../../Meter.svelte';
+  import { Session } from '../../session.svelte';
 
   let { note = true }: { note?: boolean } = $props();
 
@@ -15,6 +16,8 @@
   // The device's own rate: anything but 48 kHz is resampled (A1). 16 kHz is the Bluetooth
   // hands-free profile — the gang should know why it sounds like a phone.
   const rate = $derived(session.stats?.capture?.sampleRate ?? 48000);
+  // The chosen microphone is away (A2): say what runs instead; the line goes by itself.
+  const away = $derived(Session.fallbackNote('Mikrofon', session.inputState));
 </script>
 
 <div class="label"><label for="input">Mikrofon</label><Info term="pegel" /></div>
@@ -39,6 +42,9 @@
       <option value={String(channel)}>Eingang {channel + 1}</option>
     {/each}
   </select>
+{/if}
+{#if away}
+  <p class="note away" role="status">{away}</p>
 {/if}
 <Meter db={session.inputDb} active={session.sending} label="Mikrofontest" />
 {#if rate !== 48000}
@@ -87,5 +93,9 @@
     margin: 0;
     color: var(--color-text-muted);
     font-size: var(--font-size-sm);
+  }
+
+  .away {
+    color: var(--color-warning);
   }
 </style>
