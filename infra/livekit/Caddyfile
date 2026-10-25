@@ -1,9 +1,16 @@
 # TLS in front of LiveKit's signalling port and the control plane. The certificate comes
-# from Let's Encrypt. /api/… goes to yappa-control (prefix stripped), everything else to
-# LiveKit.
+# from Let's Encrypt. /api/… goes to yappa-control (prefix stripped), /updates/… is the
+# folder the release step fills (ADR-006), everything else goes to LiveKit.
 {$YAPPA_DOMAIN} {
 	handle_path /api/* {
 		reverse_proxy localhost:8090
+	}
+	# <channel>/latest.json + the signed installers, from infra/livekit/updates/ (home.yml
+	# mounts it). The manifest must not be cached: the app asks it hourly.
+	handle_path /updates/* {
+		root * /srv/updates
+		header /*/latest.json Cache-Control "no-cache"
+		file_server
 	}
 	reverse_proxy localhost:7880
 }

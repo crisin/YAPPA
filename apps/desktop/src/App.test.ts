@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App.svelte';
 import { MOCK_INVITE_LINK, createMockApi } from './lib/mockApi';
 import { createMockEngine, encodeInvite } from './lib/mockEngine';
@@ -20,7 +20,7 @@ async function start(
   const api = createMockApi(scene, engine);
   await prepare?.(api);
   const result = render(App, { props: { api, engine } });
-  if (scene === 'call' || scene === 'member' || scene === 'lobby') {
+  if (['call', 'member', 'lobby', 'update', 'update-ready'].includes(scene)) {
     await screen.findByRole('heading', { level: 1, name: /^Hallo / });
   } else if (scene === 'login') {
     await screen.findByRole('heading', { level: 1, name: 'Willkommen bei yAPPA' });
@@ -640,5 +640,69 @@ describe('Invite links from the OS', () => {
     await start('invite');
     await waitFor(() => expect(screen.getByLabelText('Einladung')).toHaveValue(MOCK_INVITE_LINK));
     expect(screen.getByLabelText('Dein Name')).toBeInTheDocument();
+  });
+});
+
+describe('Updates (D1)', () => {
+  it('shows a downloaded update in the banner and installs it on click', async () => {
+    const { api } = await start('update-ready');
+    const install = vi.spyOn(api, 'installUpdate');
+    const text = await screen.findByText(/^Update auf 0\.2\.0 ist bereit\./);
+    expect(text).toBeInTheDocument();
+    expect(text).not.toHaveTextContent('Call verlassen');
+    await fireEvent.click(screen.getByRole('button', { name: 'Jetzt installieren' }));
+    expect(install).toHaveBeenCalledOnce();
+    // Not blocking: it can be closed.
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('leaves the call before installing', async () => {
+    const { api } = await start('update-ready');
+    const leave = vi.spyOn(api, 'leaveChannel');
+    const install = vi.spyOn(api, 'installUpdate');
+    await joinRaid();
+    expect(
+      await screen.findByText(/Zum Installieren wird der Call verlassen\./),
+    ).toBeInTheDocument();
+    await fireEvent.click(screen.getByRole('button', { name: 'Jetzt installieren' }));
+    await waitFor(() => expect(install).toHaveBeenCalledOnce());
+    expect(leave).toHaveBeenCalledOnce();
+    await waitFor(() =>
+      expect(within(dock()).getByRole('status')).toHaveTextContent('Nicht verbunden'),
+    );
+  });
+
+  it('forces a too old version out of the call and offers the update', async () => {
+    const { api } = await start('update');
+    const leave = vi.spyOn(api, 'leaveChannel');
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(
+      'Diese Version (0.1.0) ist zu alt für den Server – mindestens 99.0.0',
+    );
+    expect(
+      within(alert).queryByRole('button', { name: 'Hinweis schließen' }),
+    ).not.toBeInTheDocument();
+    // The update is found right after the config: the banner offers the install.
+    expect(
+      await within(alert).findByRole('button', { name: 'Jetzt installieren' }),
+    ).toBeInTheDocument();
+    await fireEvent.click(channel(/^Raid-Abend/));
+    await waitFor(() => expect(leave).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(within(dock()).getByRole('status')).toHaveTextContent('Nicht verbunden'),
+    );
+  });
+
+  it('checks on request from the Updates page and says when it is up to date', async () => {
+    await start();
+    await openMe('Updates');
+    const page = within(stage());
+    await fireEvent.click(page.getByRole('button', { name: 'Jetzt nach Updates suchen' }));
+    await waitFor(() =>
+      expect(page.getByRole('status')).toHaveTextContent(
+        /^Auf dem neuesten Stand \(geprüft \d\d:\d\d\)\.$/,
+      ),
+    );
+    expect(page.getByRole('radio', { name: /Stabil/ })).toBeChecked();
   });
 });

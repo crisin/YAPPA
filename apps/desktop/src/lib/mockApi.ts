@@ -16,6 +16,7 @@ import type { Participant } from './types/Participant';
 import type { PresenceState } from './types/PresenceState';
 import type { PublicConfig } from './types/PublicConfig';
 import type { Role } from './types/Role';
+import type { UpdateStatus } from './types/UpdateStatus';
 import type { User } from './types/User';
 import { DEFAULT_SCENE, type Scene } from './scene';
 
@@ -187,6 +188,13 @@ export function createMockApi(scene: Scene = DEFAULT_SCENE, engine?: Engine): Ap
     notify();
   };
 
+  // The versions the mock engine reports 0.1.0; these two scenes offer a newer one.
+  const update: UpdateStatus =
+    scene === 'update'
+      ? { kind: 'ready', version: '99.0.0', notes: '- Alles neu.' }
+      : scene === 'update-ready'
+        ? { kind: 'ready', version: '0.2.0', notes: '- Updates installieren sich selbst (D1).' }
+        : { kind: 'upToDate' };
   const config: PublicConfig = {
     apiVersion: 1,
     minVersion: scene === 'update' ? '99.0.0' : '0.1.0',
@@ -281,6 +289,14 @@ export function createMockApi(scene: Scene = DEFAULT_SCENE, engine?: Engine): Ap
       return Promise.resolve(pressed);
     },
     hotkeysGlobal: () => Promise.resolve(true),
+    checkUpdate: () =>
+      scene === 'offline'
+        ? Promise.resolve({ kind: 'failed', reason: 'Server nicht erreichbar.' })
+        : Promise.resolve(structuredClone(update)),
+    installUpdate: () =>
+      update.kind === 'ready'
+        ? Promise.resolve()
+        : reject('no_update', 'Es ist kein Update heruntergeladen.'),
     inviteLinks(handler) {
       // Scene `invite`: the app was started by clicking the invite link.
       if (scene === 'invite') queueMicrotask(() => handler(MOCK_INVITE_LINK));

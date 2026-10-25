@@ -26,10 +26,15 @@
   shell.register(adminModule(app));
   shell.register(meModule(app));
 
+  /** Hourly (ADR-006): the server's config — minimum version, kill switch — and a look at
+   * the update channel. */
+  const CONFIG_INTERVAL_MS = 60 * 60 * 1000;
+
   async function loadConfig() {
     try {
       app.config = await api.config();
       shell.clearBanner('offline');
+      void app.updater.check();
     } catch (reason) {
       // Not logged in yet means: no server known yet — that is not "offline".
       const failure = reason as { code?: string; message?: string } | undefined;
@@ -60,8 +65,10 @@
       void loadConfig();
       stopLinks = await api.inviteLinks(receiveLink);
     })();
+    const hourly = setInterval(() => void loadConfig(), CONFIG_INTERVAL_MS);
     return () => {
       gone = true;
+      clearInterval(hourly);
       stop?.();
       stopLinks?.();
       gang.stop();
@@ -170,17 +177,43 @@
     });
   });
 
+  // A downloaded update (D1): a polite banner until the person clicks; in a call the click
+  // leaves it first. Closed, it comes back with the next hourly check.
+  $effect(() => {
+    const ready = app.updater.ready;
+    const inRoom = session.inRoom;
+    untrack(() => {
+      if (ready) {
+        shell.showBanner({
+          id: 'update',
+          priority: BANNER.update,
+          text: `Update auf ${ready.version} ist bereit.${inRoom ? ' Zum Installieren wird der Call verlassen.' : ''}`,
+          action: { label: 'Jetzt installieren', run: () => void app.installUpdate() },
+          dismissible: true,
+        });
+      } else shell.clearBanner('update');
+    });
+  });
+
+  // Too old or killed (ADR-006): out of the call, and the banner stays until the update
+  // is installed — the server refuses this version a token anyway.
   $effect(() => {
     const config = app.config;
     const version = app.info?.version;
     const blocked =
       config && version && isBlocked(version, config.minVersion, config.killedVersions);
+    const ready = app.updater.ready;
+    const inRoom = session.inRoom;
     untrack(() => {
       if (config && version && blocked) {
+        if (inRoom) void app.leaveVoice();
         shell.showBanner({
           id: 'blocked',
           priority: BANNER.blocked,
-          text: `Diese Version (${version}) ist zu alt für den Server – mindestens ${config.minVersion} wird gebraucht. Bitte aktualisieren.`,
+          text: `Diese Version (${version}) ist zu alt für den Server – mindestens ${config.minVersion} wird gebraucht.${ready ? '' : ' Bitte aktualisieren.'}`,
+          action: ready
+            ? { label: 'Jetzt installieren', run: () => void app.installUpdate() }
+            : { label: 'Nach Update suchen', run: () => void app.updater.check() },
           dismissible: false,
         });
       } else shell.clearBanner('blocked');

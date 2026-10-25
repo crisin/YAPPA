@@ -13,6 +13,7 @@ import type { PresenceEntry } from './types/PresenceEntry';
 import type { PublicConfig } from './types/PublicConfig';
 import type { Role } from './types/Role';
 import type { TalkMode } from './types/TalkMode';
+import type { UpdateStatus } from './types/UpdateStatus';
 import type { User } from './types/User';
 import type { VersionPolicy } from './types/VersionPolicy';
 import { isTauri } from '@tauri-apps/api/core';
@@ -67,6 +68,14 @@ export interface Api {
   captureKey(action: KeyAction): Promise<string | null>;
   /** False when the global hook is not running: the key then only works in the window. */
   hotkeysGlobal(): Promise<boolean>;
+  /**
+   * Looks at `<update_base_url>/<channel>/latest.json` (D1); a newer version is downloaded
+   * and verified before this answers `ready`. Never rejects for a failed check — that is a
+   * status.
+   */
+  checkUpdate(): Promise<UpdateStatus>;
+  /** Installs the downloaded update and restarts the app. Rejects with `no_update`. */
+  installUpdate(): Promise<void>;
   admin: {
     members(): Promise<Member[]>;
     setRole(userId: string, role: Role): Promise<void>;

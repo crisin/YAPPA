@@ -12,5 +12,8 @@ build/
 .DS_Store
 Thumbs.db
 apps/desktop/src-tauri/gen/
+# Release output on the box (ADR-006): installers + latest.json, never in git.
+infra/livekit/updates/*
+!infra/livekit/updates/.gitkeep
 .claude/settings.local.json
 .claude/worktrees/

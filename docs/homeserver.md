@@ -210,9 +210,34 @@ docker compose -f home.yml exec control yappa-control policy --min 0.2.0 --kill 
 | yAPPA aktualisieren | `git pull && docker compose -f home.yml up -d --build` — nicht während jemand spricht |
 | LiveKit aktualisieren | Version in `home.yml` ändern, dann wie oben |
 | Datenbank sichern | `docker compose -f home.yml cp control:/data/yappa.db ./yappa-backup.db` |
+| Updates ausliefern | nichts auf der VM: `cargo xtask release <stable\|beta>` auf dem Entwickler-PC lädt zu den GitHub Releases hoch; die VM als zweites Ziel siehe unten |
 
 Alle Container starten nach einem Neustart der VM von selbst (`restart: unless-stopped`).
 Ein Neustart der Control-Plane beendet keinen laufenden Call.
+
+### Updates für die App
+
+Die App fragt beim Start und stündlich `<Update-Host>/<Kanal>/latest.json` ab, lädt eine
+neuere Version im Hintergrund und installiert sie auf Klick – nie mitten im Call. Den
+Update-Host nennt die Control-Plane (`YAPPA_UPDATE_BASE_URL` in `home.yml`).
+
+**Standard: GitHub Releases** (Entscheidung 2026-10-25, Nachtrag in ADR-006). Ein
+Homeserver, der nur über IPv6 erreichbar ist, würde Leute ohne IPv6 auch von Updates
+abschneiden; das Repo ist öffentlich. `home.yml` zeigt deshalb von sich aus auf
+`https://github.com/crisin/YAPPA/releases/download`; `cargo xtask release <channel>` auf
+dem Entwickler-PC legt dort die Installer (Release `v<version>`) und `latest.json`
+(Release `<channel>`) ab. Auf der VM ist dafür nichts zu tun.
+
+**Zweites Ziel: die VM selbst.** Caddy liefert den Ordner `infra/livekit/updates/` als
+`https://<YAPPA_DOMAIN>/updates/` aus, pro Kanal ein Unterordner mit `latest.json` und
+den Installern. Dafür in `infra/livekit/.env` auf der VM
+`YAPPA_UPDATE_BASE_URL=https://<YAPPA_DOMAIN>/updates` setzen (`docker compose -f home.yml
+up -d` danach) und auf dem Entwickler-PC in der `.env` im Repo-Wurzelverzeichnis
+`YAPPA_RELEASE_TARGET` auf den Ordner zeigen lassen: bei WSL2 auf demselben PC
+`\\wsl.localhost\Ubuntu\home\<user>\yappa\infra\livekit\updates`, bei einer VM
+`<user>@<vm>:/home/<user>/yappa/infra/livekit/updates` über scp; dazu dieselbe
+`YAPPA_UPDATE_BASE_URL`. Der Ordner ist in git ignoriert; auf der VM muss nichts neu
+gestartet werden.
 
 ## Wenn es nicht geht
 
