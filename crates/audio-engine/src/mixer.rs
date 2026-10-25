@@ -3,8 +3,11 @@
 //! Two halves. [`MixerRt`] lives in the real-time callback and only touches `rtrb` rings and
 //! atomics. [`MixerControl`] is everything else: handing rings to speakers, volume, mute,
 //! levels. The number of speakers is fixed up front so the callback never allocates.
+//!
+//! Per slot a [`Leveler`] (A4) brings every voice to about the same level before the manual
+//! per-person volume is applied on top; the sum then passes the limiter.
 
-use dsp::Limiter;
+use dsp::{Leveler, LevelerParams, Limiter};
 use rtrb::{Consumer, Producer, RingBuffer};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering::Relaxed};
@@ -32,6 +35,9 @@ struct Slot {
     flush: AtomicBool,
     /// RMS of the last received frame as `f32` bits, 0..1. Written by the sink.
     level: AtomicU32,
+    /// The leveler's current gain for this speaker, dB as `f32` bits. Written by the
+    /// callback, read for the diagnosis.
+    leveler_db: AtomicU32,
 }
 
 /// The limiter at the end of the mix: 1 dB below full scale, recovers within 80 ms.
@@ -43,6 +49,8 @@ struct Shared {
     slots: [Slot; SLOTS],
     /// Master gain (linear, `f32` bits), unity until set.
     master: AtomicU32,
+    /// Leveling on (the default); off, every leveler slides back to 0 dB.
+    leveling: AtomicBool,
     deafened: AtomicBool,
     underruns: AtomicU32,
     skips: AtomicU32,
@@ -81,19 +89,25 @@ pub struct MixerRt {
     shared: Arc<Shared>,
     rings: Vec<Consumer<i16>>,
     playing: [bool; SLOTS],
+    /// One per slot, allocated here — never in the callback.
+    levelers: Vec<Leveler>,
     limiter: Limiter,
 }
 
 pub fn mixer() -> (Arc<MixerControl>, MixerRt) {
     let shared = Arc::new(Shared::default());
     shared.master.store(1f32.to_bits(), Relaxed);
+    shared.leveling.store(true, Relaxed);
     let mut free = Vec::with_capacity(SLOTS);
     let mut rings = Vec::with_capacity(SLOTS);
+    let mut levelers = Vec::with_capacity(SLOTS);
+    let sample_rate = transport::SAMPLE_RATE as f32;
     for index in 0..SLOTS {
         let (producer, consumer) = RingBuffer::new(RING);
         shared.slots[index].gain.store(1f32.to_bits(), Relaxed);
         free.push((index, producer));
         rings.push(consumer);
+        levelers.push(Leveler::new(sample_rate, LevelerParams::default()));
     }
     free.reverse(); // hand out slot 0 first
     let control = Arc::new(MixerControl {
@@ -108,25 +122,31 @@ pub fn mixer() -> (Arc<MixerControl>, MixerRt) {
         shared,
         rings,
         playing: [false; SLOTS],
-        limiter: Limiter::new(transport::SAMPLE_RATE as f32, CEILING_DB, RELEASE_MS),
+        levelers,
+        limiter: Limiter::new(sample_rate, CEILING_DB, RELEASE_MS),
     };
     (control, rt)
 }
 
 impl MixerRt {
-    /// Adds every speaker into `out` (mono, -1..1), which must come in zeroed, applies the
-    /// master volume and limits the sum below clipping — 19 people laughing at once used to
-    /// clip hard (realtime review 2026-10-23, item c). Real-time safe: no allocation, no
-    /// lock, no system call.
+    /// Adds every speaker into `out` (mono, -1..1), which must come in zeroed — each through
+    /// their leveler and their manual volume — applies the master volume and limits the sum
+    /// below clipping — 19 people laughing at once used to clip hard (realtime review
+    /// 2026-10-23, item c). Real-time safe: no allocation, no lock, no system call.
     pub fn render(&mut self, out: &mut [f32]) {
         let wanted = out.len();
         let deafened = self.shared.deafened.load(Relaxed);
+        let leveling = self.shared.leveling.load(Relaxed);
         for (index, ring) in self.rings.iter_mut().enumerate() {
             let slot = &self.shared.slots[index];
             let playing = &mut self.playing[index];
+            let leveler = &mut self.levelers[index];
+            leveler.set_enabled(leveling);
             if slot.flush.swap(false, Relaxed) {
                 discard(ring, ring.slots());
                 *playing = false;
+                leveler.reset();
+                slot.leveler_db.store(0f32.to_bits(), Relaxed);
             }
             let mut queued = ring.slots();
             let cushion = PREFILL.max(wanted + BLOCK);
@@ -144,11 +164,20 @@ impl MixerRt {
             let take = queued.min(wanted);
             if let Ok(chunk) = ring.read_chunk(take) {
                 if !deafened && !slot.muted.load(Relaxed) {
-                    let gain = f32::from_bits(slot.gain.load(Relaxed)) / f32::from(i16::MAX);
+                    // The leveler measures this block (before any gain) and applies the
+                    // gain it derived from the blocks before — one pass over the chunk.
+                    let auto = dsp::db_to_gain(leveler.gain_db());
+                    let manual = f32::from_bits(slot.gain.load(Relaxed));
+                    let gain = auto * manual;
+                    let mut energy = 0.0f32;
                     let (head, tail) = chunk.as_slices();
                     for (o, s) in out.iter_mut().zip(head.iter().chain(tail)) {
-                        *o += f32::from(*s) * gain;
+                        let x = f32::from(*s) * NORM;
+                        energy += x * x;
+                        *o += x * gain;
                     }
+                    leveler.step(energy / take as f32, take);
+                    slot.leveler_db.store(leveler.gain_db().to_bits(), Relaxed);
                 }
                 chunk.commit_all();
             }
@@ -166,6 +195,9 @@ impl MixerRt {
         self.limiter.process(out);
     }
 }
+
+/// i16 → -1..1.
+const NORM: f32 = 1.0 / i16::MAX as f32;
 
 fn discard(ring: &mut Consumer<i16>, n: usize) {
     if let Ok(chunk) = ring.read_chunk(n.min(ring.slots())) {
@@ -217,6 +249,25 @@ impl MixerControl {
 
     pub fn set_deafened(&self, deafened: bool) {
         self.shared.deafened.store(deafened, Relaxed);
+    }
+
+    /// Loudness levelling per speaker on or off (A4). Off, the gains slide back to 0 dB.
+    pub fn set_leveling(&self, on: bool) {
+        self.shared.leveling.store(on, Relaxed);
+    }
+
+    /// The leveler's current gain for everyone speaking, as (identity, dB) — the diagnosis
+    /// reads "too quiet" off it.
+    pub fn leveler_gains(&self) -> Vec<(String, f32)> {
+        let routing = self.routing.lock().unwrap();
+        routing
+            .active
+            .iter()
+            .map(|(identity, &index)| {
+                let db = f32::from_bits(self.shared.slots[index].leveler_db.load(Relaxed));
+                (identity.clone(), db)
+            })
+            .collect()
     }
 
     /// Current level of everyone speaking, as (identity, RMS 0..1).
@@ -409,6 +460,7 @@ mod tests {
     fn a_callback_larger_than_the_prefill_does_not_underrun() {
         const CALLBACK: usize = 1056;
         let (control, mut rt) = mixer();
+        control.set_leveling(false); // a steady −6 dBFS would be levelled down below 0.4
         let mut anna = control.speaker("anna").unwrap();
         render(&mut rt, CALLBACK);
         let mut heard = 0;
@@ -432,6 +484,96 @@ mod tests {
             heard > 290 * CALLBACK,
             "plays almost from the start: {heard}"
         );
+    }
+
+    /// Feeds `seconds` of a steady signal to one prefilled speaker, block by block, and
+    /// returns the last rendered block.
+    fn talk(rt: &mut MixerRt, sink: &mut SpeakerSink, sample: i16, seconds: f32) -> Vec<f32> {
+        let mut out = Vec::new();
+        for _ in 0..(seconds * 100.0) as usize {
+            sink.frame(&[sample; BLOCK]);
+            out = render(rt, BLOCK);
+        }
+        out
+    }
+
+    /// A4: a quiet person is brought up towards −20 dBFS over a few seconds, the manual
+    /// volume still sits on top, and the diagnosis sees the gain.
+    #[test]
+    fn a_quiet_speaker_is_levelled_up_and_the_manual_volume_stays_an_offset() {
+        let (control, mut rt) = mixer();
+        let mut anna = control.speaker("anna").unwrap();
+        render(&mut rt, BLOCK);
+        anna.frame(&[0; BLOCK]);
+        anna.frame(&[0; BLOCK]);
+        let quiet = (f32::from(i16::MAX) * dsp::db_to_gain(-32.0)) as i16; // −32 dBFS
+        let first = talk(&mut rt, &mut anna, quiet, 0.05)[0];
+        assert!(
+            (first - dsp::db_to_gain(-32.0)).abs() < 2e-3,
+            "starts at unity: {first}"
+        );
+        let later = talk(&mut rt, &mut anna, quiet, 6.0)[0];
+        let gain_db = dsp::gain_to_db(later / dsp::db_to_gain(-32.0));
+        assert!(
+            (gain_db - 12.0).abs() < 1.0,
+            "+12 dB after 6 s: {gain_db:.1}"
+        );
+        let gains = control.leveler_gains();
+        assert_eq!(gains.len(), 1);
+        assert_eq!(gains[0].0, "anna");
+        assert!(
+            (gains[0].1 - gain_db).abs() < 0.2,
+            "reported {}",
+            gains[0].1
+        );
+        control.set_peer("anna", |m| m.gain = 0.5);
+        let halved = talk(&mut rt, &mut anna, quiet, 0.05)[0];
+        assert!(
+            (halved - later / 2.0).abs() < 2e-3,
+            "manual −6 dB on top: {halved}"
+        );
+    }
+
+    #[test]
+    fn switching_leveling_off_slides_back_to_unity_and_a_new_speaker_starts_fresh() {
+        let (control, mut rt) = mixer();
+        let mut anna = control.speaker("anna").unwrap();
+        render(&mut rt, BLOCK);
+        anna.frame(&[0; BLOCK]);
+        anna.frame(&[0; BLOCK]);
+        let quiet = (f32::from(i16::MAX) * dsp::db_to_gain(-32.0)) as i16;
+        talk(&mut rt, &mut anna, quiet, 6.0);
+        assert!(control.leveler_gains()[0].1 > 10.0);
+        control.set_leveling(false);
+        talk(&mut rt, &mut anna, quiet, 1.0);
+        let on_the_way = control.leveler_gains()[0].1;
+        assert!(
+            on_the_way > 0.0 && on_the_way < 8.0,
+            "slides, no jump: {on_the_way}"
+        );
+        talk(&mut rt, &mut anna, quiet, 3.0);
+        assert_eq!(control.leveler_gains()[0].1, 0.0);
+        control.set_leveling(true);
+        talk(&mut rt, &mut anna, quiet, 2.0);
+        assert!(control.leveler_gains()[0].1 > 3.0);
+        drop(anna);
+        let mut ben = control.speaker("ben").unwrap();
+        render(&mut rt, BLOCK); // the flush resets the slot's leveler
+        ben.frame(&[0; BLOCK]);
+        assert_eq!(control.leveler_gains(), vec![("ben".to_string(), 0.0)]);
+    }
+
+    #[test]
+    fn silence_between_words_does_not_pump_the_gain_up() {
+        let (control, mut rt) = mixer();
+        let mut anna = control.speaker("anna").unwrap();
+        render(&mut rt, BLOCK);
+        anna.frame(&[0; BLOCK]);
+        anna.frame(&[0; BLOCK]);
+        talk(&mut rt, &mut anna, 0, 5.0);
+        assert_eq!(control.leveler_gains()[0].1, 0.0, "silence: untouched");
+        talk(&mut rt, &mut anna, 10, 5.0); // ≈ −70 dBFS: room noise, under the floor
+        assert_eq!(control.leveler_gains()[0].1, 0.0);
     }
 
     #[test]

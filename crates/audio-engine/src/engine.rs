@@ -11,7 +11,7 @@ use dsp::Resampler;
 use dsp::{db_to_gain, gain_to_db};
 use engine_protocol::{
     AudioDevice, Command, ConnectionState, DeviceSlot, DeviceStats, Event, NetworkStats,
-    Participant, PeerLevel, Settings, StageLevel, Stats, TrackKind, PROTOCOL_VERSION,
+    Participant, PeerLevel, Settings, SpeakerStats, StageLevel, Stats, TrackKind, PROTOCOL_VERSION,
 };
 use rtrb::{Consumer, RingBuffer};
 use std::cell::RefCell;
@@ -96,6 +96,7 @@ pub fn spawn(
     let (tx, rx) = mpsc::channel();
     let (mixer, mixer_rt) = mixer();
     mixer.set_master_db(settings.output_gain_db);
+    mixer.set_leveling(settings.auto_level);
     let events = tx.clone();
     transport.attach(
         Box::new(move |event| {
@@ -401,6 +402,9 @@ impl Engine {
         }
         if old.output_gain_db != new.output_gain_db {
             self.mixer.set_master_db(new.output_gain_db);
+        }
+        if old.auto_level != new.auto_level {
+            self.mixer.set_leveling(new.auto_level);
         }
         let chain = ChainConfig::from(&new);
         if chain != ChainConfig::from(&old) {
@@ -848,6 +852,16 @@ impl Engine {
             + counted(&self.capture, |c| c.driver_xruns.load(Relaxed));
         let underruns =
             self.mixer.underruns() + counted(&self.playout, |c| c.driver_xruns.load(Relaxed));
+        let mut speakers: Vec<SpeakerStats> = self
+            .mixer
+            .leveler_gains()
+            .into_iter()
+            .map(|(identity, leveler_db)| SpeakerStats {
+                identity,
+                leveler_db,
+            })
+            .collect();
+        speakers.sort_by(|a, b| a.identity.cmp(&b.identity));
         let busy_blocks = self.pump.busy_blocks.swap(0, Relaxed);
         let busy_sum = self.pump.busy_sum_ns.swap(0, Relaxed);
         let stats = Stats {
@@ -866,6 +880,7 @@ impl Engine {
             } else {
                 busy_sum as f32 / busy_blocks as f32 / 1e6
             },
+            speakers,
         };
         if self.state != ConnectionState::Disconnected {
             // One line per second in the log file: enough to reconstruct an evening.
@@ -888,6 +903,12 @@ impl Engine {
                 playout_underruns = underruns,
                 playout_skips = stats.playout_skips,
                 playout_frames_dropped = stats.playout_frames_dropped,
+                leveler_db = %stats
+                    .speakers
+                    .iter()
+                    .map(|s| format!("{}:{:+.1}", s.identity, s.leveler_db))
+                    .collect::<Vec<_>>()
+                    .join(" "),
                 participants = self.participants.len(),
                 "stats"
             );

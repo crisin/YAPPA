@@ -40,9 +40,6 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 - [ ] A3 Global mute and deafen keys in „Tasten“ through the existing hook; dock shows
       the state (user: before the next evening)
-- [ ] A4 Loudness levelling at the receiver: `dsp::Leveler` per mixer slot (≈ 400 ms
-      level, target ≈ −20 dBFS, ±12 dB, slow, idle below the noise floor), manual volume
-      stays an offset; current gain per speaker in the diagnosis; mixer bench before/after
 - [ ] A5 Monitor „Mich selbst hören“ in the Signalkette: chain output into the playout
       mix as a local slot while the page is open
 - [ ] A6 Drift compensation: hold each speaker's playout ring at the cushion with a
@@ -132,6 +129,18 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] A4 Loudness levelling at the receiver (ADR-009, 2026-10-25): `dsp::Leveler` per
+      mixer slot — speech-gated RMS over 400 ms (blocks under −50 dBFS neither measured nor
+      acted on, so pauses are not pumped up), target −20 dBFS, ±12 dB, +3 / −6 dB per
+      second, measured before the gain (open loop), gain of the previous block applied in
+      the same pass over the ring chunk; the manual per-person volume stays an offset on
+      top; off (Profi → „Audio und Sprechen“) slides every gain back to 0 dB. `dsp::Limiter`
+      as the 7th stage of the send chain (−1 dBFS, 80 ms), against the 20 "Possible
+      clipping detected" of 2026-10-24 (compressor makeup +3 dB on a hot DualSense mic).
+      Diagnosis: `Stats.speakers` with the leveler gain per speaker, also in the per-second
+      stats log line. Measured before/after (Ryzen 7 7700X, release): mixer 20 speakers
+      11.42 → 13.53 µs per 10 ms block (0.1 µs per speaker), leveler alone 0.71 µs,
+      limiter 1.09 µs — the send chain gains ≈ 1 µs of its 5 ms budget.
 - [x] Audio quality tiers (2026-10-25): profiles Sparsam/Standard/Hoch/Studio/Stress in
       the settings schema (v3, migration from the bare bitrate), the values behind them
       (bitrate, mono/stereo, RED, DTX) editable in Profi → „Netzwerk“, a profile change

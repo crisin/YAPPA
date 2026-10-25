@@ -21,6 +21,8 @@
   type Row = { label: string; value: string; warn?: boolean; term?: string };
 
   const fixed = (n: number, digits = 1) => n.toFixed(digits).replace('.', ',');
+  /** +6,0 / −2,5 / 0,0 */
+  const signed = (n: number) => (n > 0.05 ? '+' : n < -0.05 ? '−' : '') + fixed(Math.abs(n));
   const net = $derived(session.stats?.network ?? null);
   /** „Standard (80 kbit/s · Mono · RED)“ — what the settings say we send. */
   const profile = $derived(
@@ -140,6 +142,19 @@
             label: 'Sprünge in der Wiedergabe',
             value: String(stats.playoutSkips),
             warn: stats.playoutSkips > 0,
+          },
+          {
+            // A4: who arrives too quiet or too loud — the leveler's gain per speaker.
+            label: 'Lautstärke-Angleich',
+            value:
+              session.settings?.autoLevel === false
+                ? 'aus'
+                : stats.speakers.length === 0
+                  ? '–'
+                  : stats.speakers
+                      .map((s) => `${s.identity} ${signed(s.levelerDb)} dB`)
+                      .join(' · '),
+            term: 'lautstaerke-angleich',
           },
         ]
       : [],

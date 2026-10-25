@@ -19,6 +19,7 @@
     { id: 'gate', label: 'Gate' },
     { id: 'eq', label: 'EQ' },
     { id: 'compressor', label: 'Kompressor' },
+    { id: 'limiter', label: 'Limiter' },
   ] as const;
   type StageId = (typeof STAGES)[number]['id'];
 
@@ -55,6 +56,8 @@
           : `${settings.eq.length} ${settings.eq.length === 1 ? 'Band' : 'Bänder'}`;
       case 'compressor':
         return settings.compressor.enabled ? ratio(settings.compressor.ratio) : 'aus';
+      case 'limiter':
+        return '−1 dB';
       default:
         return `Eingang ${settings.inputChannel + 1}`;
     }
@@ -245,6 +248,13 @@
       <button class="quiet" onclick={addBand} disabled={settings.eq.length >= 5}>
         Band hinzufügen
       </button>
+    {:else if open === 'limiter'}
+      <h2>Limiter</h2>
+      <p class="muted">
+        Immer an, ohne Regler: hält jede Spitze 1 dB unter dem Maximum, damit ein heißes Mikrofon
+        oder die Anhebung des Kompressors nie übersteuert. Greift sofort, lässt innerhalb von 80 ms
+        wieder los und kostet keine Latenz.
+      </p>
     {:else if open === 'compressor'}
       {@const c = settings.compressor}
       <h2>Kompressor</h2>

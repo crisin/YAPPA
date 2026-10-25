@@ -3,6 +3,7 @@
   // noise suppression and volume. Plain words here; the terms are behind the ⓘ and in the
   // pro view. Microphone and speaking mode are parts the onboarding (U4) shows too.
   import { getApp } from '../../app.svelte';
+  import Info from '../../Info.svelte';
   import MicTest from './MicTest.svelte';
   import QualityPicker from './QualityPicker.svelte';
   import TalkMode from './TalkMode.svelte';
@@ -72,6 +73,17 @@
     value={settings?.outputGainDb ?? 0}
     onchange={(e) => session.applySettings({ outputGainDb: Number(e.currentTarget.value) })}
   />
+  {#if app.view === 'pro'}
+    <label class="check">
+      <input
+        type="checkbox"
+        checked={settings?.autoLevel ?? true}
+        onchange={(e) => session.applySettings({ autoLevel: e.currentTarget.checked })}
+      />
+      Lautstärke der anderen automatisch angleichen
+      <Info term="lautstaerke-angleich" />
+    </label>
+  {/if}
 
   <button class="quiet" onclick={() => session.refreshDevices()}>Geräte neu einlesen</button>
   {#if app.view === 'pro'}
@@ -114,6 +126,14 @@
 
   input[type='range'] {
     accent-color: var(--color-accent);
+  }
+
+  .check {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+    color: var(--color-text);
   }
 
   .tight {

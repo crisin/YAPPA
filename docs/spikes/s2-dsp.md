@@ -79,6 +79,12 @@ A second run gave the same picture (DeepFilterNet mean 645 µs, max 1.93 ms; RNN
 | `cargo deny` with tract 0.21.4 | RUSTSEC-2026-0217 (NNEF parser overflow), RUSTSEC-2026-0319 (anymap2 unmaintained), RUSTSEC-2024-0436 (paste unmaintained) — accepted with reasons, ADR-008 |
 | `DfTract` | not `Send` (`Rc` inside tract) and allocates per block |
 
+### Later additions to the chain (bench protocol)
+
+| Date | Change | Before → after (Ryzen 7 7700X, release, one 10 ms block) |
+| --- | --- | --- |
+| 2026-10-25 | A4: `dsp::Leveler` per mixer slot, `dsp::Limiter` at the end of the send chain | mixer 20 speakers 11.42 → 13.53 µs; leveler 0.71 µs; limiter 1.09 µs (send chain +≈ 1 µs) |
+
 ## What worked / what did not
 
 **Worked**

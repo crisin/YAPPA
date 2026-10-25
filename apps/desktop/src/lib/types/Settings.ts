@@ -32,4 +32,10 @@ inputChannel: number,
 /**
  * Master volume of everything I hear, dB; a limiter keeps the sum below clipping.
  */
-outputGainDb: number, };
+outputGainDb: number, 
+/**
+ * Everybody at about the same loudness (A4): a leveler per speaker pulls quiet voices
+ * up and loud ones down (±12 dB, a few dB per second) before the per-person volume.
+ * Off, only the per-person volume applies.
+ */
+autoLevel: boolean, };

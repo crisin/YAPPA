@@ -175,7 +175,7 @@ pub struct DeviceSlot {
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct StageLevel {
-    /// `input`, `highpass`, `denoiser`, `gate`, `eq`, `compressor`.
+    /// `input`, `highpass`, `denoiser`, `gate`, `eq`, `compressor`, `limiter`.
     pub id: String,
     /// Level after this stage, dBFS.
     pub level_db: f32,
@@ -303,6 +303,20 @@ pub struct Stats {
     /// What the send chain adds to the latency (the denoiser's own delay), ms.
     #[serde(default)]
     pub chain_latency_ms: f32,
+    /// The receive-side leveler's current gain per speaker (A4), sorted by identity — a
+    /// diagnostics file shows who arrives too quiet or too loud.
+    #[serde(default)]
+    pub speakers: Vec<SpeakerStats>,
+}
+
+/// One remote speaker in the diagnosis.
+#[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct SpeakerStats {
+    pub identity: String,
+    /// What the leveler adds to this voice right now, dB (−12..12; 0 while it is off).
+    pub leveler_db: f32,
 }
 
 /// From the transport's WebRTC statistics. "Recent" values cover the time since the
@@ -499,6 +513,15 @@ pub struct Settings {
     /// Master volume of everything I hear, dB; a limiter keeps the sum below clipping.
     #[serde(default)]
     pub output_gain_db: f32,
+    /// Everybody at about the same loudness (A4): a leveler per speaker pulls quiet voices
+    /// up and loud ones down (±12 dB, a few dB per second) before the per-person volume.
+    /// Off, only the per-person volume applies.
+    #[serde(default = "yes")]
+    pub auto_level: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 impl Default for Settings {
@@ -525,6 +548,7 @@ impl Default for Settings {
             voice: QualityProfile::Standard.preset().unwrap(),
             input_channel: 0,
             output_gain_db: 0.0,
+            auto_level: true,
         }
     }
 }

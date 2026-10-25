@@ -220,6 +220,17 @@ dem Regler bei einer Person änderst du nur, wie laut sie bei dir ankommt.
 
 Mehr dazu: [dBFS (Wikipedia)](https://de.wikipedia.org/wiki/DBFS)
 
+## Lautstärke-Angleich
+
+Bringt jede Stimme bei dir auf etwa dieselbe Lautstärke: Wer leise ankommt, wird langsam
+angehoben, wer laut ankommt, abgesenkt – höchstens 12 dB, ein paar dB pro Sekunde. Pausen
+und Rauschen werden nicht hochgezogen.
+
+Der Regler bei einer Person wirkt obendrauf. Im Profi-Modus lässt sich der Angleich unter
+„Audio und Sprechen“ abschalten; die Diagnose zeigt, wie viel er bei wem gerade nachregelt.
+
+Mehr dazu: [Automatic Gain Control (Wikipedia)](https://de.wikipedia.org/wiki/Automatic_Gain_Control)
+
 ## Server
 
 Der Rechner, über den die Sprache aller läuft. Er mischt nicht, sondern verteilt: jede
