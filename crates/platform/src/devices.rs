@@ -20,6 +20,8 @@ pub const QUIET: Duration = Duration::from_millis(300);
 /// What the OS backend sends to the coalescing thread.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Signal {
+    /// Only an OS backend sends this; where there is none, only the tests do.
+    #[cfg_attr(not(windows), allow(dead_code))]
     Changed,
     Stop,
 }
@@ -47,16 +49,16 @@ impl DeviceWatcher {
         let thread = std::thread::Builder::new()
             .name("yappa-devices".into())
             .spawn(move || {
-                // The backend lives on this thread for as long as it coalesces; dropping
-                // it at the end unregisters the callback (COM wants that on the same thread).
+                // The backend lives on this thread for as long as it coalesces; going out
+                // of scope at the end unregisters the callback (COM wants that on the same
+                // thread).
                 let backend = os::Backend::start(backend_tx);
                 let _ = ready_tx.send(backend.is_ok());
-                let Ok(backend) = backend else {
+                let Ok(_backend) = backend else {
                     return;
                 };
                 tracing::info!("watching audio devices");
                 coalesce(&rx, QUIET, on_change);
-                drop(backend);
             });
         let thread = match thread {
             Ok(thread) => thread,
