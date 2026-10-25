@@ -7,4 +7,15 @@ export type SpeakerStats = { identity: string,
 /**
  * What the leveler adds to this voice right now, dB (−12..12; 0 while it is off).
  */
-levelerDb: number, };
+levelerDb: number, 
+/**
+ * How much faster (> 1) or slower (< 1) than real time this voice is played to hold
+ * its buffer at the cushion (A6): their clock against our output device, within
+ * 1 ± 0.005. 1.0 while they are silent.
+ */
+driftRatio: number, 
+/**
+ * How much of this voice is queued for playout, ms, averaged over ≈ 1.5 s. Held at
+ * the cushion (≈ 25 ms for a 10 ms callback); 0 while they are silent.
+ */
+playoutFillMs: number, };

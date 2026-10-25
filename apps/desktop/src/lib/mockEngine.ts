@@ -139,7 +139,9 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
     pumpBusyMeanMs: 0.01,
     chainLatencyMs: 10,
     speakers:
-      connected && people.length > 0 ? [{ identity: people[0].identity, levelerDb: 4.5 }] : [],
+      connected && people.length > 0
+        ? [{ identity: people[0].identity, levelerDb: 4.5, driftRatio: 1.00012, playoutFillMs: 24 }]
+        : [],
   });
 
   // Ten times per second is enough to see the meters move.

@@ -84,6 +84,7 @@ A second run gave the same picture (DeepFilterNet mean 645 µs, max 1.93 ms; RNN
 | Date | Change | Before → after (Ryzen 7 7700X, release, one 10 ms block) |
 | --- | --- | --- |
 | 2026-10-25 | A4: `dsp::Leveler` per mixer slot, `dsp::Limiter` at the end of the send chain | mixer 20 speakers 11.42 → 13.53 µs; leveler 0.71 µs; limiter 1.09 µs (send chain +≈ 1 µs) |
+| 2026-10-25 | A6: `dsp::Varispeed` + `dsp::DriftController` per mixer slot (receive side only) | mixer 20 speakers 14.18 → 37.34 µs (back-to-back, same run; ≈ 1.2 µs per speaker, 0.4 % of the block); varispeed alone 5.14 µs (closure-driven bench, pessimistic) |
 
 ## What worked / what did not
 

@@ -2,7 +2,7 @@
 //! (planning doc: DSP under 5 ms per block). `cargo xtask bench`.
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use dsp::{Biquad, BiquadKind, Leveler, LevelerParams, Limiter, Resampler};
+use dsp::{Biquad, BiquadKind, Leveler, LevelerParams, Limiter, Resampler, Varispeed};
 use std::hint::black_box;
 
 const SR: f32 = 48_000.0;
@@ -71,5 +71,32 @@ fn resampler(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, eq_chain, limiter, leveler, resampler);
+/// One speaker's block through the drift compensation (A6): the varispeed at a ratio just
+/// off unity — the cost the mixer pays per speaker on top of the leveler.
+fn varispeed(c: &mut Criterion) {
+    let mut vs = Varispeed::new();
+    vs.set_ratio(1.0002);
+    let input: Vec<f32> = (0..BLOCK + 8)
+        .map(|i| ((i as f32) * 0.05).sin() * 0.5)
+        .collect();
+    let mut out = vec![0f32; BLOCK];
+    c.bench_function("varispeed 1.0002, one 10 ms block", |b| {
+        b.iter(|| {
+            let mut source = input.iter().copied().cycle();
+            let mut o = out.iter_mut();
+            vs.produce(
+                BLOCK,
+                || source.next(),
+                |y| {
+                    if let Some(slot) = o.next() {
+                        *slot = y;
+                    }
+                },
+            );
+            black_box(&out);
+        })
+    });
+}
+
+criterion_group!(benches, eq_chain, limiter, leveler, resampler, varispeed);
 criterion_main!(benches);

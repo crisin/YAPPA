@@ -6,8 +6,13 @@
 //!
 //! Per slot a [`Leveler`] (A4) brings every voice to about the same level before the manual
 //! per-person volume is applied on top; the sum then passes the limiter.
+//!
+//! Per slot a [`DriftController`] with a [`Varispeed`] (A6) holds the ring at its cushion:
+//! the speaker's clock and our output device drift apart by a few hundred ppm, so the ring
+//! is played a hair faster or slower instead of being skipped by 80 ms every few minutes.
+//! The skip stays as the emergency brake for a backlog of more than two cushions.
 
-use dsp::{Leveler, LevelerParams, Limiter};
+use dsp::{DriftController, DriftParams, Leveler, LevelerParams, Limiter, Varispeed};
 use rtrb::{Consumer, Producer, RingBuffer};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering::Relaxed};
@@ -38,6 +43,21 @@ struct Slot {
     /// The leveler's current gain for this speaker, dB as `f32` bits. Written by the
     /// callback, read for the diagnosis.
     leveler_db: AtomicU32,
+    /// The drift compensation's playback ratio (inputs per output, ≈ 1.0) as `f32` bits.
+    drift_ratio: AtomicU32,
+    /// The ring's averaged fill level in samples as `f32` bits.
+    fill: AtomicU32,
+}
+
+/// What the diagnosis shows per speaker (A4, A6).
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct SlotReport {
+    /// The leveler's gain, dB.
+    pub leveler_db: f32,
+    /// The drift compensation's playback ratio, ≈ 1.0 (1.0 while the slot is silent).
+    pub drift_ratio: f32,
+    /// The ring's averaged fill level, ms (0 while the slot is silent).
+    pub fill_ms: f32,
 }
 
 /// The limiter at the end of the mix: 1 dB below full scale, recovers within 80 ms.
@@ -91,6 +111,8 @@ pub struct MixerRt {
     playing: [bool; SLOTS],
     /// One per slot, allocated here — never in the callback.
     levelers: Vec<Leveler>,
+    drift: Vec<DriftController>,
+    varispeed: Vec<Varispeed>,
     limiter: Limiter,
 }
 
@@ -101,13 +123,20 @@ pub fn mixer() -> (Arc<MixerControl>, MixerRt) {
     let mut free = Vec::with_capacity(SLOTS);
     let mut rings = Vec::with_capacity(SLOTS);
     let mut levelers = Vec::with_capacity(SLOTS);
+    let mut drift = Vec::with_capacity(SLOTS);
+    let mut varispeed = Vec::with_capacity(SLOTS);
     let sample_rate = transport::SAMPLE_RATE as f32;
     for index in 0..SLOTS {
         let (producer, consumer) = RingBuffer::new(RING);
         shared.slots[index].gain.store(1f32.to_bits(), Relaxed);
+        shared.slots[index]
+            .drift_ratio
+            .store(1f32.to_bits(), Relaxed);
         free.push((index, producer));
         rings.push(consumer);
         levelers.push(Leveler::new(sample_rate, LevelerParams::default()));
+        drift.push(DriftController::new(sample_rate, DriftParams::default()));
+        varispeed.push(Varispeed::new());
     }
     free.reverse(); // hand out slot 0 first
     let control = Arc::new(MixerControl {
@@ -123,6 +152,8 @@ pub fn mixer() -> (Arc<MixerControl>, MixerRt) {
         rings,
         playing: [false; SLOTS],
         levelers,
+        drift,
+        varispeed,
         limiter: Limiter::new(sample_rate, CEILING_DB, RELEASE_MS),
     };
     (control, rt)
@@ -130,9 +161,10 @@ pub fn mixer() -> (Arc<MixerControl>, MixerRt) {
 
 impl MixerRt {
     /// Adds every speaker into `out` (mono, -1..1), which must come in zeroed — each through
-    /// their leveler and their manual volume — applies the master volume and limits the sum
-    /// below clipping — 19 people laughing at once used to clip hard (realtime review
-    /// 2026-10-23, item c). Real-time safe: no allocation, no lock, no system call.
+    /// their drift compensation, their leveler and their manual volume — applies the master
+    /// volume and limits the sum below clipping — 19 people laughing at once used to clip
+    /// hard (realtime review 2026-10-23, item c). Real-time safe: no allocation, no lock, no
+    /// system call.
     pub fn render(&mut self, out: &mut [f32]) {
         let wanted = out.len();
         let deafened = self.shared.deafened.load(Relaxed);
@@ -141,6 +173,8 @@ impl MixerRt {
             let slot = &self.shared.slots[index];
             let playing = &mut self.playing[index];
             let leveler = &mut self.levelers[index];
+            let drift = &mut self.drift[index];
+            let varispeed = &mut self.varispeed[index];
             leveler.set_enabled(leveling);
             if slot.flush.swap(false, Relaxed) {
                 discard(ring, ring.slots());
@@ -152,36 +186,69 @@ impl MixerRt {
             let cushion = PREFILL.max(wanted + BLOCK);
             if !*playing {
                 if queued < cushion {
+                    if drift.fill() != 0.0 {
+                        // Fell silent: the diagnosis shows a resting slot, not stale values.
+                        drift.reset();
+                        slot.drift_ratio.store(1f32.to_bits(), Relaxed);
+                        slot.fill.store(0f32.to_bits(), Relaxed);
+                    }
                     continue;
                 }
                 *playing = true;
+                drift.reset();
+                varispeed.reset();
             }
             if queued > HIGH_WATER.max(2 * cushion) {
+                // The emergency brake: more than two cushions is beyond what the ratio can
+                // work off in reasonable time (a stall, a burst after a reconnect).
                 discard(ring, queued - cushion);
                 queued = ring.slots();
                 self.shared.skips.fetch_add(1, Relaxed);
+                drift.reset();
             }
-            let take = queued.min(wanted);
-            if let Ok(chunk) = ring.read_chunk(take) {
-                if !deafened && !slot.muted.load(Relaxed) {
-                    // The leveler measures this block (before any gain) and applies the
-                    // gain it derived from the blocks before — one pass over the chunk.
-                    let auto = dsp::db_to_gain(leveler.gain_db());
-                    let manual = f32::from_bits(slot.gain.load(Relaxed));
-                    let gain = auto * manual;
-                    let mut energy = 0.0f32;
-                    let (head, tail) = chunk.as_slices();
-                    for (o, s) in out.iter_mut().zip(head.iter().chain(tail)) {
-                        let x = f32::from(*s) * NORM;
-                        energy += x * x;
-                        *o += x * gain;
-                    }
-                    leveler.step(energy / take as f32, take);
-                    slot.leveler_db.store(leveler.gain_db().to_bits(), Relaxed);
-                }
-                chunk.commit_all();
+            // A6: hold the ring in the middle of the start window. The ratio changes once per
+            // callback, by at most the controller's gain times a frame of error — no click.
+            let ratio = drift.step(queued, cushion + BLOCK / 2, wanted);
+            varispeed.set_ratio(ratio);
+            slot.drift_ratio.store((ratio as f32).to_bits(), Relaxed);
+            slot.fill.store(drift.fill().to_bits(), Relaxed);
+
+            let silent = deafened || slot.muted.load(Relaxed);
+            // The leveler measures this block (before any gain) and applies the gain it
+            // derived from the blocks before — one pass over the ring chunk.
+            let auto = dsp::db_to_gain(leveler.gain_db());
+            let manual = f32::from_bits(slot.gain.load(Relaxed));
+            let gain = auto * manual;
+            let mut energy = 0.0f32;
+            let mut consumed = 0usize;
+            let mut produced = 0usize;
+            if let Ok(chunk) = ring.read_chunk(queued) {
+                let (head, tail) = chunk.as_slices();
+                let mut inputs = head.iter().chain(tail.iter());
+                let mut outputs = out.iter_mut();
+                produced = varispeed.produce(
+                    wanted,
+                    || {
+                        let s = inputs.next()?;
+                        consumed += 1;
+                        Some(f32::from(*s) * NORM)
+                    },
+                    |y| {
+                        if let Some(o) = outputs.next() {
+                            if !silent {
+                                energy += y * y;
+                                *o += y * gain;
+                            }
+                        }
+                    },
+                );
+                chunk.commit(consumed);
             }
-            if take < wanted {
+            if !silent && produced > 0 {
+                leveler.step(energy / produced as f32, produced);
+                slot.leveler_db.store(leveler.gain_db().to_bits(), Relaxed);
+            }
+            if produced < wanted {
                 *playing = false;
                 self.shared.underruns.fetch_add(1, Relaxed);
             }
@@ -270,6 +337,26 @@ impl MixerControl {
             .collect()
     }
 
+    /// Everything the diagnosis shows per speaker: the leveler's gain (A4), the drift
+    /// compensation's ratio and the ring's fill level (A6).
+    pub fn speakers(&self) -> Vec<(String, SlotReport)> {
+        let routing = self.routing.lock().unwrap();
+        let per_ms = transport::SAMPLE_RATE as f32 / 1000.0;
+        routing
+            .active
+            .iter()
+            .map(|(identity, &index)| {
+                let slot = &self.shared.slots[index];
+                let report = SlotReport {
+                    leveler_db: f32::from_bits(slot.leveler_db.load(Relaxed)),
+                    drift_ratio: f32::from_bits(slot.drift_ratio.load(Relaxed)),
+                    fill_ms: f32::from_bits(slot.fill.load(Relaxed)) / per_ms,
+                };
+                (identity.clone(), report)
+            })
+            .collect()
+    }
+
     /// Current level of everyone speaking, as (identity, RMS 0..1).
     pub fn levels(&self) -> Vec<(String, f32)> {
         let routing = self.routing.lock().unwrap();
@@ -288,7 +375,8 @@ impl MixerControl {
         self.shared.underruns.load(Relaxed)
     }
 
-    /// Times the callback jumped forward because a ring was over the high-water mark.
+    /// Times the callback jumped forward because a ring was over the high-water mark — the
+    /// emergency brake behind the drift compensation; in a healthy call this stays 0.
     pub fn skips(&self) -> u32 {
         self.shared.skips.load(Relaxed)
     }
@@ -430,7 +518,9 @@ mod tests {
         render(&mut rt, BLOCK); // playing now, two blocks left
         let out = render(&mut rt, 3 * BLOCK);
         assert!(out[..2 * BLOCK].iter().all(|s| *s > 0.4));
-        assert!(out[2 * BLOCK..].iter().all(|s| *s == 0.0));
+        // The ring sits far under the cushion of this big callback, so the drift
+        // compensation already stretches by up to 0.5 %: a few samples more come out.
+        assert!(out[2 * BLOCK + 8..].iter().all(|s| *s == 0.0));
         assert_eq!(control.underruns(), 1);
         anna.frame(&[HALF; BLOCK]);
         assert!(render(&mut rt, BLOCK).iter().all(|s| *s == 0.0));
@@ -574,6 +664,111 @@ mod tests {
         assert_eq!(control.leveler_gains()[0].1, 0.0, "silence: untouched");
         talk(&mut rt, &mut anna, 10, 5.0); // ≈ −70 dBFS: room noise, under the floor
         assert_eq!(control.leveler_gains()[0].1, 0.0);
+    }
+
+    /// A6 with a fake clock: the sender's clock runs `ppm` off ours, so over `seconds` it
+    /// delivers that many more (or fewer) frames than we play. Frames arrive whole, like
+    /// from the network; the callback asks for `callback` samples at a time.
+    fn drifting_call(ppm: f64, callback: usize, seconds: usize) -> (Arc<MixerControl>, u32, u32) {
+        let (control, mut rt) = mixer();
+        control.set_leveling(false);
+        let mut anna = control.speaker("anna").unwrap();
+        render(&mut rt, callback);
+        let mut arrived = 2.0 * BLOCK as f64; // the prefill
+        let mut heard = 0usize;
+        let callbacks = seconds * 48_000 / callback;
+        for _ in 0..callbacks {
+            arrived += callback as f64 * (1.0 + ppm * 1e-6);
+            while arrived >= BLOCK as f64 {
+                arrived -= BLOCK as f64;
+                anna.frame(&[HALF; BLOCK]);
+            }
+            heard += render(&mut rt, callback)
+                .iter()
+                .filter(|s| **s > 0.4)
+                .count();
+        }
+        assert!(
+            heard > (callbacks - 2) * callback,
+            "plays throughout: {heard} of {}",
+            callbacks * callback
+        );
+        let (underruns, skips) = (control.underruns(), control.skips());
+        drop(anna);
+        (control, underruns, skips)
+    }
+
+    /// A sender 200 ppm fast used to overflow the high-water mark every ≈ 7 minutes and be
+    /// skipped by 80 ms; 200 ppm slow it ran dry. Now the ring is held at the cushion for
+    /// ten minutes with neither — and the diagnosis sees the ratio.
+    #[test]
+    fn a_drifting_speaker_is_neither_skipped_nor_run_dry_over_ten_minutes() {
+        for ppm in [200.0, -200.0] {
+            let (control, mut rt) = mixer();
+            control.set_leveling(false);
+            let mut anna = control.speaker("anna").unwrap();
+            render(&mut rt, BLOCK);
+            let mut arrived = 2.0 * BLOCK as f64;
+            let mut reported = (0.0f32, 0.0f32);
+            for callback in 0..600 * 100 {
+                arrived += BLOCK as f64 * (1.0 + ppm * 1e-6);
+                while arrived >= BLOCK as f64 {
+                    arrived -= BLOCK as f64;
+                    anna.frame(&[HALF; BLOCK]);
+                }
+                let out = render(&mut rt, BLOCK);
+                assert!(out.iter().all(|s| *s > 0.4), "{ppm} ppm: gap at {callback}");
+                if callback == 400 * 100 {
+                    let report = control.speakers();
+                    assert_eq!(report[0].0, "anna");
+                    reported = (report[0].1.drift_ratio, report[0].1.fill_ms);
+                }
+            }
+            assert_eq!(control.skips(), 0, "{ppm} ppm");
+            assert_eq!(control.underruns(), 0, "{ppm} ppm");
+            // The ring sits within a frame of its target (cushion 20 ms + half a frame),
+            // and the ratio carries the drift's sign.
+            assert!(
+                (reported.1 - 25.0).abs() < 10.0,
+                "{ppm} ppm: fill {} ms",
+                reported.1
+            );
+            assert!(
+                (reported.0 - 1.0).signum() == (ppm as f32).signum(),
+                "{ppm} ppm: ratio {}",
+                reported.0
+            );
+            assert!((reported.0 - 1.0).abs() <= 0.005);
+        }
+    }
+
+    /// The same with the Focusrite's odd callback size and a 16 kHz-device-sized one.
+    #[test]
+    fn drift_is_held_for_other_callback_sizes_too() {
+        for callback in [1056usize, 160] {
+            let (_, underruns, skips) = drifting_call(150.0, callback, 300);
+            assert_eq!((underruns, skips), (0, 0), "callback {callback}");
+            let (_, underruns, skips) = drifting_call(-150.0, callback, 300);
+            assert_eq!((underruns, skips), (0, 0), "callback {callback}");
+        }
+    }
+
+    /// A resting slot reports unity and an empty ring, not the last call's values.
+    #[test]
+    fn the_report_rests_when_the_speaker_falls_silent() {
+        let (control, mut rt) = mixer();
+        let mut anna = control.speaker("anna").unwrap();
+        render(&mut rt, BLOCK);
+        for _ in 0..4 {
+            anna.frame(&[HALF; BLOCK]);
+        }
+        render(&mut rt, BLOCK);
+        assert!(control.speakers()[0].1.fill_ms > 30.0);
+        for _ in 0..5 {
+            render(&mut rt, BLOCK); // runs dry, then waits for a new prefill
+        }
+        let report = control.speakers()[0].1;
+        assert_eq!((report.drift_ratio, report.fill_ms), (1.0, 0.0));
     }
 
     #[test]

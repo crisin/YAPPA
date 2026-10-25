@@ -40,8 +40,6 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 - [ ] A5 Monitor „Mich selbst hören“ in the Signalkette: chain output into the playout
       mix as a local slot while the page is open
-- [ ] A6 Drift compensation: hold each speaker's playout ring at the cushion with a
-      gentle continuous correction instead of the ≈ 80 ms skip (ADR-003 known gap)
 
 **M4 · Operations** — auto-update, admin, onboarding, banners (after the audio block, ADR-009)
 
@@ -127,6 +125,23 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] A6 Drift compensation (ADR-009, 2026-10-25, closes the ADR-003 known gap): per mixer
+      slot a `dsp::DriftController` (fill level at callback start, averaged over 1.5 s; PI
+      with 3 s horizon, `k_i = k_p²/4`, anti-windup; ratio within 1 ± 0.5 %, the learned
+      drift capped at ±2000 ppm) drives a `dsp::Varispeed` (4-point Hermite, variable
+      ratio, one input per output from the first sample — no priming wait, no kernel table)
+      that pulls the speaker's ring in the callback; target = cushion + half a frame. The
+      ≈ 80 ms skip stays as the emergency brake above two cushions and resets the controller.
+      Diagnosis: `SpeakerStats.drift_ratio` and `playout_fill_ms` (additive, serde
+      defaults), „Drift-Ausgleich“ in the diagnosis and the glossary, `drift=` in the
+      per-second stats log line; `playout_skips` stays. Tests: proptest ±200 ppm × five
+      callback sizes over five simulated minutes (never skipped, never dry, settles at the
+      cushion), mixer tests with a fake drifting clock over ten minutes (±200 ppm, 480; ±150
+      ppm at 1056 and 160 frames per callback: 0 skips, 0 underruns, ratio carries the
+      drift's sign). Measured (Ryzen 7 7700X, release, back-to-back): mixer 20 speakers
+      14.18 → 37.34 µs per 10 ms block (≈ 1.2 µs per speaker, 0.4 % of the block); bench table
+      in `docs/spikes/s2-dsp.md`. Not verified: a real long call (the first evening's
+      diagnostics file should show `playout_skips` 0 and `drift` a few hundred ppm).
 - [x] A4 Loudness levelling at the receiver (ADR-009, 2026-10-25): `dsp::Leveler` per
       mixer slot — speech-gated RMS over 400 ms (blocks under −50 dBFS neither measured nor
       acted on, so pauses are not pumped up), target −20 dBFS, ±12 dB, +3 / −6 dB per
