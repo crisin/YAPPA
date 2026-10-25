@@ -112,7 +112,9 @@ fn release(root: &Path, options: &Options) -> Result {
     }
 
     let bundle_dir = root.join("target").join("release").join("bundle");
-    let artifacts = step("collect installers + signatures", || artifacts(&bundle_dir))?;
+    let artifacts = step("collect installers + signatures", || {
+        artifacts(&bundle_dir, &version)
+    })?;
     if artifacts.is_empty() {
         return Err(format!(
             "no signed installer under {} — did the build run with createUpdaterArtifacts?",
@@ -343,7 +345,7 @@ struct Artifact {
 /// macOS) with its `.sig`, as `tauri build` leaves them with `createUpdaterArtifacts`.
 /// A product name with a space (the installer was „yAPPA B_…“ until 0.1.0) breaks URLs and
 /// GitHub asset names, so the pair is copied to `bundle/upload/` under a name without one.
-fn artifacts(bundle_dir: &Path) -> Result<Vec<Artifact>> {
+fn artifacts(bundle_dir: &Path, version: &str) -> Result<Vec<Artifact>> {
     let (kind, suffix, os) = if cfg!(windows) {
         ("nsis", "-setup.exe", "windows")
     } else if cfg!(target_os = "macos") {
@@ -360,7 +362,8 @@ fn artifacts(bundle_dir: &Path) -> Result<Vec<Artifact>> {
             .unwrap_or_default()
             .to_string_lossy()
             .into_owned();
-        if !name.ends_with(suffix) {
+        // Older builds stay in the folder; only this version's installer counts.
+        if !name.ends_with(suffix) || !name.contains(&format!("_{version}_")) {
             continue;
         }
         let sig_file = PathBuf::from(format!("{}.sig", file.display()));
@@ -678,8 +681,21 @@ struct Env(BTreeMap<String, String>);
 
 impl Env {
     fn load(root: &Path) -> Self {
-        let text = std::fs::read_to_string(root.join(".env")).unwrap_or_default();
-        Self(parse_env(&text))
+        let path = root.join(".env");
+        let text = match std::fs::read(&path) {
+            Ok(bytes) => decode_text(&bytes),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(e) => {
+                println!("  (.env not read: {e})");
+                String::new()
+            }
+        };
+        let env = parse_env(&text);
+        if !env.is_empty() {
+            let keys: Vec<&str> = env.keys().map(String::as_str).collect();
+            println!("  .env: {}", keys.join(", "));
+        }
+        Self(env)
     }
 
     fn get(&self, key: &str) -> Option<String> {
@@ -704,6 +720,27 @@ impl Env {
              `cargo xtask release keygen` makes one"
                 .into(),
         )
+    }
+}
+
+/// `.env` as an editor or shell left it: UTF-8 (with or without BOM) or UTF-16 LE/BE —
+/// Windows PowerShell's `echo >>` writes UTF-16 with a BOM.
+fn decode_text(bytes: &[u8]) -> String {
+    let utf16 =
+        |pairs: &mut dyn Iterator<Item = u16>| String::from_utf16_lossy(&pairs.collect::<Vec<_>>());
+    match bytes {
+        [0xFF, 0xFE, rest @ ..] => utf16(
+            &mut rest
+                .chunks_exact(2)
+                .map(|c| u16::from_le_bytes([c[0], c[1]])),
+        ),
+        [0xFE, 0xFF, rest @ ..] => utf16(
+            &mut rest
+                .chunks_exact(2)
+                .map(|c| u16::from_be_bytes([c[0], c[1]])),
+        ),
+        [0xEF, 0xBB, 0xBF, rest @ ..] => String::from_utf8_lossy(rest).into_owned(),
+        _ => String::from_utf8_lossy(bytes).into_owned(),
     }
 }
 
@@ -912,6 +949,21 @@ mod tests {
             Target::Dir(_)
         ));
         assert!(matches!(Target::parse("/srv/updates"), Target::Dir(_)));
+    }
+
+    #[test]
+    fn env_file_may_be_utf16_or_carry_a_bom() {
+        let line = "KEY=C:/x/updater.key\n";
+        let mut le = vec![0xFF, 0xFE];
+        le.extend(line.encode_utf16().flat_map(u16::to_le_bytes));
+        let mut be = vec![0xFE, 0xFF];
+        be.extend(line.encode_utf16().flat_map(u16::to_be_bytes));
+        let mut bom = vec![0xEF, 0xBB, 0xBF];
+        bom.extend(line.as_bytes());
+        for bytes in [le, be, bom, line.as_bytes().to_vec()] {
+            let env = parse_env(&decode_text(&bytes));
+            assert_eq!(env.get("KEY").map(String::as_str), Some("C:/x/updater.key"));
+        }
     }
 
     #[test]
