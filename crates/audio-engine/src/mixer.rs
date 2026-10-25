@@ -12,6 +12,12 @@
 //! while the Signalkette page asks for it, and the callback adds it to the mix without a
 //! leveler or a per-person volume — what goes out is what one hears, plus the master volume
 //! and the limiter like everything else.
+//! The **soundboard** (ADR-010) is a second local slot of the same kind: the sound thread
+//! feeds its mix through a [`SoundFeed`] while a sound plays, and the callback adds it like
+//! the monitor — the clicker hears what goes out. The others' soundboards arrive as tracks
+//! of their own and take speaker slots keyed by (identity, [`TrackKind`]): a per-person
+//! volume and mute each, no leveler (sound effects are not speech).
+//!
 //! Per slot a [`DriftController`] with a [`Varispeed`] (A6) holds the ring at its cushion:
 //! the speaker's clock and our output device drift apart by a few hundred ppm, so the ring
 //! is played a hair faster or slower instead of being skipped by 80 ms every few minutes.
@@ -22,10 +28,12 @@ use rtrb::{Consumer, Producer, RingBuffer};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering::Relaxed};
 use std::sync::{Arc, Mutex};
-use transport::{FrameSink, BLOCK};
+use transport::{FrameSink, TrackKind, BLOCK};
 
-/// Speakers mixed at once. A full channel is 19 others.
-pub const SLOTS: usize = 24;
+/// Tracks mixed at once: a full channel is 19 others, each with a voice and a soundboard
+/// track (ADR-010), plus room for a resubscribe in flight. An idle slot costs the callback
+/// one ring length check.
+pub const SLOTS: usize = 48;
 /// Audio that must be queued before a speaker starts (again): at least 20 ms, and always
 /// one network frame more than the device asks for in one go — a cushion that is smaller
 /// than the callback runs dry on every callback.
@@ -48,6 +56,8 @@ struct Slot {
     /// Linear gain as `f32` bits.
     gain: AtomicU32,
     muted: AtomicBool,
+    /// A voice track: levelled (A4). A soundboard track is not.
+    voice: AtomicBool,
     /// Set when the slot gets a new speaker: the callback discards what the last one left.
     flush: AtomicBool,
     /// RMS of the last received frame as `f32` bits, 0..1. Written by the sink.
@@ -76,23 +86,24 @@ pub struct SlotReport {
 const CEILING_DB: f32 = -1.0;
 const RELEASE_MS: f32 = 80.0;
 
-/// The monitor slot's switches and counters (A5). `on` is read by the pump (feed or not) and
-/// by the callback (mix or drain).
+/// A local slot's switches and counters — the monitor (A5) and the soundboard (ADR-010).
+/// `on` is read by the feeder (feed or not) and by the callback (mix or drain).
 #[derive(Default)]
-struct Monitor {
+struct Local {
     on: AtomicBool,
     /// Most samples found in the ring when the callback read it, since the control thread
-    /// last took the value — the ring's share of the monitor latency.
+    /// last took the value — the ring's share of the latency.
     queued_max: AtomicU32,
-    /// Times the callback found the ring short while the monitor played.
+    /// Times the callback found the ring short while the slot played (for the soundboard:
+    /// every clip's end, by design — nobody reads it there).
     underruns: AtomicU32,
-    /// Blocks the pump could not queue because the ring was full.
+    /// Blocks the feeder could not queue because the ring was full.
     dropped_blocks: AtomicU32,
 }
 
-#[derive(Default)]
 struct Shared {
-    monitor: Monitor,
+    monitor: Local,
+    sound: Local,
     slots: [Slot; SLOTS],
     /// Master gain (linear, `f32` bits), unity until set.
     master: AtomicU32,
@@ -102,6 +113,23 @@ struct Shared {
     underruns: AtomicU32,
     skips: AtomicU32,
     dropped_frames: AtomicU32,
+}
+
+// By hand: `Default` for arrays stops at 32 elements.
+impl Default for Shared {
+    fn default() -> Self {
+        Self {
+            monitor: Local::default(),
+            sound: Local::default(),
+            slots: std::array::from_fn(|_| Slot::default()),
+            master: AtomicU32::default(),
+            leveling: AtomicBool::default(),
+            deafened: AtomicBool::default(),
+            underruns: AtomicU32::default(),
+            skips: AtomicU32::default(),
+            dropped_frames: AtomicU32::default(),
+        }
+    }
 }
 
 /// Volume and mute for one remote person, remembered across their reconnects.
@@ -120,11 +148,14 @@ impl Default for PeerMix {
     }
 }
 
+/// One remote track: whose, and which of theirs.
+type Key = (String, TrackKind);
+
 struct Routing {
     free: Vec<(usize, Producer<i16>)>,
-    /// Who currently speaks through which slot.
-    active: HashMap<String, usize>,
-    peers: HashMap<String, PeerMix>,
+    /// Which track currently plays through which slot.
+    active: HashMap<Key, usize>,
+    peers: HashMap<Key, PeerMix>,
 }
 
 pub struct MixerControl {
@@ -132,6 +163,8 @@ pub struct MixerControl {
     routing: Mutex<Routing>,
     /// The monitor ring's write side, until the pump takes it ([`MixerControl::monitor_feed`]).
     monitor_feed: Mutex<Option<Producer<f32>>>,
+    /// The soundboard ring's write side, until the sound thread takes it.
+    sound_feed: Mutex<Option<Producer<f32>>>,
 }
 
 pub struct MixerRt {
@@ -143,6 +176,9 @@ pub struct MixerRt {
     /// The monitor slot (A5): the own send chain's output, in f32 as the chain has it.
     monitor: Consumer<f32>,
     monitor_playing: bool,
+    /// The soundboard slot (ADR-010): the own sound mix, as it goes out.
+    sound: Consumer<f32>,
+    sound_playing: bool,
     drift: Vec<DriftController>,
     varispeed: Vec<Varispeed>,
     limiter: Limiter,
@@ -161,6 +197,7 @@ pub fn mixer() -> (Arc<MixerControl>, MixerRt) {
     for index in 0..SLOTS {
         let (producer, consumer) = RingBuffer::new(RING);
         shared.slots[index].gain.store(1f32.to_bits(), Relaxed);
+        shared.slots[index].voice.store(true, Relaxed);
         shared.slots[index]
             .drift_ratio
             .store(1f32.to_bits(), Relaxed);
@@ -172,6 +209,9 @@ pub fn mixer() -> (Arc<MixerControl>, MixerRt) {
     }
     free.reverse(); // hand out slot 0 first
     let (monitor_producer, monitor) = RingBuffer::new(MONITOR_RING);
+    let (sound_producer, sound) = RingBuffer::new(MONITOR_RING);
+    // The soundboard slot has no switch: the ring is empty while nothing plays.
+    shared.sound.on.store(true, Relaxed);
     let control = Arc::new(MixerControl {
         shared: shared.clone(),
         routing: Mutex::new(Routing {
@@ -180,6 +220,7 @@ pub fn mixer() -> (Arc<MixerControl>, MixerRt) {
             peers: HashMap::new(),
         }),
         monitor_feed: Mutex::new(Some(monitor_producer)),
+        sound_feed: Mutex::new(Some(sound_producer)),
     });
     let rt = MixerRt {
         shared,
@@ -188,6 +229,8 @@ pub fn mixer() -> (Arc<MixerControl>, MixerRt) {
         levelers,
         monitor,
         monitor_playing: false,
+        sound,
+        sound_playing: false,
         drift,
         varispeed,
         limiter: Limiter::new(sample_rate, CEILING_DB, RELEASE_MS),
@@ -211,7 +254,7 @@ impl MixerRt {
             let leveler = &mut self.levelers[index];
             let drift = &mut self.drift[index];
             let varispeed = &mut self.varispeed[index];
-            leveler.set_enabled(leveling);
+            leveler.set_enabled(leveling && slot.voice.load(Relaxed));
             if slot.flush.swap(false, Relaxed) {
                 discard(ring, ring.slots());
                 *playing = false;
@@ -289,7 +332,20 @@ impl MixerRt {
                 self.shared.underruns.fetch_add(1, Relaxed);
             }
         }
-        self.render_monitor(out, deafened);
+        render_local(
+            &self.shared.monitor,
+            &mut self.monitor,
+            &mut self.monitor_playing,
+            out,
+            deafened,
+        );
+        render_local(
+            &self.shared.sound,
+            &mut self.sound,
+            &mut self.sound_playing,
+            out,
+            deafened,
+        );
         let master = f32::from_bits(self.shared.master.load(Relaxed));
         if master != 1.0 {
             for o in out.iter_mut() {
@@ -298,52 +354,56 @@ impl MixerRt {
         }
         self.limiter.process(out);
     }
+}
 
-    /// Adds the own send chain's output (A5) into `out` while the monitor is on. Its own
-    /// slot kind: no leveler, no per-person volume, and its own cushion — the pump delivers
-    /// 10 ms blocks, so one block more than the callback asks for is enough to never run
-    /// dry between two deliveries. Off, the ring is drained so switching on again starts
-    /// fresh. Real-time safe like [`MixerRt::render`].
-    fn render_monitor(&mut self, out: &mut [f32], deafened: bool) {
-        let monitor = &self.shared.monitor;
-        let ring = &mut self.monitor;
-        if !monitor.on.load(Relaxed) {
-            if self.monitor_playing || ring.slots() > 0 {
-                discard(ring, ring.slots());
-                self.monitor_playing = false;
-            }
+/// Adds a local slot — the own send chain's output (A5) or the own soundboard mix
+/// (ADR-010) — into `out` while it is on. Its own slot kind: no leveler, no per-person
+/// volume, and its own cushion — the feeder delivers 10 ms blocks, so one block more than
+/// the callback asks for is enough to never run dry between two deliveries. Off, the ring
+/// is drained so switching on again starts fresh. Real-time safe like [`MixerRt::render`].
+fn render_local(
+    local: &Local,
+    ring: &mut Consumer<f32>,
+    playing: &mut bool,
+    out: &mut [f32],
+    deafened: bool,
+) {
+    if !local.on.load(Relaxed) {
+        if *playing || ring.slots() > 0 {
+            discard(ring, ring.slots());
+            *playing = false;
+        }
+        return;
+    }
+    let wanted = out.len();
+    let mut queued = ring.slots();
+    let cushion = PREFILL.max(wanted + BLOCK).min(MONITOR_RING / 2);
+    if !*playing {
+        if queued < cushion {
             return;
         }
-        let wanted = out.len();
-        let mut queued = ring.slots();
-        let cushion = PREFILL.max(wanted + BLOCK).min(MONITOR_RING / 2);
-        if !self.monitor_playing {
-            if queued < cushion {
-                return;
+        *playing = true;
+    }
+    if queued > 2 * cushion {
+        // The feeder's clock runs ahead of the output's: trim back to the cushion rather
+        // than letting the latency grow.
+        discard(ring, queued - cushion);
+        queued = ring.slots();
+    }
+    local.queued_max.fetch_max(queued as u32, Relaxed);
+    let take = queued.min(wanted);
+    if let Ok(chunk) = ring.read_chunk(take) {
+        if !deafened {
+            let (head, tail) = chunk.as_slices();
+            for (o, s) in out.iter_mut().zip(head.iter().chain(tail)) {
+                *o += *s;
             }
-            self.monitor_playing = true;
         }
-        if queued > 2 * cushion {
-            // The microphone's clock runs ahead of the output's: trim back to the cushion
-            // rather than letting the latency grow.
-            discard(ring, queued - cushion);
-            queued = ring.slots();
-        }
-        monitor.queued_max.fetch_max(queued as u32, Relaxed);
-        let take = queued.min(wanted);
-        if let Ok(chunk) = ring.read_chunk(take) {
-            if !deafened {
-                let (head, tail) = chunk.as_slices();
-                for (o, s) in out.iter_mut().zip(head.iter().chain(tail)) {
-                    *o += *s;
-                }
-            }
-            chunk.commit_all();
-        }
-        if take < wanted {
-            self.monitor_playing = false;
-            monitor.underruns.fetch_add(1, Relaxed);
-        }
+        chunk.commit_all();
+    }
+    if take < wanted {
+        *playing = false;
+        local.underruns.fetch_add(1, Relaxed);
     }
 }
 
@@ -357,33 +417,37 @@ fn discard<T: Copy>(ring: &mut Consumer<T>, n: usize) {
 }
 
 impl MixerControl {
-    /// A sink for one remote speaker's frames, or `None` when all slots are taken. Dropping
+    /// A sink for one remote track's frames, or `None` when all slots are taken. Dropping
     /// the sink frees the slot.
-    pub fn speaker(self: &Arc<Self>, identity: &str) -> Option<SpeakerSink> {
+    pub fn speaker(self: &Arc<Self>, identity: &str, kind: TrackKind) -> Option<SpeakerSink> {
         let mut routing = self.routing.lock().unwrap();
         let (index, producer) = routing.free.pop()?;
-        let mix = routing.peers.get(identity).copied().unwrap_or_default();
+        let key = (identity.to_string(), kind);
+        let mix = routing.peers.get(&key).copied().unwrap_or_default();
         let slot = &self.shared.slots[index];
         slot.gain.store(mix.gain.to_bits(), Relaxed);
         slot.muted.store(mix.muted, Relaxed);
+        slot.voice.store(kind == TrackKind::Voice, Relaxed);
         slot.level.store(0, Relaxed);
         slot.flush.store(true, Relaxed);
-        routing.active.insert(identity.to_string(), index);
+        routing.active.insert(key.clone(), index);
         Some(SpeakerSink {
             mixer: self.clone(),
-            identity: identity.to_string(),
+            key,
             slot: index,
             producer: Some(producer),
         })
     }
 
-    /// Changes one person's volume or mute — now, and for the next time they speak.
-    pub fn set_peer(&self, identity: &str, change: impl FnOnce(&mut PeerMix)) {
+    /// Changes one person's volume or mute for one of their tracks — now, and for the next
+    /// time it plays.
+    pub fn set_peer(&self, identity: &str, kind: TrackKind, change: impl FnOnce(&mut PeerMix)) {
         let mut routing = self.routing.lock().unwrap();
-        let mix = routing.peers.entry(identity.to_string()).or_default();
+        let key = (identity.to_string(), kind);
+        let mix = routing.peers.entry(key.clone()).or_default();
         change(mix);
         let mix = *mix;
-        if let Some(&index) = routing.active.get(identity) {
+        if let Some(&index) = routing.active.get(&key) {
             self.shared.slots[index]
                 .gain
                 .store(mix.gain.to_bits(), Relaxed);
@@ -414,22 +478,24 @@ impl MixerControl {
         routing
             .active
             .iter()
-            .map(|(identity, &index)| {
+            .filter(|((_, kind), _)| *kind == TrackKind::Voice)
+            .map(|((identity, _), &index)| {
                 let db = f32::from_bits(self.shared.slots[index].leveler_db.load(Relaxed));
                 (identity.clone(), db)
             })
             .collect()
     }
 
-    /// Everything the diagnosis shows per speaker: the leveler's gain (A4), the drift
-    /// compensation's ratio and the ring's fill level (A6).
+    /// Everything the diagnosis shows per speaker (voice tracks): the leveler's gain (A4),
+    /// the drift compensation's ratio and the ring's fill level (A6).
     pub fn speakers(&self) -> Vec<(String, SlotReport)> {
         let routing = self.routing.lock().unwrap();
         let per_ms = transport::SAMPLE_RATE as f32 / 1000.0;
         routing
             .active
             .iter()
-            .map(|(identity, &index)| {
+            .filter(|((_, kind), _)| *kind == TrackKind::Voice)
+            .map(|((identity, _), &index)| {
                 let slot = &self.shared.slots[index];
                 let report = SlotReport {
                     leveler_db: f32::from_bits(slot.leveler_db.load(Relaxed)),
@@ -441,13 +507,14 @@ impl MixerControl {
             .collect()
     }
 
-    /// Current level of everyone speaking, as (identity, RMS 0..1).
+    /// Current level of everyone speaking (voice tracks), as (identity, RMS 0..1).
     pub fn levels(&self) -> Vec<(String, f32)> {
         let routing = self.routing.lock().unwrap();
         routing
             .active
             .iter()
-            .map(|(identity, &index)| {
+            .filter(|((_, kind), _)| *kind == TrackKind::Voice)
+            .map(|((identity, _), &index)| {
                 let level = f32::from_bits(self.shared.slots[index].level.load(Relaxed));
                 (identity.clone(), level)
             })
@@ -513,6 +580,38 @@ impl MixerControl {
     pub fn monitor_dropped_blocks(&self) -> u32 {
         self.shared.monitor.dropped_blocks.load(Relaxed)
     }
+
+    // ── soundboard (ADR-010) ────────────────────────────────────────────────────────────
+
+    /// The write side of the soundboard slot, for the sound thread. There is one; the
+    /// second call returns `None`.
+    pub fn sound_feed(self: &Arc<Self>) -> Option<SoundFeed> {
+        let producer = self.sound_feed.lock().unwrap().take()?;
+        Some(SoundFeed {
+            shared: self.shared.clone(),
+            producer,
+        })
+    }
+
+    /// Blocks the sound thread could not queue because the soundboard ring was full (total).
+    pub fn sound_dropped_blocks(&self) -> u32 {
+        self.shared.sound.dropped_blocks.load(Relaxed)
+    }
+}
+
+/// The sound thread's end of the soundboard slot (ADR-010): one block of the own sound mix
+/// every 10 ms while a sound plays — what goes out, heard at home.
+pub struct SoundFeed {
+    shared: Arc<Shared>,
+    producer: Producer<f32>,
+}
+
+impl SoundFeed {
+    pub fn block(&mut self, samples: &[f32]) {
+        if self.producer.push_entire_slice(samples).is_err() {
+            self.shared.sound.dropped_blocks.fetch_add(1, Relaxed);
+        }
+    }
 }
 
 /// The pump's end of the monitor slot (A5): one block after the send chain, as often as the
@@ -533,10 +632,10 @@ impl MonitorFeed {
     }
 }
 
-/// The producer side of one slot, owned by whoever delivers that speaker's audio.
+/// The producer side of one slot, owned by whoever delivers that track's audio.
 pub struct SpeakerSink {
     mixer: Arc<MixerControl>,
-    identity: String,
+    key: Key,
     slot: usize,
     producer: Option<Producer<i16>>,
 }
@@ -559,9 +658,9 @@ impl FrameSink for SpeakerSink {
 impl Drop for SpeakerSink {
     fn drop(&mut self) {
         let mut routing = self.mixer.routing.lock().unwrap();
-        // The same person may already speak through a newer slot (resubscribe).
-        if routing.active.get(&self.identity) == Some(&self.slot) {
-            routing.active.remove(&self.identity);
+        // The same track may already play through a newer slot (resubscribe).
+        if routing.active.get(&self.key) == Some(&self.slot) {
+            routing.active.remove(&self.key);
         }
         self.mixer.shared.slots[self.slot].level.store(0, Relaxed);
         if let Some(producer) = self.producer.take() {
@@ -576,6 +675,7 @@ mod tests {
     use proptest::prelude::*;
 
     const HALF: i16 = i16::MAX / 2;
+    const VOICE: TrackKind = TrackKind::Voice;
 
     fn render(rt: &mut MixerRt, n: usize) -> Vec<f32> {
         let mut out = vec![0.0; n];
@@ -586,7 +686,7 @@ mod tests {
     #[test]
     fn a_speaker_starts_after_the_prefill_and_not_before() {
         let (control, mut rt) = mixer();
-        let mut anna = control.speaker("anna").unwrap();
+        let mut anna = control.speaker("anna", VOICE).unwrap();
         render(&mut rt, BLOCK); // consumes the flush of a fresh slot
         anna.frame(&[HALF; BLOCK]);
         assert!(
@@ -602,9 +702,9 @@ mod tests {
     #[test]
     fn speakers_are_summed_with_their_gain_and_the_sum_is_limited() {
         let (control, mut rt) = mixer();
-        control.set_peer("ben", |m| m.gain = 0.5);
-        let mut anna = control.speaker("anna").unwrap();
-        let mut ben = control.speaker("ben").unwrap();
+        control.set_peer("ben", VOICE, |m| m.gain = 0.5);
+        let mut anna = control.speaker("anna", VOICE).unwrap();
+        let mut ben = control.speaker("ben", VOICE).unwrap();
         render(&mut rt, BLOCK);
         for _ in 0..2 {
             anna.frame(&[HALF; BLOCK]);
@@ -613,7 +713,7 @@ mod tests {
         assert!(render(&mut rt, BLOCK)
             .iter()
             .all(|s| (*s - 0.75).abs() < 1e-3));
-        control.set_peer("ben", |m| m.gain = 4.0);
+        control.set_peer("ben", VOICE, |m| m.gain = 4.0);
         let ceiling = dsp::db_to_gain(CEILING_DB);
         assert!(
             render(&mut rt, BLOCK)
@@ -626,7 +726,7 @@ mod tests {
     #[test]
     fn the_master_volume_scales_the_whole_mix() {
         let (control, mut rt) = mixer();
-        let mut anna = control.speaker("anna").unwrap();
+        let mut anna = control.speaker("anna", VOICE).unwrap();
         render(&mut rt, BLOCK);
         for _ in 0..3 {
             anna.frame(&[HALF; BLOCK]);
@@ -639,14 +739,14 @@ mod tests {
     #[test]
     fn peer_mute_and_deafen_silence_but_keep_draining() {
         let (control, mut rt) = mixer();
-        let mut anna = control.speaker("anna").unwrap();
+        let mut anna = control.speaker("anna", VOICE).unwrap();
         render(&mut rt, BLOCK);
         for _ in 0..4 {
             anna.frame(&[HALF; BLOCK]);
         }
-        control.set_peer("anna", |m| m.muted = true);
+        control.set_peer("anna", VOICE, |m| m.muted = true);
         assert!(render(&mut rt, BLOCK).iter().all(|s| *s == 0.0));
-        control.set_peer("anna", |m| m.muted = false);
+        control.set_peer("anna", VOICE, |m| m.muted = false);
         control.set_deafened(true);
         assert!(render(&mut rt, BLOCK).iter().all(|s| *s == 0.0));
         control.set_deafened(false);
@@ -656,7 +756,7 @@ mod tests {
     #[test]
     fn running_dry_counts_once_and_waits_for_a_new_prefill() {
         let (control, mut rt) = mixer();
-        let mut anna = control.speaker("anna").unwrap();
+        let mut anna = control.speaker("anna", VOICE).unwrap();
         render(&mut rt, BLOCK);
         for _ in 0..3 {
             anna.frame(&[HALF; BLOCK]);
@@ -676,7 +776,7 @@ mod tests {
     #[test]
     fn a_backlog_over_the_high_water_mark_is_skipped() {
         let (control, mut rt) = mixer();
-        let mut anna = control.speaker("anna").unwrap();
+        let mut anna = control.speaker("anna", VOICE).unwrap();
         render(&mut rt, BLOCK);
         for _ in 0..12 {
             anna.frame(&[HALF; BLOCK]);
@@ -697,7 +797,7 @@ mod tests {
         const CALLBACK: usize = 1056;
         let (control, mut rt) = mixer();
         control.set_leveling(false); // a steady −6 dBFS would be levelled down below 0.4
-        let mut anna = control.speaker("anna").unwrap();
+        let mut anna = control.speaker("anna", VOICE).unwrap();
         render(&mut rt, CALLBACK);
         let mut heard = 0;
         // 300 callbacks ≈ 6.6 s; network frames arrive every 480 samples of that time.
@@ -738,7 +838,7 @@ mod tests {
     #[test]
     fn a_quiet_speaker_is_levelled_up_and_the_manual_volume_stays_an_offset() {
         let (control, mut rt) = mixer();
-        let mut anna = control.speaker("anna").unwrap();
+        let mut anna = control.speaker("anna", VOICE).unwrap();
         render(&mut rt, BLOCK);
         anna.frame(&[0; BLOCK]);
         anna.frame(&[0; BLOCK]);
@@ -762,7 +862,7 @@ mod tests {
             "reported {}",
             gains[0].1
         );
-        control.set_peer("anna", |m| m.gain = 0.5);
+        control.set_peer("anna", VOICE, |m| m.gain = 0.5);
         let halved = talk(&mut rt, &mut anna, quiet, 0.05)[0];
         assert!(
             (halved - later / 2.0).abs() < 2e-3,
@@ -773,7 +873,7 @@ mod tests {
     #[test]
     fn switching_leveling_off_slides_back_to_unity_and_a_new_speaker_starts_fresh() {
         let (control, mut rt) = mixer();
-        let mut anna = control.speaker("anna").unwrap();
+        let mut anna = control.speaker("anna", VOICE).unwrap();
         render(&mut rt, BLOCK);
         anna.frame(&[0; BLOCK]);
         anna.frame(&[0; BLOCK]);
@@ -793,7 +893,7 @@ mod tests {
         talk(&mut rt, &mut anna, quiet, 2.0);
         assert!(control.leveler_gains()[0].1 > 3.0);
         drop(anna);
-        let mut ben = control.speaker("ben").unwrap();
+        let mut ben = control.speaker("ben", VOICE).unwrap();
         render(&mut rt, BLOCK); // the flush resets the slot's leveler
         ben.frame(&[0; BLOCK]);
         assert_eq!(control.leveler_gains(), vec![("ben".to_string(), 0.0)]);
@@ -802,7 +902,7 @@ mod tests {
     #[test]
     fn silence_between_words_does_not_pump_the_gain_up() {
         let (control, mut rt) = mixer();
-        let mut anna = control.speaker("anna").unwrap();
+        let mut anna = control.speaker("anna", VOICE).unwrap();
         render(&mut rt, BLOCK);
         anna.frame(&[0; BLOCK]);
         anna.frame(&[0; BLOCK]);
@@ -818,7 +918,7 @@ mod tests {
     fn drifting_call(ppm: f64, callback: usize, seconds: usize) -> (Arc<MixerControl>, u32, u32) {
         let (control, mut rt) = mixer();
         control.set_leveling(false);
-        let mut anna = control.speaker("anna").unwrap();
+        let mut anna = control.speaker("anna", VOICE).unwrap();
         render(&mut rt, callback);
         let mut arrived = 2.0 * BLOCK as f64; // the prefill
         let mut heard = 0usize;
@@ -852,7 +952,7 @@ mod tests {
         for ppm in [200.0, -200.0] {
             let (control, mut rt) = mixer();
             control.set_leveling(false);
-            let mut anna = control.speaker("anna").unwrap();
+            let mut anna = control.speaker("anna", VOICE).unwrap();
             render(&mut rt, BLOCK);
             let mut arrived = 2.0 * BLOCK as f64;
             let mut reported = (0.0f32, 0.0f32);
@@ -903,7 +1003,7 @@ mod tests {
     #[test]
     fn the_report_rests_when_the_speaker_falls_silent() {
         let (control, mut rt) = mixer();
-        let mut anna = control.speaker("anna").unwrap();
+        let mut anna = control.speaker("anna", VOICE).unwrap();
         render(&mut rt, BLOCK);
         for _ in 0..4 {
             anna.frame(&[HALF; BLOCK]);
@@ -920,7 +1020,7 @@ mod tests {
     #[test]
     fn a_full_ring_drops_the_frame_and_counts_it() {
         let (control, _rt) = mixer();
-        let mut anna = control.speaker("anna").unwrap();
+        let mut anna = control.speaker("anna", VOICE).unwrap();
         for _ in 0..21 {
             anna.frame(&[HALF; BLOCK]);
         }
@@ -930,11 +1030,11 @@ mod tests {
     #[test]
     fn a_reused_slot_does_not_play_the_previous_speaker() {
         let (control, mut rt) = mixer();
-        let mut anna = control.speaker("anna").unwrap();
+        let mut anna = control.speaker("anna", VOICE).unwrap();
         render(&mut rt, BLOCK);
         anna.frame(&[HALF; BLOCK]); // below the prefill: stays in the ring
         drop(anna);
-        let mut ben = control.speaker("ben").unwrap();
+        let mut ben = control.speaker("ben", VOICE).unwrap();
         ben.frame(&[-HALF; BLOCK]);
         assert!(
             render(&mut rt, BLOCK).iter().all(|s| *s == 0.0),
@@ -949,11 +1049,11 @@ mod tests {
     fn slots_come_back_and_levels_follow_the_frames() {
         let (control, _rt) = mixer();
         let sinks: Vec<_> = (0..SLOTS)
-            .map(|i| control.speaker(&format!("p{i}")).unwrap())
+            .map(|i| control.speaker(&format!("p{i}"), VOICE).unwrap())
             .collect();
-        assert!(control.speaker("one-too-many").is_none());
+        assert!(control.speaker("one-too-many", VOICE).is_none());
         drop(sinks);
-        let mut anna = control.speaker("anna").unwrap();
+        let mut anna = control.speaker("anna", VOICE).unwrap();
         anna.frame(&[HALF; BLOCK]);
         let levels = control.levels();
         assert_eq!(levels.len(), 1);
@@ -966,15 +1066,90 @@ mod tests {
     #[test]
     fn volume_survives_a_resubscribe() {
         let (control, mut rt) = mixer();
-        control.set_peer("anna", |m| m.gain = 0.5);
-        drop(control.speaker("anna").unwrap());
-        let mut anna = control.speaker("anna").unwrap();
+        control.set_peer("anna", VOICE, |m| m.gain = 0.5);
+        drop(control.speaker("anna", VOICE).unwrap());
+        let mut anna = control.speaker("anna", VOICE).unwrap();
         render(&mut rt, BLOCK);
         anna.frame(&[HALF; BLOCK]);
         anna.frame(&[HALF; BLOCK]);
         assert!(render(&mut rt, BLOCK)
             .iter()
             .all(|s| (*s - 0.25).abs() < 1e-3));
+    }
+
+    // ── soundboard (ADR-010) ────────────────────────────────────────────────────────────
+
+    /// A soundboard track takes a slot of its own next to the same person's voice, with its
+    /// own volume and mute, and is not levelled.
+    #[test]
+    fn a_soundboard_track_sits_next_to_the_voice_with_its_own_volume_and_no_leveler() {
+        let (control, mut rt) = mixer();
+        let mut voice = control.speaker("anna", VOICE).unwrap();
+        let mut board = control.speaker("anna", TrackKind::Soundboard).unwrap();
+        render(&mut rt, BLOCK);
+        let quiet = (f32::from(i16::MAX) * dsp::db_to_gain(-32.0)) as i16;
+        for _ in 0..600 {
+            voice.frame(&[quiet; BLOCK]);
+            board.frame(&[quiet; BLOCK]);
+            render(&mut rt, BLOCK);
+        }
+        let gains = control.leveler_gains();
+        assert_eq!(gains.len(), 1, "only the voice is reported: {gains:?}");
+        assert!(
+            gains[0].1 > 10.0,
+            "the voice was levelled up: {}",
+            gains[0].1
+        );
+        assert_eq!(control.levels().len(), 1, "levels: voice only");
+        assert_eq!(control.speakers().len(), 1, "diagnosis: voice only");
+        // Mute the voice: what is left is the unlevelled soundboard at −32 dBFS.
+        control.set_peer("anna", VOICE, |m| m.muted = true);
+        voice.frame(&[quiet; BLOCK]);
+        board.frame(&[quiet; BLOCK]);
+        let out = render(&mut rt, BLOCK);
+        assert!(
+            (out[100] - dsp::db_to_gain(-32.0)).abs() < 2e-3,
+            "soundboard untouched by the leveler: {}",
+            out[100]
+        );
+        control.set_peer("anna", TrackKind::Soundboard, |m| m.gain = 2.0);
+        voice.frame(&[quiet; BLOCK]);
+        board.frame(&[quiet; BLOCK]);
+        let out = render(&mut rt, BLOCK);
+        assert!(
+            (out[100] - 2.0 * dsp::db_to_gain(-32.0)).abs() < 4e-3,
+            "its own volume: {}",
+            out[100]
+        );
+    }
+
+    #[test]
+    fn the_own_sound_mix_plays_at_home_after_the_cushion_and_goes_quiet_by_itself() {
+        let (control, mut rt) = mixer();
+        let mut feed = control.sound_feed().unwrap();
+        assert!(
+            control.sound_feed().is_none(),
+            "one feed, for the sound thread"
+        );
+        feed.block(&[0.5; BLOCK]);
+        assert!(
+            render(&mut rt, BLOCK).iter().all(|s| *s == 0.0),
+            "cushion first"
+        );
+        feed.block(&[0.5; BLOCK]);
+        let out = render(&mut rt, BLOCK);
+        assert!(
+            out.iter().all(|s| (*s - 0.5).abs() < 1e-6),
+            "unity: {}",
+            out[0]
+        );
+        render(&mut rt, BLOCK);
+        // The clip ended: silence, no dropped blocks, and the next clip starts fresh.
+        assert!(render(&mut rt, BLOCK).iter().all(|s| *s == 0.0));
+        assert_eq!(control.sound_dropped_blocks(), 0);
+        feed.block(&[-0.5; BLOCK]);
+        feed.block(&[-0.5; BLOCK]);
+        assert!(render(&mut rt, BLOCK).iter().all(|s| *s < -0.4));
     }
 
     // ── monitor (A5) ────────────────────────────────────────────────────────────────────
@@ -1014,7 +1189,7 @@ mod tests {
     fn the_monitor_sums_with_the_speakers_and_follows_master_and_deafen() {
         let (control, mut rt) = mixer();
         let mut feed = control.monitor_feed().unwrap();
-        let mut anna = control.speaker("anna").unwrap();
+        let mut anna = control.speaker("anna", VOICE).unwrap();
         control.set_monitor(true);
         render(&mut rt, BLOCK);
         for _ in 0..3 {
@@ -1144,11 +1319,11 @@ mod tests {
             steps in prop::collection::vec((0usize..4, 1usize..2000, any::<i16>(), 0f32..8.0), 1..60)
         ) {
             let (control, mut rt) = mixer();
-            let mut sinks = vec![control.speaker("a").unwrap(), control.speaker("b").unwrap()];
+            let mut sinks = vec![control.speaker("a", VOICE).unwrap(), control.speaker("b", VOICE).unwrap()];
             let mut feed = control.monitor_feed().unwrap();
             control.set_monitor(true);
             for (frames, wanted, sample, gain) in steps {
-                control.set_peer("a", |m| m.gain = gain);
+                control.set_peer("a", VOICE, |m| m.gain = gain);
                 for sink in &mut sinks {
                     for _ in 0..frames {
                         sink.frame(&[sample; BLOCK]);

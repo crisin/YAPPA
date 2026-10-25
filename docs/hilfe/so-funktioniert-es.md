@@ -36,6 +36,11 @@ fällt sie aus, läuft das Gespräch weiter.
 6. **Ausgabe.** Die Stimmen aller werden gemischt – mit deinem Regler pro Person – und an
    den Kopfhörer gegeben.
 
+Das **Soundboard** nimmt einen zweiten Weg neben der Stimme: Ein Klick spielt eine Datei
+aus deinem Sound-Ordner über einen eigenen Kanal von dir – ohne Rauschunterdrückung und
+Gate, nur mit Limiter –, und jeder kann deine Sounds für sich leiser drehen, ohne deine
+Stimme anzufassen. Du hörst sie selbst mit.
+
 Alles zusammen soll 70 bis 120 Millisekunden dauern (**Latenz**). Gemessen ist bisher der
 digitale Teil mit 50 bis 60 ms; der Rest sind Mikrofon- und Ausgabepuffer.
 

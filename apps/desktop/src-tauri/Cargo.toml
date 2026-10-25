@@ -26,6 +26,8 @@ tauri-plugin-single-instance = { version = "2.5", features = ["deep-link"] }
 tauri-plugin-updater = "2.14"
 tauri-plugin-process = "2.4"
 api-types.workspace = true
+# Sound files picked in the UI arrive base64-encoded over IPC (soundboard, ADR-010).
+base64.workspace = true
 client.workspace = true
 platform.workspace = true
 audio-engine = { workspace = true, features = ["deepfilter"] }

@@ -16,6 +16,8 @@ use transport::{
     AudioReceiver, EventFn, LinkState, PublishOptions, Transport, TransportEvent, VoiceOut, BLOCK,
 };
 
+const VOICE: transport::TrackKind = transport::TrackKind::Voice;
+
 // ── fake transport ──────────────────────────────────────────────────────────────────────
 
 /// What the engine attached: where events go and where remote audio goes.
@@ -26,6 +28,17 @@ struct Wire {
     calls: Mutex<Vec<String>>,
     hooks: Mutex<Option<Hooks>>,
     sent: Mutex<Vec<Vec<i16>>>,
+    /// Blocks on the soundboard track (ADR-010).
+    sound_sent: Mutex<Vec<Vec<i16>>>,
+}
+
+/// The soundboard's end of the fake wire.
+struct SoundWire(Arc<Wire>);
+
+impl VoiceOut for SoundWire {
+    fn send(&self, block: &[i16]) {
+        self.0.sound_sent.lock().unwrap().push(block.to_vec());
+    }
 }
 
 impl Wire {
@@ -81,6 +94,9 @@ impl Transport for FakeTransport {
     }
     fn voice_out(&self) -> Arc<dyn VoiceOut> {
         self.0.clone()
+    }
+    fn sound_out(&self) -> Arc<dyn VoiceOut> {
+        Arc::new(SoundWire(self.0.clone()))
     }
 }
 
@@ -813,7 +829,7 @@ fn remote_voices_reach_the_output_with_level_volume_and_a_freed_slot() {
         out
     };
 
-    let mut anna = rig.wire.receiver().speaker_started("u1");
+    let mut anna = rig.wire.receiver().speaker_started("u1", VOICE);
     render(BLOCK); // a fresh slot is flushed first
     anna.frame(&[16384; BLOCK]);
     anna.frame(&[16384; BLOCK]);
@@ -853,7 +869,7 @@ fn changing_the_output_keeps_the_speakers() {
     rig.wait_until("output open", || {
         rig.hardware.speaker.lock().unwrap().is_some()
     });
-    let mut anna = rig.wire.receiver().speaker_started("u1");
+    let mut anna = rig.wire.receiver().speaker_started("u1", VOICE);
 
     rig.engine.send(Command::SetOutputDevice {
         id: Some("out2".into()),
@@ -952,7 +968,7 @@ fn a_refresh_takes_the_chosen_output_back_and_keeps_the_speakers() {
     rig.hardware.unplug("out2");
     let (_, output) = rig.wait_device_state("stand-in", |_, o| o.fallback && o.open.is_some());
     assert_eq!(output.open.as_deref(), Some("out1"));
-    let mut anna = rig.wire.receiver().speaker_started("u1");
+    let mut anna = rig.wire.receiver().speaker_started("u1", VOICE);
 
     // The shell's device watcher reports a change (or the person clicks „Geräte neu
     // einlesen“): the list is read again and out2 opened at once.
@@ -1251,4 +1267,144 @@ fn the_send_chain_reports_its_stages() {
     assert!(stages[1].active, "high-pass on by default");
     assert!(stages[2].active, "a denoiser by default");
     assert!(stages[6].active, "the limiter is always on");
+}
+
+// ── soundboard (ADR-010) ────────────────────────────────────────────────────────────────
+
+/// A 16-bit PCM WAV in memory.
+fn wav(rate: u32, channels: u16, samples: &[i16]) -> Vec<u8> {
+    let data_len = (samples.len() * 2) as u32;
+    let mut bytes = Vec::with_capacity(44 + data_len as usize);
+    bytes.extend_from_slice(b"RIFF");
+    bytes.extend_from_slice(&(36 + data_len).to_le_bytes());
+    bytes.extend_from_slice(b"WAVEfmt ");
+    bytes.extend_from_slice(&16u32.to_le_bytes());
+    bytes.extend_from_slice(&1u16.to_le_bytes());
+    bytes.extend_from_slice(&channels.to_le_bytes());
+    bytes.extend_from_slice(&rate.to_le_bytes());
+    bytes.extend_from_slice(&(rate * u32::from(channels) * 2).to_le_bytes());
+    bytes.extend_from_slice(&(channels * 2).to_le_bytes());
+    bytes.extend_from_slice(&16u16.to_le_bytes());
+    bytes.extend_from_slice(b"data");
+    bytes.extend_from_slice(&data_len.to_le_bytes());
+    for s in samples {
+        bytes.extend_from_slice(&s.to_le_bytes());
+    }
+    bytes
+}
+
+/// A click plays the file out on the soundboard track and into the own playout, the UI
+/// sees the start and the end, a bad file is an error and not a crash, and the others'
+/// soundboard tracks get a volume of their own.
+#[test]
+fn a_sound_goes_out_on_its_track_and_into_the_own_mix() {
+    let rig = rig(transparent());
+    rig.join();
+    rig.wait_until("output open", || {
+        rig.hardware.speaker.lock().unwrap().is_some()
+    });
+    let dir = std::env::temp_dir().join(format!("yappa-engine-sound-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("sting.wav");
+    let samples = vec![12_000i16; 9600]; // 200 ms
+    std::fs::write(&path, wav(48_000, 1, &samples)).unwrap();
+    let name = path.display().to_string();
+
+    // The output callback, stood in by a thread: drains the own mix in real time while the
+    // sound plays and counts what it heard.
+    let speaker = rig.hardware.speaker.clone();
+    let callback = std::thread::spawn(move || {
+        let mut out = vec![0f32; BLOCK];
+        let mut heard = 0;
+        for _ in 0..60 {
+            out.fill(0.0);
+            speaker.lock().unwrap().as_mut().unwrap().render(&mut out);
+            heard += out.iter().filter(|s| **s > 0.3).count();
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        heard
+    });
+    rig.engine.send(Command::PlaySound { path: name.clone() });
+    let started = rig.wait("sound playing", |e| match e {
+        Event::Sounds { playing } if !playing.is_empty() => Some(playing.clone()),
+        _ => None,
+    });
+    assert_eq!(started, vec![name.clone()]);
+    rig.wait("sound ended", |e| {
+        matches!(e, Event::Sounds { playing } if playing.is_empty()).then_some(())
+    });
+    let blocks = rig.wire.sound_sent.lock().unwrap();
+    assert!(
+        (19..=21).contains(&blocks.len()),
+        "{} blocks on the wire",
+        blocks.len()
+    );
+    assert!(
+        blocks[5].iter().all(|s| (*s - 12_000).abs() < 50),
+        "{}",
+        blocks[5][0]
+    );
+    assert!(
+        rig.wire
+            .sent
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|b| b.iter().all(|s| *s == 0)),
+        "nothing of it on the voice track"
+    );
+    drop(blocks);
+    // The own mix played it too: the sound ring was fed, the callback drained it.
+    let heard = callback.join().unwrap();
+    assert!(heard > 10 * BLOCK, "heard {heard} loud samples at home");
+    let mut out = vec![0f32; BLOCK];
+
+    rig.engine.send(Command::PlaySound {
+        path: dir.join("missing.mp3").display().to_string(),
+    });
+    let message = rig.wait("error", |e| match e {
+        Event::Error { message } => Some(message.clone()),
+        _ => None,
+    });
+    assert!(message.contains("missing.mp3"), "{message}");
+
+    // A per-person soundboard volume lands on that track, not on the voice.
+    let mut board = rig
+        .wire
+        .receiver()
+        .speaker_started("u1", transport::TrackKind::Soundboard);
+    let mut voice = rig.wire.receiver().speaker_started("u1", VOICE);
+    rig.engine.send(Command::SetPeerMuted {
+        identity: "u1".into(),
+        track: TrackKind::Soundboard,
+        muted: true,
+    });
+    rig.engine.send(Command::ApplySettings {
+        settings: Settings {
+            auto_level: false,
+            ..transparent()
+        },
+    });
+    std::thread::sleep(Duration::from_millis(100));
+    let render = |out: &mut Vec<f32>| {
+        out.fill(0.0);
+        rig.hardware
+            .speaker
+            .lock()
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .render(out);
+    };
+    render(&mut out);
+    for _ in 0..3 {
+        board.frame(&[16_000; BLOCK]);
+        voice.frame(&[-8_000; BLOCK]);
+    }
+    render(&mut out);
+    assert!(
+        out.iter().all(|s| (*s - -0.244).abs() < 0.01),
+        "the voice alone, the muted soundboard track not: {}",
+        out[0]
+    );
 }

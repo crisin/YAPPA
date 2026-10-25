@@ -317,6 +317,20 @@ schaltet nicht von selbst ein.
 
 Mehr dazu: [Rückkopplung (Wikipedia)](https://de.wikipedia.org/wiki/Rückkopplung_(Akustik))
 
+## Soundboard
+
+Ein Brett voller Knöpfe: Ein Klick spielt eine Sounddatei für alle in deinem Channel ab,
+und du hörst sie mit. Der Sound läuft über einen eigenen Kanal von dir, den jeder für sich
+leiser drehen oder stummschalten kann – deine Stimme bleibt davon unberührt.
+
+Die Sounds liegen als Dateien in einem Ordner auf deinem PC (WAV, MP3, OGG, FLAC, M4A);
+„Ordner öffnen“ zeigt ihn, „Sound hinzufügen“ kopiert eine Datei hinein. Mehrere Klicks
+überlagern sich, ein Limiter hält die Summe unter dem Maximum. Die Datei wird nicht an die
+anderen verteilt, nur der Ton – wer denselben Sound will, braucht die Datei selbst. Tasten
+fürs Soundboard gibt es noch nicht.
+
+Mehr dazu: [Soundboard (Wikipedia)](https://de.wikipedia.org/wiki/Soundboard_(Software))
+
 ## Update-Kanal
 
 Welche Versionen deine App von selbst bekommt: „Stabil“ hat die Gang schon einen Abend

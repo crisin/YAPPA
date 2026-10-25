@@ -1,7 +1,9 @@
 //! The seam between the audio engine and the media plane.
 //!
 //! The engine hands over its voice as 10 ms blocks of 48 kHz mono PCM and gets every remote
-//! speaker back the same way; everything else is plain events. Nothing in this module knows
+//! speaker back the same way; everything else is plain events. A second outgoing stream of
+//! the same shape carries the soundboard (ADR-010): its own track per participant, so every
+//! listener can turn it down on its own. Nothing in this module knows
 //! LiveKit — the implementation lives in [`livekit`] behind the cargo feature of the same
 //! name, so another SFU (or a fake in tests) only has to implement [`Transport`].
 //!
@@ -138,11 +140,50 @@ pub struct NetStats {
     pub concealed_samples: u64,
 }
 
+/// Which of a participant's tracks a stream is. Named like the published tracks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TrackKind {
+    /// The microphone after the send chain.
+    Voice,
+    /// The soundboard (ADR-010): files played by that person, mixed on their side.
+    Soundboard,
+}
+
+impl TrackKind {
+    /// The published track's name — how the receiving side tells them apart.
+    pub const fn name(self) -> &'static str {
+        match self {
+            TrackKind::Voice => "voice",
+            TrackKind::Soundboard => "soundboard",
+        }
+    }
+
+    /// The kind a published track name stands for; anything unknown is a voice (an older
+    /// client publishes an unnamed microphone track).
+    pub fn from_name(name: &str) -> TrackKind {
+        if name == TrackKind::Soundboard.name() {
+            TrackKind::Soundboard
+        } else {
+            TrackKind::Voice
+        }
+    }
+}
+
+/// How the soundboard track is published (planning doc, "Quellen und Tracks"): mono,
+/// 96 kbit/s, DTX on — nothing on the wire while no sound plays — no RED (a lost packet of
+/// a sound effect is not worth doubling the bandwidth).
+pub const SOUNDBOARD_PUBLISH: PublishOptions = PublishOptions {
+    bitrate_bps: 96_000,
+    stereo: false,
+    red: false,
+    dtx: true,
+};
+
 /// Where the transport delivers remote audio. Implemented by the engine.
 pub trait AudioReceiver: Send + Sync {
-    /// A remote participant's voice starts. The returned sink gets every decoded 10 ms
-    /// frame and is dropped when that voice ends — its lifetime is the track's lifetime.
-    fn speaker_started(&self, identity: &str) -> Box<dyn FrameSink>;
+    /// A remote participant's track starts. The returned sink gets every decoded 10 ms
+    /// frame and is dropped when that track ends — its lifetime is the track's lifetime.
+    fn speaker_started(&self, identity: &str, kind: TrackKind) -> Box<dyn FrameSink>;
 }
 
 pub trait FrameSink: Send {
@@ -173,6 +214,9 @@ pub trait Transport: Send {
     /// towards their UI, not the mute itself.
     fn set_muted(&mut self, muted: bool);
     fn voice_out(&self) -> Arc<dyn VoiceOut>;
+    /// Where the engine delivers its soundboard mix (ADR-010): the `soundboard` track,
+    /// published next to the voice for the whole session. Blocks only while a sound plays.
+    fn sound_out(&self) -> Arc<dyn VoiceOut>;
 }
 
 #[cfg(test)]
@@ -190,6 +234,17 @@ mod tests {
         for (i, pair) in out.chunks_exact(2).enumerate() {
             assert_eq!(pair, [block[i], block[i]]);
         }
+    }
+
+    #[test]
+    fn track_kinds_round_trip_through_their_names_and_unknown_is_voice() {
+        for kind in [TrackKind::Voice, TrackKind::Soundboard] {
+            assert_eq!(TrackKind::from_name(kind.name()), kind);
+        }
+        assert_eq!(TrackKind::from_name(""), TrackKind::Voice);
+        assert_eq!(TrackKind::from_name("microphone"), TrackKind::Voice);
+        assert_eq!(SOUNDBOARD_PUBLISH.channels(), 1);
+        const _: () = assert!(SOUNDBOARD_PUBLISH.dtx && !SOUNDBOARD_PUBLISH.red);
     }
 
     #[test]

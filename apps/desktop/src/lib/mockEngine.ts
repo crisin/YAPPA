@@ -6,6 +6,7 @@ import type { Event } from './types/Event';
 import type { Invite } from './types/Invite';
 import type { Participant } from './types/Participant';
 import type { Settings } from './types/Settings';
+import type { Sound } from './types/Sound';
 import type { Stats } from './types/Stats';
 import defaultSettings from './types/defaultSettings.json';
 import { mockPeopleIn } from './mockApi';
@@ -28,6 +29,15 @@ const device = (name: string) => ({
 });
 
 export const INVITE_PREFIX = 'yappa1.';
+
+/** The browser's soundboard folder: three classics, so the inspector has something to show. */
+export const MOCK_SOUNDS: Sound[] = [
+  { name: 'Airhorn', path: 'C:/yappa/soundboard/Airhorn.mp3' },
+  { name: 'Tusch', path: 'C:/yappa/soundboard/Tusch.wav' },
+  { name: 'Zonk', path: 'C:/yappa/soundboard/Zonk.ogg' },
+];
+/** How long a mock sound "plays" before it reports its end. */
+export const MOCK_SOUND_MS = 800;
 
 /** Same text format as `Invite::encode` in api-types. */
 export function encodeInvite(invite: Invite): string {
@@ -66,6 +76,10 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
   const micMuted = () => muted || deafened;
   /** „Mich selbst hören“ (A5). */
   let monitor = false;
+  /** The soundboard (ADR-010): the folder and what plays right now. */
+  const sounds: Sound[] = structuredClone(MOCK_SOUNDS);
+  let playing: string[] = [];
+  const soundsEvent = (): Event => ({ type: 'sounds', playing: [...playing] });
   let ticks = 0;
   let timer: ReturnType<typeof setInterval> | undefined;
 
@@ -245,11 +259,32 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
         emit(devices());
         emit(deviceState());
         break;
+      case 'playSound':
+        if (!sounds.some((s) => s.path === command.path)) {
+          emit({ type: 'error', message: `sound ${command.path}: cannot open` });
+          break;
+        }
+        playing = [...playing, command.path];
+        emit(soundsEvent());
+        setTimeout(() => {
+          const at = playing.indexOf(command.path);
+          if (at < 0) return;
+          playing = playing.filter((_, i) => i !== at);
+          emit(soundsEvent());
+        }, MOCK_SOUND_MS);
+        break;
+      case 'stopSounds':
+        if (playing.length > 0) {
+          playing = [];
+          emit(soundsEvent());
+        }
+        break;
       case 'resync':
         emit(devices());
         emit(deviceState());
         emit(muteState());
         emit({ type: 'monitorState', on: monitor });
+        emit(soundsEvent());
         break;
       default:
         break;
@@ -299,5 +334,22 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
       window.open?.(url, '_blank', 'noopener');
       return Promise.resolve();
     },
+    sounds: () => Promise.resolve(structuredClone(sounds)),
+    addSound(name, bytes) {
+      const base = name.split(/[\\/]/).pop() ?? name;
+      if (!/\.(wav|flac|ogg|oga|mp3|m4a|aac)$/i.test(base))
+        return Promise.reject(`„${base}“ ist keine Sounddatei`);
+      if (bytes.length === 0) return Promise.reject('Die Datei ist leer.');
+      const sound: Sound = {
+        name: base.replace(/\.[^.]+$/, ''),
+        path: `C:/yappa/soundboard/${base}`,
+      };
+      const at = sounds.findIndex((s) => s.path === sound.path);
+      if (at >= 0) sounds[at] = sound;
+      else sounds.push(sound);
+      sounds.sort((a, b) => a.name.localeCompare(b.name, 'de'));
+      return Promise.resolve(structuredClone(sound));
+    },
+    openSoundFolder: () => Promise.resolve(),
   };
 }

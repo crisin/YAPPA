@@ -38,4 +38,9 @@ outputGainDb: number,
  * up and loud ones down (±12 dB, a few dB per second) before the per-person volume.
  * Off, only the per-person volume applies.
  */
-autoLevel: boolean, };
+autoLevel: boolean, 
+/**
+ * How loud my soundboard sounds go out and play back for me, dB (−30..=12) — the
+ * files come in all loudnesses; this is the one knob before the limiter.
+ */
+soundboardGainDb: number, };

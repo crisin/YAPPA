@@ -4,6 +4,7 @@ One line per finished task (definition of done). Newest first.
 
 ## Unreleased
 
+- Soundboard, erster Wurf (ADR-010): Im Channel gibt es neben dem Raumtitel „Soundboard“ – ein Brett aus den Sounddateien in deinem Ordner (WAV, MP3, OGG, FLAC, M4A; „Ordner öffnen“ zeigt ihn, „Sound hinzufügen“ kopiert eine Datei hinein). Ein Klick spielt den Sound für alle im Channel über einen eigenen Kanal von dir, den jede Person bei dir im Inspector für sich leiser drehen oder stummschalten kann, ohne deine Stimme anzufassen; du hörst ihn selbst mit. Mehrere Klicks überlagern sich, ein Limiter hält die Summe unter dem Maximum, „Stopp“ beendet alles, ein Regler setzt die Lautstärke deiner Sounds. Noch ohne Tasten und ohne Verteilen der Dateien an die anderen (Soundboard Runde 2 auf dem Board). Für die Technik: ein zweiter LiveKit-Track `soundboard` pro Person (96 kbit/s, DTX), ein eigener Sound-Thread in der Engine, der Mixer kennt jetzt 48 Slots nach (Person, Track).
 - CI grün nach 0.2.0: Clippy auf macOS (ungenutzte Signal-Variante und ein `drop` auf dem leeren Backend im Geräte-Watcher) und ein flatternder Engine-Test (die Lautstärke-Probe lief mit eingeschaltetem Angleich, der auf einer langsamen CI-Maschine schneller war als der Befehl). Keine Änderung am Verhalten.
 
 ## 0.2.0 (2026-10-25)

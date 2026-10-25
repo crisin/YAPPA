@@ -8,7 +8,7 @@
 use audio_engine::mixer::mixer;
 use criterion::{criterion_group, criterion_main, Criterion};
 use std::hint::black_box;
-use transport::{FrameSink, BLOCK};
+use transport::{FrameSink, TrackKind, BLOCK};
 
 const SPEAKERS: usize = 20;
 
@@ -16,7 +16,11 @@ fn render_20_speakers(c: &mut Criterion) {
     for monitor in [false, true] {
         let (control, mut rt) = mixer();
         let mut sinks: Vec<_> = (0..SPEAKERS)
-            .map(|i| control.speaker(&format!("p{i}")).expect("free slot"))
+            .map(|i| {
+                control
+                    .speaker(&format!("p{i}"), TrackKind::Voice)
+                    .expect("free slot")
+            })
             .collect();
         // A voice-like signal near full scale, so the sum needs the clamp / limiter.
         let frame: Vec<i16> = (0..BLOCK)

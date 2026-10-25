@@ -18,6 +18,8 @@ denoise.workspace = true
 dsp.workspace = true
 engine-protocol.workspace = true
 rtrb.workspace = true
+# Soundboard files (ADR-010): WAV, FLAC, Ogg Vorbis, MP3, AAC/M4A — pure Rust, MPL-2.0.
+symphonia = { version = "0.5", default-features = false, features = ["wav", "pcm", "flac", "ogg", "vorbis", "mp3", "isomp4", "aac"] }
 tracing.workspace = true
 # The trait only — the LiveKit implementation is a feature this crate never enables.
 transport.workspace = true

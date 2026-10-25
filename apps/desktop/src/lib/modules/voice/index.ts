@@ -2,7 +2,7 @@
 import { AudioLines } from '@lucide/svelte';
 import type { AppState } from '../../app.svelte';
 import type { CommandDef, ModuleDef } from '../../shell.svelte';
-import PersonInspector from './PersonInspector.svelte';
+import VoiceInspector from './VoiceInspector.svelte';
 import VoiceSidebar from './VoiceSidebar.svelte';
 import VoiceStage from './VoiceStage.svelte';
 
@@ -14,7 +14,7 @@ export function voiceModule(app: AppState): ModuleDef {
     icon: AudioLines,
     sidebar: VoiceSidebar,
     stage: VoiceStage,
-    inspector: PersonInspector,
+    inspector: VoiceInspector,
     crumb: () => (session.inRoom ? (gang.channelName(session.room) ?? session.room) : null),
     commands: () => {
       const actions: CommandDef[] = [
@@ -41,6 +41,25 @@ export function voiceModule(app: AppState): ModuleDef {
           keywords: ['leave', 'auflegen'],
           run: () => void app.leaveVoice(),
         });
+        actions.push({
+          id: 'voice:soundboard',
+          label: 'Soundboard öffnen',
+          group: 'Aktionen',
+          keywords: ['soundboard', 'sound', 'sounds'],
+          run: () => {
+            shell.open('voice');
+            shell.openInspector({ kind: 'soundboard', id: 'soundboard' });
+          },
+        });
+        if (session.playing.length > 0) {
+          actions.push({
+            id: 'voice:stop-sounds',
+            label: 'Alle Sounds stoppen',
+            group: 'Aktionen',
+            keywords: ['soundboard', 'stop'],
+            run: () => void session.stopSounds(),
+          });
+        }
       }
       const people: CommandDef[] = session.participants.map((p) => ({
         id: `person:${p.identity}`,

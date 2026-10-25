@@ -25,5 +25,6 @@
   },
   "inputChannel": 0,
   "outputGainDb": 0.0,
-  "autoLevel": true
+  "autoLevel": true,
+  "soundboardGainDb": 0.0
 }
