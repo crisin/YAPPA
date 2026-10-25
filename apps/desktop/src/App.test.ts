@@ -515,6 +515,8 @@ describe('Server away at start', () => {
       await card().findByRole('heading', { level: 1, name: 'Server nicht erreichbar' }),
     ).toBeInTheDocument();
     expect(card().queryByLabelText('Einladung')).not.toBeInTheDocument();
+    // The reason from the client, without the prefix the heading already says.
+    expect(card().getByRole('status')).toHaveTextContent(/^keine Verbindung zu „mock.yappa.test“/);
     await fireEvent.click(card().getByRole('button', { name: 'Erneut versuchen' }));
     expect(
       await card().findByRole('heading', { level: 1, name: 'Server nicht erreichbar' }),

@@ -32,11 +32,14 @@
       shell.clearBanner('offline');
     } catch (reason) {
       // Not logged in yet means: no server known yet — that is not "offline".
-      if ((reason as { code?: string })?.code !== 'unreachable') return;
+      const failure = reason as { code?: string; message?: string } | undefined;
+      if (failure?.code !== 'unreachable') return;
+      // The message says why (name, IPv6-only server, TLS …) — keep it, add the reassurance.
+      const why = failure.message?.replace(/\.?$/, '.') ?? 'Server nicht erreichbar.';
       shell.showBanner({
         id: 'offline',
         priority: BANNER.offline,
-        text: 'Server nicht erreichbar. Ein laufender Call geht trotzdem weiter.',
+        text: `${why} Ein laufender Call geht trotzdem weiter.`,
         action: { label: 'Erneut versuchen', run: () => void loadConfig() },
         dismissible: true,
       });

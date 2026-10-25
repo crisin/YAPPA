@@ -24,6 +24,9 @@
   // click away for a new invite.
   let retrying = $state(false);
   let wantLogin = $state(false);
+  /** Why the server did not answer (name, IPv6-only server, TLS …), without the prefix the
+   * heading already says. */
+  const detail = $derived(gang.problem?.replace(/^Server nicht erreichbar[.:]?\s*/, '') || null);
 
   async function retry() {
     retrying = true;
@@ -71,6 +74,9 @@
           Du bist auf diesem Rechner angemeldet, aber der Server antwortet gerade nicht. Das liegt
           meist am Server oder am Netz, nicht an dir.
         </p>
+        {#if detail}
+          <p class="detail" role="status">{detail}</p>
+        {/if}
         <div class="actions">
           <button class="primary" onclick={retry} disabled={retrying}>
             {retrying ? 'Verbinde …' : 'Erneut versuchen'}
@@ -233,6 +239,14 @@
   .lead {
     margin: 0 0 var(--space-2);
     color: var(--color-text-muted);
+  }
+
+  .detail {
+    margin: 0 0 var(--space-2);
+    padding: var(--space-2);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-raised);
+    font-size: var(--font-size-sm);
   }
 
   label[for] {

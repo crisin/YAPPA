@@ -66,6 +66,19 @@ In der Datei stehen Programmversion, deine Einstellungen, die Gerätenamen und e
 Protokoll mit Messwerten pro Sekunde. Gespräche werden nicht aufgezeichnet, und deine
 Einladung steht nicht drin.
 
+## Wenn „Server nicht erreichbar“ steht
+
+Die Meldung sagt seit der 0.2 dazu, woran es liegt. Die häufigsten Fälle:
+
+| Meldung | Was los ist | Was hilft |
+| --- | --- | --- |
+| „… ist nur über IPv6 erreichbar …“ | Der Server hängt an einem Anschluss ohne öffentliche IPv4, deiner hat kein IPv6 | `https://test-ipv6.com` zeigt es. Dann geht es erst, wenn der Server eine IPv4 hat – Chris Bescheid sagen |
+| „… der Name … ist nicht auflösbar“ | Tippfehler im Link, oder du bist offline | Link noch einmal einfügen, Internet prüfen |
+| „… keine Verbindung …“ / „… Zeitüberschreitung …“ | Server aus, oder etwas blockt Port 443 (Firewall, Firmennetz) | Chris fragen, ob der Server läuft; anderes Netz probieren (Handy-Hotspot) |
+| „… TLS-Fehler …“ | Zertifikat abgelaufen oder ein „Sicherheitsprodukt“ bricht HTTPS auf | Chris Bescheid sagen |
+
+Die genaue Ursache steht auch in der Diagnose-Datei (Zeile „control plane unreachable“).
+
 ## Bekannte Lücken
 
 - Die **Rauschunterdrückung** ist an, und das Mikrofon geht nur auf, wenn du sprichst
