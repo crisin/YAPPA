@@ -512,9 +512,9 @@ describe('Settings: Einfach und Profi', () => {
   });
 
   it('warns on speakers and does not start hearing myself by itself (A5)', async () => {
-    const { container } = await start('call', async (api) =>
-      api.setAppSettings({ ...(await api.appSettings()), listening: 'speakers' }),
-    );
+    const { container } = await start('call', async (api) => {
+      await api.setAppSettings({ ...(await api.appSettings()), listening: 'speakers' });
+    });
     await openMe('Signalkette');
     const monitor = await screen.findByRole('checkbox', { name: 'Mich selbst hören' });
     expect(monitor).not.toBeChecked();

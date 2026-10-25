@@ -10,6 +10,7 @@ use engine_protocol::Command;
 use serde::Deserialize;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, State};
+use tauri_plugin_autostart::ManagerExt as _;
 
 /// Everybody online, pushed on every change.
 pub const PRESENCE_EVENT: &str = "presence";
@@ -185,12 +186,35 @@ pub fn app_settings(app: State<'_, App>) -> AppSettings {
     app.app_settings.lock().expect("lock").clone()
 }
 
+/// Saves what the UI sent. A changed `autostart` is registered with the OS right away; when
+/// the OS refuses, the setting falls back to what the OS has, with the reason in the log.
 #[tauri::command]
-pub fn set_app_settings(app: State<'_, App>, mut settings: AppSettings) {
+pub fn set_app_settings(
+    handle: AppHandle,
+    app: State<'_, App>,
+    mut settings: AppSettings,
+) -> AppSettings {
     settings.dedupe_keys();
+    let was = app.app_settings.lock().expect("lock").autostart;
+    if settings.autostart != was {
+        let manager = handle.autolaunch();
+        let result = if settings.autostart {
+            manager.enable()
+        } else {
+            manager.disable()
+        };
+        match result {
+            Ok(()) => tracing::info!(on = settings.autostart, "autostart changed"),
+            Err(e) => {
+                tracing::warn!(error = %e, "autostart could not be changed");
+                settings.autostart = manager.is_enabled().unwrap_or(was);
+            }
+        }
+    }
     client::settings::save_app(app.client.profile(), &settings);
     crate::bind_keys(&app.hotkeys, &settings);
-    *app.app_settings.lock().expect("lock") = settings;
+    *app.app_settings.lock().expect("lock") = settings.clone();
+    settings
 }
 
 /// Waits (up to 10 s) for the next key or mouse button and makes it the key of `action`

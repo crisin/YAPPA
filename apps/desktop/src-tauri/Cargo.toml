@@ -14,7 +14,8 @@ crate-type = ["rlib"]  # desktop only; mobile is a non-goal
 tauri-build = { version = "2.7", features = [] }
 
 [dependencies]
-tauri = { version = "2.12", features = [] }
+# `tray-icon`: yAPPA lives on in the notification area when the window is closed.
+tauri = { version = "2.12", features = ["tray-icon"] }
 # Links in the in-app help open in the system browser (Rust side only, see `open_url`).
 tauri-plugin-opener = "2"
 # Invite links (`yappa://invite/…`) open the app; a second start hands its link to the first
@@ -25,6 +26,8 @@ tauri-plugin-single-instance = { version = "2.5", features = ["deep-link"] }
 # the install.
 tauri-plugin-updater = "2.14"
 tauri-plugin-process = "2.4"
+# „Beim Anmelden starten“: Windows Run key / macOS launch agent, started with `--minimized`.
+tauri-plugin-autostart = "2.5"
 api-types.workspace = true
 # Sound files picked in the UI arrive base64-encoded over IPC (soundboard, ADR-010).
 base64.workspace = true

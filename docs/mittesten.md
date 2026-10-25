@@ -50,6 +50,7 @@ weiter.
 | Ich → Hilfe | Diese Anleitung, „So funktioniert yAPPA“ und ein Glossar – direkt in der App, auch ohne Verbindung. |
 | Suchen oder springen (`Strg K`) | Springt überallhin: Einstellungen, Leute, Stummschalten, Verlassen. |
 | `Esc` | Einen Schritt zurück. |
+| X am Fenster | Schließt nur das Fenster – yAPPA läuft im Infobereich (die Katze neben der Uhr) weiter, der Call auch. Klick auf die Katze holt das Fenster zurück; Rechtsklick: Stumm, Taub, **Beenden**. Wer lieber will, dass X beendet: **Ich → Darstellung**. Dort auch „beim Anmelden starten“. |
 
 ## Wenn etwas komisch klingt
 

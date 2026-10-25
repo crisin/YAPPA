@@ -343,6 +343,19 @@ im Hinweis oben oder auf der Updates-Seite klickst – nie mitten im Call; danac
 die App neu. Ist deine Version für den Server zu alt, verlässt sie den Call von selbst,
 und der Hinweis bleibt, bis das Update drauf ist.
 
+## Infobereich
+
+Die kleinen Symbole unten rechts neben der Uhr (Windows) beziehungsweise oben rechts in
+der Menüleiste (macOS). Dort sitzt yAPPA weiter, wenn du das Fenster schließt – der Call
+läuft, und ein Klick auf die Katze holt das Fenster zurück.
+
+Das ist der Normalfall, damit ein reflexhafter Klick aufs X nie einen laufenden Call
+beendet. Wer lieber will, dass X yAPPA beendet, stellt es unter „Ich → Darstellung“ um.
+Das Menü am Symbol (Rechtsklick) zeigt das Fenster, schaltet stumm oder taub und hat den
+einzigen Knopf, der yAPPA wirklich beendet: „Beenden“. Unter „Darstellung“ lässt sich auch
+einstellen, dass yAPPA beim Anmelden am Rechner mitstartet – dann klein im Infobereich,
+ohne Fenster.
+
 ## Rauschunterdrückung
 
 Entfernt Lüfter, Tastatur und Straßenlärm aus dem Mikrofonsignal, bevor es gesendet wird.

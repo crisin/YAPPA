@@ -35,7 +35,7 @@ export const tauriApi: Api = {
     return stop;
   },
   appSettings: () => invoke<AppSettings>('app_settings'),
-  setAppSettings: (settings) => invoke<void>('set_app_settings', { settings }),
+  setAppSettings: (settings) => invoke<AppSettings>('set_app_settings', { settings }),
   captureKey: (action) => invoke<string | null>('capture_key', { action }),
   hotkeysGlobal: () => invoke<boolean>('hotkeys_global'),
   checkUpdate: () => invoke<UpdateStatus>('check_update'),

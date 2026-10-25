@@ -6,6 +6,7 @@ pub mod admin;
 pub mod api;
 pub mod logging;
 pub mod soundboard;
+pub mod tray;
 pub mod updater;
 
 use api_types::{ClientInfo, Invite};
@@ -15,6 +16,7 @@ use engine_protocol::{AppInfo, Command, Event, LogEntry, Settings, PROTOCOL_VERS
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager};
+use tauri_plugin_autostart::ManagerExt as _;
 use tauri_plugin_deep_link::DeepLinkExt;
 use transport::livekit::LiveKitTransport;
 
@@ -57,6 +59,9 @@ pub struct App {
     update: updater::UpdateSlot,
     /// The soundboard's library folder (ADR-010).
     sound_dir: std::path::PathBuf,
+    /// The icon in the notification area; `None` where the OS gave none — closing the
+    /// window then ends the app whatever the setting says.
+    tray: Option<tray::Tray>,
 }
 
 impl App {
@@ -248,6 +253,9 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                         state.deafened = *deafened;
                     });
                 }
+                if let Some(tray) = &app.tray {
+                    tray.set_mute_state(*muted, *deafened);
+                }
             }
         }
         if matches!(event, Event::Stats { .. }) {
@@ -322,6 +330,25 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
+    // The tray (and with it: closing into it, starting minimized) — or not, on an OS without.
+    let tray = tray::build(app.handle());
+    let minimized = tray.is_some() && tray::started_minimized();
+    if let Some(window) = app.get_webview_window("main") {
+        if minimized {
+            tracing::info!("started minimized into the tray");
+        } else {
+            let _ = window.show();
+        }
+    }
+    // „Beim Anmelden starten“ is the OS's entry (Run key, launch agent); the setting is
+    // what the person chose. Enabling again at every start keeps the entry's path current
+    // after an update or a move of the exe.
+    if loaded.app.autostart {
+        if let Err(e) = app.autolaunch().enable() {
+            tracing::warn!(error = %e, "autostart could not be registered");
+        }
+    }
+
     app.manage(App {
         pending_link: Mutex::new(first_link),
         engine,
@@ -333,6 +360,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         _devices: devices,
         update: updater::UpdateSlot::default(),
         sound_dir,
+        tray,
     });
     // Registered after `manage`: the callback needs the App state.
     let handle = app.handle().clone();
@@ -384,7 +412,21 @@ pub fn run() {
         // chosen channel (`updater.rs`); the public key sits in tauri.conf.json.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(
+            tauri_plugin_autostart::Builder::new()
+                .arg(tray::MINIMIZED_ARG)
+                .build(),
+        )
         .setup(setup)
+        // The X of the main window: into the tray (default) or the end of the app, as set
+        // under „Ich → Darstellung“.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" && tray::close_requested(window) {
+                    api.prevent_close();
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             app_info,
             get_settings,
@@ -431,6 +473,11 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while starting yAPPA")
         .run(|handle, event| {
+            // macOS: a click on the dock icon brings a hidden window back.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = event {
+                show_window(handle);
+            }
             if let tauri::RunEvent::Exit = event {
                 // Take the engine out and drop it without holding the lock: its thread may
                 // be in the callback above, waiting for that lock.

@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "view": "simple",
   "theme": "dark",
   "pttKey": null,
@@ -7,5 +7,7 @@
   "deafenKey": null,
   "notifications": true,
   "updateChannel": "stable",
-  "listening": "unknown"
+  "listening": "unknown",
+  "onClose": "tray",
+  "autostart": false
 }
