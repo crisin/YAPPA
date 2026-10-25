@@ -91,7 +91,10 @@ export function mockPeopleIn(room: string, me: string): Participant[] {
 const reject = (code: string, message: string): Promise<never> =>
   Promise.reject<never>({ code, message } satisfies ApiError);
 
-const UNREACHABLE: ApiError = { code: 'unreachable', message: 'Server nicht erreichbar.' };
+const UNREACHABLE: ApiError = {
+  code: 'unreachable',
+  message: 'Server nicht erreichbar: keine Verbindung zu „mock.yappa.test“. Server aus?',
+};
 
 /** A fixed clock so snapshots and tests do not drift. */
 const T0 = Date.UTC(2026, 9, 23, 19, 0, 0);

@@ -135,6 +135,11 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] Unreachable reason (first evening 2026-10-24): `client::api` classifies a missing
+      answer (connect/timeout/TLS/other), resolves the host once more to tell "no such
+      name" from "IPv6-only server" from "server down", logs the error chain at warn;
+      the login card, the offline card and the banner show the reason; tester guide has
+      the table.
 - [x] Homeserver walkthrough (user, hands-on, 2026-10-24): on the dev PC instead of the mini
       PC, Ubuntu in WSL2 (mirrored network) instead of a VM. FRITZ!Box 6660 Cable sits
       behind CGNAT (box IPv4 `100.96.…`, no DS-Lite flag), so the server runs IPv6-only

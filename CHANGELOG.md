@@ -4,6 +4,7 @@ One line per finished task (definition of done). Newest first.
 
 ## Unreleased
 
+- „Server nicht erreichbar“ sagt jetzt, warum: Name nicht auflösbar, Server nur über IPv6 erreichbar (die Person hat kein IPv6 – der Fall vom ersten Abend), keine Verbindung, Zeitüberschreitung oder TLS-Fehler; die volle Fehlerkette steht im Log und damit in der Diagnose-Datei. Die Offline-Karte und das Banner zeigen den Grund mit.
 - Home server, first real run (FRITZ!Box 6660 Cable, WSL2): the guide now has the reliable CGNAT check (the box's own "IP-Adresse im Internet", not ifconfig.me), an IPv6-only mode for connections without a public IPv4 (`LIVEKIT_CONFIG_FILE=livekit.home-ipv6.yaml`), the WSL2 variant (mirrored network, Hyper-V firewall, keep-alive) and the FRITZ!Box traps met on the way (MyFRITZ!-Freigabe, Interface-ID, Fehlercode 1).
 - Any device rate works (A1): Bluetooth headsets in hands-free mode (16 kHz) and devices set to 44.1 kHz join instead of being refused; yAPPA converts to its 48 kHz in both directions at about 12 µs per 10 ms block. The microphone settings say when a mic runs at 16 kHz and why that sounds like a phone.
 - Decided with the user (ADR-009): audio before the updater — any device rate (Bluetooth headsets join), the chosen microphone comes back by itself, global mute keys, everybody equally loud, a monitor for the own chain, drift compensation; push-to-talk stays hold-only, voice activation stays the default.

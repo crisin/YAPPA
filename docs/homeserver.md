@@ -220,7 +220,7 @@ Ein Neustart der Control-Plane beendet keinen laufenden Call.
 | --- | --- | --- |
 | Caddy bekommt kein Zertifikat | Port 80 kommt nicht an, oder die Adresse zeigt per IPv6 auf die FRITZ!Box | Freigabe TCP 80; `YAPPA_DOMAIN` ist die Adresse der **VM**, nicht der Box |
 | `https://…` von außen nicht erreichbar | DS-Lite, oder Freigabe 443 fehlt | Schritt 1 und 4 |
-| App: „Server nicht erreichbar“ beim Einladungslink | Caddy oder `control` läuft nicht, oder die Adresse im Link stimmt nicht | `https://<YAPPA_DOMAIN>/api/health`; der Link muss `server=https://<YAPPA_DOMAIN>/api` enthalten |
+| App: „Server nicht erreichbar: …“ beim Einladungslink | Der Zusatz sagt es: Name nicht auflösbar (Link/Internet), nur über IPv6 erreichbar (die Person hat kein IPv6), keine Verbindung oder Zeitüberschreitung (Caddy/`control` aus, Port 443 geblockt), TLS-Fehler (Zertifikat) | `https://<YAPPA_DOMAIN>/api/health` von dort aus; der Link muss `server=https://<YAPPA_DOMAIN>/api` enthalten; Details im Log der App („control plane unreachable“) |
 | App: „Diese Einladung ist ungültig …“ | Link schon benutzt oder abgelaufen | neuen Link ausstellen (Schritt 8) |
 | App: „Diese yAPPA-Version ist zu alt“ | Mindestversion gesetzt | neuen Installer verteilen, oder `policy --min` zurücknehmen |
 | `control` startet nicht: „LIVEKIT_API_SECRET is not set“ | `.env` fehlt oder liegt im falschen Ordner | die `.env` gehört nach `~/yappa/infra/livekit/` |

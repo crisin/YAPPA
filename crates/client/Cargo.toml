@@ -14,6 +14,8 @@ keyring = { version = "3.6", default-features = false, features = ["windows-nati
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-native-roots"] }
 serde.workspace = true
 serde_json.workspace = true
+# `net` only: the name lookup that explains an unreachable server (IPv6-only host?).
+tokio = { version = "1", features = ["net"] }
 tracing.workspace = true
 transport = { workspace = true, features = ["livekit"] }
 ts-rs.workspace = true
