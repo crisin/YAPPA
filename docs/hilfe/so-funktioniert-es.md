@@ -23,8 +23,9 @@ fällt sie aus, läuft das Gespräch weiter.
    48 000 Messungen pro Sekunde (**Abtastrate**). Der Balken unter dem Mikrofon zeigt den
    **Pegel**.
 2. **Verpacken.** Alle 10 Millisekunden wird ein Stück Ton mit dem **Codec** Opus
-   verkleinert. Jedes Paket enthält zusätzlich eine Kopie des vorherigen (**RED**), damit
-   ein verlorenes Paket nicht auffällt.
+   verkleinert; wie stark, bestimmt die **Sprachqualität** (Profil „Standard“: 80 kbit/s).
+   Jedes Paket enthält zusätzlich eine Kopie des vorherigen (**RED**), damit ein verlorenes
+   Paket nicht auffällt.
 3. **Netz.** Die Pakete gehen per UDP direkt zum Server. UDP wartet nicht auf Bestätigungen
    – ein zu spätes Paket ist für Sprache wertlos, also wird es lieber übersprungen. Wie
    lange der Weg dauert, zeigt die **Laufzeit zum Server**; wie unregelmäßig die Pakete

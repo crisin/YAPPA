@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "inputDevice": null,
   "outputDevice": null,
   "transmitMode": "voiceActivation",
@@ -16,7 +16,13 @@
     "releaseMs": 120.0,
     "makeupDb": 3.0
   },
-  "voiceBitrateKbps": 80,
+  "quality": "standard",
+  "voice": {
+    "bitrateKbps": 80,
+    "stereo": false,
+    "red": true,
+    "dtx": false
+  },
   "inputChannel": 0,
   "outputGainDb": 0.0
 }

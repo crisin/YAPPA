@@ -4,7 +4,7 @@
 //! reason logged — settings never keep the app from starting.
 
 use crate::profile::{Profile, APP_SETTINGS_FILE, ENGINE_SETTINGS_FILE};
-use engine_protocol::{Settings, SETTINGS_VERSION};
+use engine_protocol::{QualityProfile, Settings, VoiceCodec, SETTINGS_VERSION};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use ts_rs::TS;
@@ -126,11 +126,35 @@ fn migrate_engine(raw: Option<Value>) -> (Settings, Option<String>, bool) {
     let version = value.get("version").and_then(Value::as_u64).unwrap_or(0);
     let mut theme = None;
     let mut migrated = false;
-    if version == 1 {
-        if let Some(object) = value.as_object_mut() {
+    if let Some(object) = value.as_object_mut() {
+        // 1 -> 2 (ADR-007): the theme leaves for the app settings.
+        if version == 1 {
             theme = object
                 .remove("theme")
                 .and_then(|t| t.as_str().map(str::to_string));
+        }
+        // 2 -> 3: the bare bitrate becomes a quality profile. The named profile with that
+        // bitrate (mono, RED, no DTX — the only shape before) if there is one, else Custom
+        // with the old value kept.
+        if version <= 2 {
+            let bitrate = object
+                .remove("voiceBitrateKbps")
+                .and_then(|b| b.as_u64())
+                .and_then(|b| u32::try_from(b).ok())
+                .unwrap_or(Settings::default().voice.bitrate_kbps);
+            let voice = VoiceCodec {
+                bitrate_kbps: bitrate,
+                stereo: false,
+                red: true,
+                dtx: false,
+            };
+            object.insert(
+                "quality".into(),
+                serde_json::to_value(QualityProfile::matching(voice)).unwrap(),
+            );
+            object.insert("voice".into(), serde_json::to_value(voice).unwrap());
+        }
+        if (1..SETTINGS_VERSION as u64).contains(&version) {
             object.insert("version".into(), Value::from(SETTINGS_VERSION));
             migrated = true;
         }
@@ -154,11 +178,21 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    fn v1() -> Value {
+    /// A file as version 2 wrote it: no profile, one bitrate.
+    fn v2(bitrate: u32) -> Value {
         let mut value = serde_json::to_value(Settings::default()).unwrap();
+        value["version"] = json!(2);
+        let object = value.as_object_mut().unwrap();
+        object.remove("quality");
+        object.remove("voice");
+        object.insert("voiceBitrateKbps".into(), json!(bitrate));
+        value
+    }
+
+    fn v1() -> Value {
+        let mut value = v2(96);
         value["version"] = json!(1);
         value["theme"] = json!("light");
-        value["voiceBitrateKbps"] = json!(96);
         value
     }
 
@@ -167,8 +201,30 @@ mod tests {
         let (settings, theme, migrated) = migrate_engine(Some(v1()));
         assert!(migrated);
         assert_eq!(settings.version, SETTINGS_VERSION);
-        assert_eq!(settings.voice_bitrate_kbps, 96);
+        assert_eq!(settings.quality, QualityProfile::Custom);
+        assert_eq!(settings.voice_codec().bitrate_kbps, 96);
         assert_eq!(theme.as_deref(), Some("light"));
+    }
+
+    #[test]
+    fn a_version_two_bitrate_becomes_the_matching_profile_or_custom() {
+        let (standard, _, migrated) = migrate_engine(Some(v2(80)));
+        assert!(migrated);
+        assert_eq!(standard.quality, QualityProfile::Standard);
+        assert_eq!(standard.version, SETTINGS_VERSION);
+        let (thrifty, _, _) = migrate_engine(Some(v2(32)));
+        assert_eq!(thrifty.quality, QualityProfile::Thrifty);
+        let (custom, _, _) = migrate_engine(Some(v2(64)));
+        assert_eq!(custom.quality, QualityProfile::Custom);
+        assert_eq!(
+            custom.voice,
+            VoiceCodec {
+                bitrate_kbps: 64,
+                stereo: false,
+                red: true,
+                dtx: false
+            }
+        );
     }
 
     #[test]
@@ -178,7 +234,7 @@ mod tests {
             migrate_engine(Some(current)),
             (Settings::default(), None, false)
         );
-        let (settings, _, migrated) = migrate_engine(Some(json!({ "version": 2, "eq": 7 })));
+        let (settings, _, migrated) = migrate_engine(Some(json!({ "version": 3, "eq": 7 })));
         assert_eq!(settings, Settings::default());
         assert!(!migrated, "a broken file is not overwritten by itself");
     }

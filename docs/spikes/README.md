@@ -13,6 +13,7 @@ compared.
 | S3 | PTT with a fullscreen game on Windows: low-level hook / Raw Input behind `GlobalHotkey` in `crates/platform-windows` (not the Tauri plugin), tray, autostart |
 | S4 | optional: clack-host loads a CLAP plugin and passes audio through |
 | S6 | Control plane in Rust: axum + sqlx/SQLite, invite login, tokens for voice rooms and the presence room, `GET /config`, LiveKit webhook → event log only (presence lives in LiveKit, ADR-005); runs in the same compose as LiveKit |
+| Q | ✔ [result](quality-tiers.md) · Voice quality tiers: what each profile (32 … 510 kbit/s, mono/stereo, RED) costs in send rate, click latency and CPU, and what the LiveKit SDK does not let through (frame length, FEC, complexity) |
 | S7 | Session-Radio (phase 3): session tap → local ASR (whisper-class) → topics (local LLM) → songs from a local sidecar; measure topic quality on a gaming evening, GPU time per song, disk; pick the sidecar |
 
 S5 (UI stack analysis) is not run in this variant — ADR-001 decides Svelte 5.

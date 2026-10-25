@@ -131,9 +131,11 @@ alle ist der Platz reserviert (Abschnitte 3, 10 und 11), gebaut wird nichts davo
 
 **engine-protocol v2** (Commands rein, Events raus; Schema nur Audio)
 
-- `Settings { version: 2, input_device, output_device, transmit_mode, vad, denoiser,
-  high_pass_hz, eq, compressor, voice_bitrate_kbps, output_gain_db }` — `theme` wandert in
-  `AppSettings`. Migration v1 → v2 in der Shell beim Laden.
+- `Settings { version: 3, input_device, output_device, transmit_mode, vad, denoiser,
+  high_pass_hz, eq, compressor, quality, voice, output_gain_db }` — `theme` wandert in
+  `AppSettings`. Migration v1 → v2 in der Shell beim Laden. v3: `voice_bitrate_kbps` wird
+  zum Profil `quality` (Sparsam … Stress, Eigen) plus `voice { bitrate_kbps, stereo, red,
+  dtx }`; Migration v2 → v3 ebenfalls beim Laden (`docs/spikes/quality-tiers.md`).
 - Neue Commands: `SetPttPressed { pressed }` (der Hook sitzt außerhalb der Engine),
   später `PlaySound`, `ShareApp`.
 - Neue Events: `StageLevels { stages: [{ id, level_db, active }] }` im Takt von `Levels`;

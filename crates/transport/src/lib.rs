@@ -25,6 +25,9 @@ pub const BLOCK: usize = 480;
 pub struct PublishOptions {
     /// Upper limit for the voice track; Opus stays variable below it.
     pub bitrate_bps: u32,
+    /// Publish two channels. The engine still delivers mono blocks; the transport puts the
+    /// same signal on both channels ([`interleave_dual_mono`]).
+    pub stereo: bool,
     /// Redundant audio (each packet carries the previous frame again).
     pub red: bool,
     /// Stop sending during silence. Off by default: quality over thrift.
@@ -35,9 +38,29 @@ impl Default for PublishOptions {
     fn default() -> Self {
         Self {
             bitrate_bps: 64_000,
+            stereo: false,
             red: true,
             dtx: false,
         }
+    }
+}
+
+impl PublishOptions {
+    pub fn channels(&self) -> u16 {
+        if self.stereo {
+            2
+        } else {
+            1
+        }
+    }
+}
+
+/// One mono block as an interleaved two-channel frame, left = right. Fixed-size buffers, no
+/// allocation: this runs on the engine's pump thread for every block of a stereo profile.
+pub fn interleave_dual_mono(block: &[i16; BLOCK], out: &mut [i16; 2 * BLOCK]) {
+    for (pair, &s) in out.chunks_exact_mut(2).zip(block) {
+        pair[0] = s;
+        pair[1] = s;
     }
 }
 
@@ -96,6 +119,12 @@ pub struct NetStats {
     pub send_codec: String,
     pub packets_sent: u64,
     pub bytes_sent: u64,
+    /// RTP header bytes within `bytes_sent`.
+    pub header_bytes_sent: u64,
+    /// The encoder's current target in bit/s (WebRTC `targetBitrate`), 0 if not reported.
+    pub send_target_bps: f64,
+    /// Channels of the published voice track, 0 while none is published.
+    pub send_channels: u16,
     /// Share of our packets the server reported missing in its last report, 0..1.
     pub uplink_fraction_lost: f64,
     pub packets_received: u64,
@@ -136,8 +165,43 @@ pub trait Transport: Send {
     /// Leaves the current session first, if there is one.
     fn join(&mut self, url: &str, token: &str, options: PublishOptions);
     fn leave(&mut self);
+    /// New publish options for the running session: the voice track is published again
+    /// with them, without leaving the room (the others hear a short gap). Also the options
+    /// of the next join. No-op while the options are the same.
+    fn set_publish(&mut self, options: PublishOptions);
     /// Tells the others we are muted. The engine also sends silence, so this is courtesy
     /// towards their UI, not the mute itself.
     fn set_muted(&mut self, muted: bool);
     fn voice_out(&self) -> Arc<dyn VoiceOut>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dual_mono_puts_every_sample_on_both_channels() {
+        let mut block = [0i16; BLOCK];
+        for (i, s) in block.iter_mut().enumerate() {
+            *s = i as i16 - 240;
+        }
+        let mut out = [0i16; 2 * BLOCK];
+        interleave_dual_mono(&block, &mut out);
+        for (i, pair) in out.chunks_exact(2).enumerate() {
+            assert_eq!(pair, [block[i], block[i]]);
+        }
+    }
+
+    #[test]
+    fn channel_count_follows_the_stereo_flag() {
+        assert_eq!(PublishOptions::default().channels(), 1);
+        assert_eq!(
+            PublishOptions {
+                stereo: true,
+                ..PublishOptions::default()
+            }
+            .channels(),
+            2
+        );
+    }
 }

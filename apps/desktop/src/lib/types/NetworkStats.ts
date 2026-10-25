@@ -20,4 +20,17 @@ jitterBufferMs: number,
 /**
  * Share of played samples the decoder had to invent — what loss sounds like.
  */
-concealedPercentRecent: number, concealedPercentTotal: number, };
+concealedPercentRecent: number, concealedPercentTotal: number, 
+/**
+ * What the encoder is aiming at right now (WebRTC `targetBitrate`), 0 = not reported.
+ * This is the negotiated figure to compare against the profile's bitrate.
+ */
+sendTargetKbps: number, 
+/**
+ * Recent send rate without RTP headers: Opus payload (and RED copies) only.
+ */
+sendPayloadKbpsRecent: number, 
+/**
+ * Channels of the published voice track: 1 or 2 (0 = none published).
+ */
+sendChannels: number, };

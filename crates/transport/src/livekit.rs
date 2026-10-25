@@ -2,11 +2,17 @@
 //!
 //! Owns a small tokio runtime; one task per session drives the room, one task per subscribed
 //! voice track feeds the engine's sink. Publish settings follow spike S1: custom source with
-//! `queue_size_ms = 0` (each 10 ms block goes straight to the encoder), RED on, DTX off.
+//! `queue_size_ms = 0` (each 10 ms block goes straight to the encoder); RED, DTX, bitrate
+//! and the channel count come from the quality profile ([`PublishOptions`]). A profile
+//! change during a call publishes the voice track again inside the same session.
+//!
+//! What the SDK (livekit 0.9) does not let through: Opus frame length (libwebrtc: 20 ms),
+//! in-band FEC (always on in libwebrtc's offer) and complexity (9). The sender's RTP
+//! parameters are `pub(crate)` in the SDK, so a bitrate change also needs a republish.
 
 use crate::{
-    AudioReceiver, EventFn, LinkState, NetStats, PublishOptions, Transport, TransportEvent,
-    VoiceOut, BLOCK, SAMPLE_RATE,
+    interleave_dual_mono, AudioReceiver, EventFn, LinkState, NetStats, PublishOptions, Transport,
+    TransportEvent, VoiceOut, BLOCK, SAMPLE_RATE,
 };
 use futures_util::StreamExt;
 use livekit::options::{AudioEncoding, TrackPublishOptions};
@@ -19,7 +25,7 @@ use livekit::webrtc::stats::RtcStats;
 use livekit::DisconnectReason;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering::Relaxed};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -48,6 +54,8 @@ pub struct LiveKitTransport {
     /// Number of the session whose events count; older ones are talking to nobody.
     current: Arc<AtomicU64>,
     muted: bool,
+    /// The options of the running session and of the next join.
+    options: PublishOptions,
 }
 
 #[derive(Clone)]
@@ -71,6 +79,8 @@ impl Hooks {
 enum Control {
     Leave,
     Mute(bool),
+    /// Publish the voice track again with these options.
+    Publish(PublishOptions),
 }
 
 impl LiveKitTransport {
@@ -80,13 +90,20 @@ impl LiveKitTransport {
             .thread_name("yappa-transport")
             .enable_all()
             .build()?;
-        // The source outlives sessions: every join publishes a new track from it.
-        let source = {
+        // The sources outlive sessions: every (re)publish makes a new track from one of
+        // them. Two of them, because a source's channel count is fixed at creation and the
+        // pump thread must not wait for a lock to find the current one.
+        let (mono, stereo) = {
             let _in_runtime = runtime.enter();
-            NativeAudioSource::new(AudioSourceOptions::default(), SAMPLE_RATE, 1, 0)
+            (
+                NativeAudioSource::new(AudioSourceOptions::default(), SAMPLE_RATE, 1, 0),
+                NativeAudioSource::new(AudioSourceOptions::default(), SAMPLE_RATE, 2, 0),
+            )
         };
         let voice = Arc::new(Voice {
-            source,
+            mono,
+            stereo,
+            stereo_live: AtomicBool::new(false),
             runtime: runtime.handle().clone(),
             live_session: AtomicU64::new(0),
             errors: AtomicU64::new(0),
@@ -99,6 +116,7 @@ impl LiveKitTransport {
             task: None,
             current: Arc::new(AtomicU64::new(0)),
             muted: false,
+            options: PublishOptions::default(),
         })
     }
 }
@@ -120,6 +138,7 @@ impl Transport for LiveKitTransport {
             return;
         };
         hooks.session = self.current.fetch_add(1, Relaxed) + 1;
+        self.options = options;
         let (control, control_rx) = mpsc::unbounded_channel();
         self.session = Some(control);
         let session = Session {
@@ -146,6 +165,16 @@ impl Transport for LiveKitTransport {
         }
     }
 
+    fn set_publish(&mut self, options: PublishOptions) {
+        if options == self.options {
+            return;
+        }
+        self.options = options;
+        if let Some(session) = &self.session {
+            let _ = session.send(Control::Publish(options));
+        }
+    }
+
     fn voice_out(&self) -> Arc<dyn VoiceOut> {
         self.voice.clone()
     }
@@ -165,7 +194,10 @@ impl Drop for LiveKitTransport {
 }
 
 struct Voice {
-    source: NativeAudioSource,
+    mono: NativeAudioSource,
+    stereo: NativeAudioSource,
+    /// Which of the two the published track was made from.
+    stereo_live: AtomicBool,
     runtime: tokio::runtime::Handle,
     /// Number of the session that has a track published, 0 for none; blocks are dropped
     /// here otherwise. A number, not a flag, so an old session that ends late cannot
@@ -174,19 +206,48 @@ struct Voice {
     errors: AtomicU64,
 }
 
+impl Voice {
+    fn source(&self, stereo: bool) -> &NativeAudioSource {
+        if stereo {
+            &self.stereo
+        } else {
+            &self.mono
+        }
+    }
+}
+
 impl VoiceOut for Voice {
     fn send(&self, block: &[i16]) {
-        if self.live_session.load(Relaxed) == 0 || block.len() != BLOCK {
+        if self.live_session.load(Relaxed) == 0 {
             return;
         }
-        let frame = AudioFrame {
-            data: Cow::Borrowed(block),
-            sample_rate: SAMPLE_RATE,
-            num_channels: 1,
-            samples_per_channel: BLOCK as u32,
+        let Ok(block) = <&[i16; BLOCK]>::try_from(block) else {
+            return;
+        };
+        // On the stack: no allocation on the pump thread, in either mode.
+        let mut both = [0i16; 2 * BLOCK];
+        let stereo = self.stereo_live.load(Relaxed);
+        let frame = if stereo {
+            interleave_dual_mono(block, &mut both);
+            AudioFrame {
+                data: Cow::Borrowed(&both[..]),
+                sample_rate: SAMPLE_RATE,
+                num_channels: 2,
+                samples_per_channel: BLOCK as u32,
+            }
+        } else {
+            AudioFrame {
+                data: Cow::Borrowed(&block[..]),
+                sample_rate: SAMPLE_RATE,
+                num_channels: 1,
+                samples_per_channel: BLOCK as u32,
+            }
         };
         // Without a queue `capture_frame` completes synchronously; block_on only drives it.
-        if let Err(e) = self.runtime.block_on(self.source.capture_frame(&frame)) {
+        if let Err(e) = self
+            .runtime
+            .block_on(self.source(stereo).capture_frame(&frame))
+        {
             // A dead link fails 100 times per second: log the first and then every 10 s.
             let n = self.errors.fetch_add(1, Relaxed);
             if n.is_multiple_of(1000) {
@@ -230,6 +291,7 @@ impl Session {
     async fn session(&self, control: &mut mpsc::UnboundedReceiver<Control>) -> Result<(), Lost> {
         let hooks = &self.hooks;
         let mut muted = self.muted;
+        let mut options = self.options;
         // A leave must not wait for a connect that may hang for seconds.
         let connect = Room::connect(&self.url, &self.token, RoomOptions::default());
         tokio::pin!(connect);
@@ -238,6 +300,7 @@ impl Session {
                 result = &mut connect => break result,
                 message = control.recv() => match message {
                     Some(Control::Mute(now)) => muted = now,
+                    Some(Control::Publish(new)) => options = new,
                     Some(Control::Leave) | None => {
                         tracing::info!("left while connecting");
                         return Ok(());
@@ -264,39 +327,13 @@ impl Session {
             hooks.emit(joined(participant));
         }
 
-        let track = LocalAudioTrack::create_audio_track(
-            "voice",
-            RtcAudioSource::Native(self.voice.source.clone()),
-        );
-        let publish = TrackPublishOptions {
-            audio_encoding: Some(AudioEncoding {
-                max_bitrate: u64::from(self.options.bitrate_bps),
-            }),
-            red: self.options.red,
-            dtx: self.options.dtx,
-            source: TrackSource::Microphone,
-            ..Default::default()
+        let (mut track, mut sid) = match self.publish(&room, options, muted).await {
+            Ok(published) => published,
+            Err(lost) => {
+                let _ = room.close().await;
+                return Err(lost);
+            }
         };
-        if let Err(e) = room
-            .local_participant()
-            .publish_track(LocalTrack::Audio(track.clone()), publish)
-            .await
-        {
-            let _ = room.close().await;
-            return Err(Lost {
-                message: format!("could not publish the voice track: {e}"),
-                retryable: true,
-            });
-        }
-        if muted {
-            track.mute();
-        }
-        tracing::info!(
-            bitrate_bps = self.options.bitrate_bps,
-            red = self.options.red,
-            dtx = self.options.dtx,
-            "voice track published"
-        );
         self.voice.live_session.store(hooks.session, Relaxed);
         hooks.emit(TransportEvent::State(LinkState::Connected));
 
@@ -308,14 +345,29 @@ impl Session {
         let result = loop {
             tokio::select! {
                 message = control.recv() => match message {
-                    Some(Control::Mute(true)) => track.mute(),
-                    Some(Control::Mute(false)) => track.unmute(),
+                    Some(Control::Mute(true)) => { muted = true; track.mute() }
+                    Some(Control::Mute(false)) => { muted = false; track.unmute() }
+                    Some(Control::Publish(new)) if new == options => {}
+                    Some(Control::Publish(new)) => {
+                        // The old track goes first: two voice tracks from one person would
+                        // take a second mixer slot at every listener.
+                        if let Err(e) = room.local_participant().unpublish_track(&sid).await {
+                            tracing::warn!(error = %e, "could not unpublish the old voice track");
+                        }
+                        match self.publish(&room, new, muted).await {
+                            Ok(published) => {
+                                (track, sid) = published;
+                                options = new;
+                            }
+                            Err(lost) => break Err(lost),
+                        }
+                    }
                     Some(Control::Leave) | None => {
                         tracing::info!("leaving");
                         break Ok(());
                     }
                 },
-                _ = stats.tick() => match sample_stats(&room).await {
+                _ = stats.tick() => match sample_stats(&room, options.channels()).await {
                     Ok(stats) => hooks.emit(TransportEvent::Stats(stats)),
                     Err(e) => tracing::debug!(error = %e, "no WebRTC stats this round"),
                 },
@@ -405,6 +457,51 @@ impl Session {
     }
 }
 
+impl Session {
+    /// Publishes our voice with `options`; the pump's blocks go to the matching source from
+    /// here on. Retryable failure: the room is still there, the track is not.
+    async fn publish(
+        &self,
+        room: &Room,
+        options: PublishOptions,
+        muted: bool,
+    ) -> Result<(LocalAudioTrack, TrackSid), Lost> {
+        self.voice.stereo_live.store(options.stereo, Relaxed);
+        let track = LocalAudioTrack::create_audio_track(
+            "voice",
+            RtcAudioSource::Native(self.voice.source(options.stereo).clone()),
+        );
+        let publish = TrackPublishOptions {
+            audio_encoding: Some(AudioEncoding {
+                max_bitrate: u64::from(options.bitrate_bps),
+            }),
+            red: options.red,
+            dtx: options.dtx,
+            source: TrackSource::Microphone,
+            ..Default::default()
+        };
+        let publication = room
+            .local_participant()
+            .publish_track(LocalTrack::Audio(track.clone()), publish)
+            .await
+            .map_err(|e| Lost {
+                message: format!("could not publish the voice track: {e}"),
+                retryable: true,
+            })?;
+        if muted {
+            track.mute();
+        }
+        tracing::info!(
+            bitrate_bps = options.bitrate_bps,
+            channels = options.channels(),
+            red = options.red,
+            dtx = options.dtx,
+            "voice track published"
+        );
+        Ok((track, publication.sid()))
+    }
+}
+
 fn joined(participant: &RemoteParticipant) -> TransportEvent {
     let identity = participant.identity().to_string();
     let name = match participant.name() {
@@ -437,7 +534,7 @@ async fn receive(track: RemoteAudioTrack, identity: String, receiver: Arc<dyn Au
     }
 }
 
-async fn sample_stats(room: &Room) -> Result<NetStats, String> {
+async fn sample_stats(room: &Room, send_channels: u16) -> Result<NetStats, String> {
     let session = room.get_stats().await.map_err(|e| e.to_string())?;
     let all: Vec<&RtcStats> = session
         .publisher_stats
@@ -452,7 +549,10 @@ async fn sample_stats(room: &Room) -> Result<NetStats, String> {
         })
         .collect();
 
-    let mut out = NetStats::default();
+    let mut out = NetStats {
+        send_channels,
+        ..NetStats::default()
+    };
     // With a single peer connection both lists carry the same reports.
     let mut seen = HashSet::new();
     for stat in all {
@@ -474,6 +574,8 @@ async fn sample_stats(room: &Room) -> Result<NetStats, String> {
                     .to_string();
                 out.packets_sent += s.sent.packets_sent;
                 out.bytes_sent += s.sent.bytes_sent;
+                out.header_bytes_sent += s.outbound.header_bytes_sent;
+                out.send_target_bps = s.outbound.target_bitrate;
             }
             RtcStats::RemoteInboundRtp(s) if s.stream.kind == "audio" && seen.insert(&s.rtc.id) => {
                 out.uplink_fraction_lost = s.remote_inbound.fraction_lost;

@@ -12,16 +12,17 @@ describe('engine (browser mode)', () => {
 
   it('serves the Rust defaults from engine-protocol', async () => {
     const settings = await engine.settings();
-    expect(settings.version).toBe(2);
+    expect(settings.version).toBe(3);
     expect(settings.transmitMode).toBe('voiceActivation');
     expect(settings.denoiser).toBe('deepFilter');
-    expect(settings.voiceBitrateKbps).toBeGreaterThanOrEqual(64);
+    expect(settings.quality).toBe('standard');
+    expect(settings.voice.bitrateKbps).toBeGreaterThanOrEqual(64);
   });
 
   it('hands out copies, not the shared defaults', async () => {
     const a = await engine.settings();
-    a.voiceBitrateKbps = 16;
-    expect((await engine.settings()).voiceBitrateKbps).not.toBe(16);
+    a.voice.bitrateKbps = 16;
+    expect((await engine.settings()).voice.bitrateKbps).not.toBe(16);
   });
 
   it('decodes what the invite format encodes, also wrapped by a chat window', async () => {

@@ -135,6 +135,14 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] Audio quality tiers (2026-10-25): profiles Sparsam/Standard/Hoch/Studio/Stress in
+      the settings schema (v3, migration from the bare bitrate), the values behind them
+      (bitrate, mono/stereo, RED, DTX) editable in Profi → „Netzwerk“, a profile change
+      republishes the voice track inside the running call, the diagnosis shows profile,
+      negotiated bitrate and payload rate; measured per profile (libwebrtc caps Opus at
+      ≈ 256 kbit/s, RED stops fitting above ≈ 200) in
+      `docs/spikes/quality-tiers.md`. Frame length, FEC and complexity are fixed in
+      libwebrtc and shown as facts.
 - [x] Unreachable reason (first evening 2026-10-24): `client::api` classifies a missing
       answer (connect/timeout/TLS/other), resolves the host once more to tell "no such
       name" from "IPv6-only server" from "server down", logs the error chain at warn;

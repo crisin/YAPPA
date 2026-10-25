@@ -72,21 +72,99 @@ Mehr dazu: [Packet Loss Concealment (Wikipedia, englisch)](https://en.wikipedia.
 Das Verfahren, das Sprache für den Versand klein macht und beim Empfänger wieder auspackt.
 yAPPA benutzt Opus, den Standard für Sprache im Internet.
 
-Opus braucht bei 48 kHz Abtastrate 32 bis 64 kbit/s pro Person und verkraftet
-Paketverlust vergleichsweise gut; yAPPA erlaubt bis 64 kbit/s. In der Diagnose steht unter „Codec“, womit gerade
-gesendet wird.
+Opus klingt für Sprache ab etwa 32 kbit/s gut und ab 128 kbit/s kaum noch besser; es
+verkraftet Paketverlust vergleichsweise gut. Welche Bitrate yAPPA nimmt, entscheidet die
+**Sprachqualität**. In der Diagnose steht unter „Codec“, womit gerade gesendet wird.
 
 Mehr dazu: [Opus (Wikipedia)](<https://de.wikipedia.org/wiki/Opus_(Audioformat)>)
 
+## Sprachqualität
+
+Wie viel Bandbreite deine Stimme bekommt – als Profil von „Sparsam“ (32 kbit/s) bis
+„Stress“ (510 angefordert, etwa 256 erreicht). „Standard“ (80 kbit/s) ist der Wert, mit dem
+die ersten Abende liefen; mehr ist Vergleich, nicht Alltag.
+
+Hinter jedem Profil stehen vier Werte: die Bitrate von Opus, Mono oder Stereo, RED und DTX.
+Im Profi-Modus unter „Netzwerk“ kannst du sie einzeln stellen; das Profil heißt dann „Eigen“.
+Ein Wechsel im Call geht ohne Neubeitritt – die Stimme wird kurz neu gesendet, die anderen
+hören eine kleine Pause. Mehr als 48 kHz Abtastrate gibt es nicht: Opus arbeitet intern mit
+48 kHz, und oberhalb von 20 kHz hört kein Mensch etwas – ein 96-kHz-Regler würde nur
+Rechenzeit kosten.
+
+Mehr dazu: [Opus – Bitraten (Wikipedia)](<https://de.wikipedia.org/wiki/Opus_(Audioformat)#Eigenschaften>)
+
+## Ausgehandelte Bitrate
+
+Was der Encoder gerade wirklich anpeilt – gegen die Bitrate des Profils gehalten. Liegt sie
+deutlich darunter, hat libwebrtc oder der Server die Rate gedrückt.
+
+Die Zahl kommt aus den WebRTC-Statistiken des Senders („targetBitrate“). Sie ist orange,
+wenn sie unter 80 % des Profils liegt – bei „Stress“ immer, weil libwebrtc Opus bei etwa
+256 kbit/s deckelt. Daneben steht, ob ein oder zwei Kanäle gesendet werden.
+
+Mehr dazu: [WebRTC Statistics (W3C, englisch)](https://www.w3.org/TR/webrtc-stats/#dom-rtcoutboundrtpstreamstats-targetbitrate)
+
 ## Senderate
 
-Wie viele Kilobit pro Sekunde dein Mikrofon gerade an den Server schickt. Opus läuft mit
-bis zu 64 kbit/s, die Redundanz (RED) kommt obendrauf.
+Wie viele Kilobit pro Sekunde dein Mikrofon gerade an den Server schickt – mit allem drum
+herum: Opus-Daten, RED-Kopien und Paketköpfe. Die Nutzlast in Klammern ist ohne die Köpfe.
 
-Die Senderate ist so klein, dass sie selbst neben einem Spiel oder Stream nicht ins Gewicht
-fällt. Mehr Bitrate heißt bessere Klangqualität, aber auch mehr Daten pro Paket.
+Bei „Standard“ sind das rund 160 bis 180 kbit/s (80 für Opus, 80 für die RED-Kopie, der
+Rest Paketköpfe), bei „Stress“ etwa 270 – mehr lässt libwebrtc nicht zu. Selbst das fällt
+neben einem Spiel oder Stream kaum ins Gewicht; ein knapper Upload merkt es trotzdem.
 
 Mehr dazu: [Bitrate (Wikipedia)](https://de.wikipedia.org/wiki/Bitrate)
+
+## Stereo
+
+Zwei Kanäle statt einem. In yAPPA liegt auf beiden dasselbe Mikrofonsignal – das misst, was
+Stereo an Bandbreite und Rechenzeit kostet, es klingt nicht räumlicher.
+
+Opus kodiert zwei gleiche Kanäle sehr effizient (die Differenz ist null), darum ist der
+Unterschied zu Mono bei gleicher Bitrate klein. Ein echtes Stereo-Mikrofon ist nicht
+gebaut; Stimme ist Mono. Beim Empfänger wird Stereo auf einen Kanal gemischt.
+
+Mehr dazu: [Stereofonie (Wikipedia)](https://de.wikipedia.org/wiki/Stereofonie)
+
+## DTX
+
+„Discontinuous Transmission“: in Sprechpausen werden fast keine Pakete geschickt. Spart
+Bandbreite, kostet beim Einsetzen der Stimme manchmal die erste Silbe.
+
+In yAPPA ist DTX in allen Profilen aus, weil die Sprachaktivierung die Pause ohnehin
+stumm schaltet und ein stetiger Paketstrom den Jitterbuffer ruhig hält.
+
+Mehr dazu: [Discontinuous Transmission (Wikipedia, englisch)](https://en.wikipedia.org/wiki/Discontinuous_transmission)
+
+## FEC
+
+„Forward Error Correction“ in Opus selbst: jedes Paket trägt eine grobe Version des vorigen
+mit. Fehlt ein Paket, klingt die Stelle dumpfer statt leer. libwebrtc hat das immer an.
+
+Im Unterschied zu RED (eine volle Kopie) ist die FEC-Version kleiner und schlechter. Beides
+zusammen hilft bei vereinzelten Verlusten; die Einstellung ist in yAPPA nicht wählbar.
+
+Mehr dazu: [Vorwärtsfehlerkorrektur (Wikipedia)](https://de.wikipedia.org/wiki/Vorwärtsfehlerkorrektur)
+
+## Rahmenlänge
+
+Wie viel Ton ein Opus-Paket enthält: 20 Millisekunden in libwebrtc. Kürzer (10 ms) hieße
+weniger Latenz, aber doppelt so viele Pakete und Paketköpfe.
+
+yAPPA reicht dem Encoder 10-ms-Blöcke; libwebrtc fasst je zwei zu einem Paket zusammen.
+Die Rahmenlänge ist im SDK nicht einstellbar.
+
+Mehr dazu: [Opus – Rahmengrößen (Wikipedia)](<https://de.wikipedia.org/wiki/Opus_(Audioformat)>)
+
+## Komplexität
+
+Wie viel Rechenzeit Opus beim Kodieren investiert, 0 bis 10. libwebrtc nimmt 9; Stufe 10
+klingt bei gleicher Bitrate minimal besser und kostet spürbar mehr CPU.
+
+Die Einstellung ist im LiveKit-SDK nicht erreichbar; der Wert steht hier, damit klar ist,
+womit gemessen wurde.
+
+Mehr dazu: [Opus – Encoder (Wikipedia)](<https://de.wikipedia.org/wiki/Opus_(Audioformat)>)
 
 ## RED
 
@@ -94,17 +172,19 @@ Mehr dazu: [Bitrate (Wikipedia)](https://de.wikipedia.org/wiki/Bitrate)
 verloren, steckt sein Inhalt im nächsten. Kostet etwas Bandbreite, rettet viele Aussetzer.
 
 RED ist der Grund, warum die Senderate höher ist als die reine Opus-Bitrate. Es hilft bei
-vereinzelten Verlusten; bei einer kaputten Leitung hilft es nicht.
+vereinzelten Verlusten; bei einer kaputten Leitung hilft es nicht. Über etwa 200 kbit/s
+passt die Kopie nicht mehr ins Paket (1 kB), dann lässt libwebrtc sie stillschweigend weg.
 
 Mehr dazu: [RFC 2198 (englisch)](https://www.rfc-editor.org/rfc/rfc2198)
 
 ## Abtastrate
 
-Wie oft pro Sekunde der Ton gemessen wird. yAPPA arbeitet mit 48 000 Hz – das Gerät muss in
-den Windows-Soundeinstellungen auch auf 48 000 Hz stehen.
+Wie oft pro Sekunde der Ton gemessen wird. yAPPA arbeitet mit 48 000 Hz; ein Gerät mit
+anderer Rate wird umgerechnet.
 
-Alles im Sprachweg (Mikrofon, Codec, Server, Ausgabe) läuft mit derselben Abtastrate, damit
-nichts umgerechnet werden muss. Eine Umrechnung („Resampling“) ist für später geplant.
+Opus arbeitet intern mit 48 kHz, und oberhalb von 20 kHz hört kein Mensch etwas – mehr
+Abtastrate (96 kHz) brächte für die Sprachübertragung nichts, nur Rechenzeit. Darum gibt es
+dafür keinen Regler.
 
 Mehr dazu: [Abtastrate (Wikipedia)](https://de.wikipedia.org/wiki/Abtastrate)
 
