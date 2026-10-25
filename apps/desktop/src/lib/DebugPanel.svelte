@@ -5,6 +5,7 @@
   import type { AppInfo } from './engine';
   import Info from './Info.svelte';
   import type { Session } from './session.svelte';
+  import { PROFILE_LABEL, codecOf, describe } from './quality';
   import type { DeviceStats } from './types/DeviceStats';
 
   let { session, info }: { session: Session; info: AppInfo | null } = $props();
@@ -21,6 +22,12 @@
 
   const fixed = (n: number, digits = 1) => n.toFixed(digits).replace('.', ',');
   const net = $derived(session.stats?.network ?? null);
+  /** „Standard (80 kbit/s · Mono · RED)“ — what the settings say we send. */
+  const profile = $derived(
+    session.settings
+      ? `${PROFILE_LABEL[session.settings.quality]} (${describe(codecOf(session.settings))})`
+      : '–',
+  );
 
   const network = $derived<Row[]>(
     net
@@ -61,9 +68,23 @@
             warn: net.jitterBufferMs > 120,
             term: 'jitterbuffer',
           },
+          { label: 'Sprachqualität', value: profile, term: 'sprachqualitaet' },
+          {
+            // The encoder's own target against the profile: is the bitrate really in use?
+            label: 'Ausgehandelte Bitrate',
+            value:
+              net.sendTargetKbps > 0
+                ? `${fixed(net.sendTargetKbps, 0)} kbit/s · ${net.sendChannels === 2 ? 'Stereo' : 'Mono'}`
+                : '–',
+            warn:
+              net.sendTargetKbps > 0 &&
+              session.settings !== null &&
+              net.sendTargetKbps < codecOf(session.settings).bitrateKbps * 0.8,
+            term: 'ausgehandelte-bitrate',
+          },
           {
             label: 'Senderate',
-            value: `${fixed(net.sendKbpsRecent, 0)} kbit/s`,
+            value: `${fixed(net.sendKbpsRecent, 0)} kbit/s (Nutzlast ${fixed(net.sendPayloadKbpsRecent, 0)})`,
             term: 'senderate',
           },
           { label: 'Codec', value: net.sendCodec || '–', term: 'codec' },

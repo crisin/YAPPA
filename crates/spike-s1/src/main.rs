@@ -5,7 +5,7 @@
 //!                  [--seconds N] [--detect]
 //!   yappa-poc measure [--seconds 30] [--acoustic] [--label text]
 //!
-//! Common: --url ws://localhost:7880  --room poc  --bitrate 64000  --no-red  --dtx
+//! Common: --url ws://localhost:7880  --room poc  --bitrate 64000  --stereo  --no-red  --dtx
 //!         --token <jwt> (from `cargo xtask livekit token`; replaces the dev-key token)
 //!         --period-ms 500  --threshold 0.1  --noise 0.03 (noise floor under the clicks)
 //!
@@ -90,6 +90,7 @@ impl Args {
             room: self.value("--room").unwrap_or("poc").into(),
             identity: identity.into(),
             bitrate: self.parsed("--bitrate", 64_000)?,
+            stereo: self.flag("--stereo"),
             red: !self.flag("--no-red"),
             dtx: self.flag("--dtx"),
             token: self.value("--token").map(String::from),
@@ -313,8 +314,12 @@ fn print_events(log: &Log) {
 
 fn print_config(cfg: &ClientConfig) {
     println!(
-        "publish options  {} bit/s max, red={}, dtx={}, url {}",
-        cfg.bitrate, cfg.red, cfg.dtx, cfg.url
+        "publish options  {} bit/s max, {}, red={}, dtx={}, url {}",
+        cfg.bitrate,
+        if cfg.stereo { "stereo" } else { "mono" },
+        cfg.red,
+        cfg.dtx,
+        cfg.url
     );
 }
 

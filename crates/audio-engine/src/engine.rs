@@ -395,11 +395,19 @@ impl Engine {
         if old.output_device != new.output_device {
             self.open_playout(new.output_device.as_deref());
         }
-        if old.voice_bitrate_kbps != new.voice_bitrate_kbps {
+        if old.voice_codec() != new.voice_codec() {
+            // The transport publishes the voice track again inside the running session —
+            // no rejoin; the others hear a short gap.
+            let options = publish_options(&new);
             tracing::info!(
-                kbps = new.voice_bitrate_kbps,
-                "voice bitrate applies from the next join"
+                profile = ?new.quality,
+                kbps = options.bitrate_bps / 1000,
+                channels = options.channels(),
+                red = options.red,
+                dtx = options.dtx,
+                "voice quality changed"
             );
+            self.transport.set_publish(options);
         }
     }
 
@@ -407,10 +415,7 @@ impl Engine {
         let Some((url, token)) = self.wanted.clone() else {
             return;
         };
-        let options = PublishOptions {
-            bitrate_bps: self.settings.lock().unwrap().voice_bitrate_kbps * 1000,
-            ..PublishOptions::default()
-        };
+        let options = publish_options(&self.settings.lock().unwrap());
         self.transport.join(&url, &token, options);
     }
 
@@ -830,6 +835,17 @@ fn publish_chain(shared: &PumpShared, chain: &Chain) {
 
 /// Capture ring → 10 ms blocks → transport. Paced by the device: a block goes out as soon
 /// as it is complete. Replacement rings arrive when the microphone is reopened.
+/// The quality profile as the transport wants it.
+fn publish_options(settings: &Settings) -> PublishOptions {
+    let codec = settings.voice_codec();
+    PublishOptions {
+        bitrate_bps: codec.bitrate_kbps * 1000,
+        stereo: codec.stereo,
+        red: codec.red,
+        dtx: codec.dtx,
+    }
+}
+
 fn run_pump(
     shared: &PumpShared,
     rings: mpsc::Receiver<(Consumer<f32>, u32)>,

@@ -2,7 +2,9 @@
 import type { CompressorSettings } from "./CompressorSettings";
 import type { DenoiserKind } from "./DenoiserKind";
 import type { EqBand } from "./EqBand";
+import type { QualityProfile } from "./QualityProfile";
 import type { TransmitMode } from "./TransmitMode";
+import type { VoiceCodec } from "./VoiceCodec";
 
 /**
  * Everything about audio and sending the user can set (ADR-007: no UI preferences here —
@@ -14,9 +16,14 @@ export type Settings = { version: number, inputDevice: string | null, outputDevi
  */
 vadThresholdDb: number, vadHoldMs: number, denoiser: DenoiserKind, highPassHz: number, eq: Array<EqBand>, compressor: CompressorSettings, 
 /**
- * Voice track bitrate; the baseline asks for 64–96 kbps with RED, no DTX.
+ * Voice quality: a named profile, or `Custom` for the values in `voice`.
  */
-voiceBitrateKbps: number, 
+quality: QualityProfile, 
+/**
+ * The codec values the pro view edits. Only in effect while `quality` is `Custom`;
+ * [`Settings::voice_codec`] is what is actually sent.
+ */
+voice: VoiceCodec, 
 /**
  * Which input channel of the microphone device carries the voice (0 = first). A mic on
  * input 2 of a two-channel interface is channel 1. Clamped to what the device has.

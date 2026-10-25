@@ -11,13 +11,16 @@ use ts_rs::TS;
 
 /// Version of this contract. The UI refuses to talk to an engine with a different major.
 /// 2: `Settings` lost `theme` (ADR-007). UI and engine ship in one binary today, so this
-/// guards the day the engine runs as its own process.
+/// guards the day the engine runs as its own process. Changes to the [`Settings`] shape
+/// are tracked by [`SETTINGS_VERSION`] alone (the file on disk is what needs migrating).
 pub const PROTOCOL_VERSION: u32 = 2;
 
 /// Version of the [`Settings`] schema, stored with the settings file for migrations.
 /// 2 (ADR-007): audio and sending only — the theme moved to the app settings
 /// (`crates/client`), which also migrates a version-1 file.
-pub const SETTINGS_VERSION: u32 = 2;
+/// 3: `voice_bitrate_kbps` became a quality profile ([`QualityProfile`]) plus the codec
+/// values behind it ([`VoiceCodec`]); `crates/client` migrates a version-2 file.
+pub const SETTINGS_VERSION: u32 = 3;
 
 /// What the shell tells the UI about the running app (`app_info`). Lives here so the UI
 /// type is generated, not hand-copied (realtime review 2026-10-23).
@@ -302,6 +305,112 @@ pub struct NetworkStats {
     /// Share of played samples the decoder had to invent — what loss sounds like.
     pub concealed_percent_recent: f32,
     pub concealed_percent_total: f32,
+    /// What the encoder is aiming at right now (WebRTC `targetBitrate`), 0 = not reported.
+    /// This is the negotiated figure to compare against the profile's bitrate.
+    #[serde(default)]
+    pub send_target_kbps: f32,
+    /// Recent send rate without RTP headers: Opus payload (and RED copies) only.
+    #[serde(default)]
+    pub send_payload_kbps_recent: f32,
+    /// Channels of the published voice track: 1 or 2 (0 = none published).
+    #[serde(default)]
+    pub send_channels: u16,
+}
+
+/// The Opus parameters the transport can set today (LiveKit Rust SDK 0.9). Frame length
+/// (20 ms), in-band FEC (on) and complexity (9) are fixed inside libwebrtc and reach the UI
+/// as [`OPUS_FIXED`], so the pro view can show them as facts, not knobs.
+#[derive(Serialize, Deserialize, TS, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct VoiceCodec {
+    /// Upper limit for the encoder; Opus stays variable below it. 16..=510.
+    pub bitrate_kbps: u32,
+    /// Publish two channels. The microphone path stays mono; the transport sends the same
+    /// signal on both channels, so this measures the cost of stereo, not a stereo mic.
+    pub stereo: bool,
+    /// Redundant audio: each packet carries the previous frame again (RFC 2198). libwebrtc
+    /// drops the copy silently once primary + copy would exceed 1 kB — with 20 ms frames
+    /// that is above about 200 kbit/s (measured: `docs/spikes/quality-tiers.md`).
+    pub red: bool,
+    /// Stop sending during silence. Off: quality over thrift.
+    pub dtx: bool,
+}
+
+/// Opus parameters libwebrtc decides and the SDK does not expose. Reported, not settable.
+#[derive(Serialize, Deserialize, TS, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct OpusFixed {
+    pub frame_ms: u32,
+    pub inband_fec: bool,
+    pub complexity: u8,
+}
+
+pub const OPUS_FIXED: OpusFixed = OpusFixed {
+    frame_ms: 20,
+    inband_fec: true,
+    complexity: 9,
+};
+
+/// Voice quality as the simple view offers it. Every named profile stands for one
+/// [`VoiceCodec`] ([`QualityProfile::preset`]); `Custom` uses [`Settings::voice`] as set in
+/// the pro view.
+#[derive(Serialize, Deserialize, TS, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum QualityProfile {
+    /// „Sparsam“: 32 kbit/s mono, for a weak upload.
+    Thrifty,
+    /// „Standard“: 80 kbit/s mono with RED — the first evenings ran with this.
+    Standard,
+    /// „Hoch“: 128 kbit/s mono.
+    High,
+    /// „Studio“: 192 kbit/s mono — the highest step at which RED still fits into the packet.
+    Studio,
+    /// „Stress“: Opus's maximum asked for, 510 kbit/s stereo, no RED (the copies would not
+    /// fit anyway). libwebrtc caps the encoder at about 256 kbit/s; the diagnosis shows
+    /// what it really aims at. To compare against Discord and to find the ceiling.
+    Stress,
+    /// The values in [`Settings::voice`].
+    Custom,
+}
+
+impl QualityProfile {
+    /// The named profiles, in the order the UI lists them.
+    pub const NAMED: [QualityProfile; 5] = [
+        QualityProfile::Thrifty,
+        QualityProfile::Standard,
+        QualityProfile::High,
+        QualityProfile::Studio,
+        QualityProfile::Stress,
+    ];
+
+    /// The codec values of a named profile; `None` for `Custom`.
+    pub fn preset(self) -> Option<VoiceCodec> {
+        let codec = |bitrate_kbps, stereo, red| VoiceCodec {
+            bitrate_kbps,
+            stereo,
+            red,
+            dtx: false,
+        };
+        Some(match self {
+            QualityProfile::Thrifty => codec(32, false, true),
+            QualityProfile::Standard => codec(80, false, true),
+            QualityProfile::High => codec(128, false, true),
+            QualityProfile::Studio => codec(192, false, true),
+            QualityProfile::Stress => codec(510, true, false),
+            QualityProfile::Custom => return None,
+        })
+    }
+
+    /// The named profile with exactly these values, else `Custom`.
+    pub fn matching(codec: VoiceCodec) -> QualityProfile {
+        Self::NAMED
+            .into_iter()
+            .find(|p| p.preset() == Some(codec))
+            .unwrap_or(QualityProfile::Custom)
+    }
 }
 
 #[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq, Default)]
@@ -356,8 +465,11 @@ pub struct Settings {
     pub high_pass_hz: f32,
     pub eq: Vec<EqBand>,
     pub compressor: CompressorSettings,
-    /// Voice track bitrate; the baseline asks for 64–96 kbps with RED, no DTX.
-    pub voice_bitrate_kbps: u32,
+    /// Voice quality: a named profile, or `Custom` for the values in `voice`.
+    pub quality: QualityProfile,
+    /// The codec values the pro view edits. Only in effect while `quality` is `Custom`;
+    /// [`Settings::voice_codec`] is what is actually sent.
+    pub voice: VoiceCodec,
     /// Which input channel of the microphone device carries the voice (0 = first). A mic on
     /// input 2 of a two-channel interface is channel 1. Clamped to what the device has.
     #[serde(default)]
@@ -387,7 +499,8 @@ impl Default for Settings {
                 release_ms: 120.0,
                 makeup_db: 3.0,
             },
-            voice_bitrate_kbps: 80,
+            quality: QualityProfile::Standard,
+            voice: QualityProfile::Standard.preset().unwrap(),
             input_channel: 0,
             output_gain_db: 0.0,
         }
@@ -395,6 +508,12 @@ impl Default for Settings {
 }
 
 impl Settings {
+    /// What the voice track is published with: the profile's preset, or `voice` for
+    /// `Custom`.
+    pub fn voice_codec(&self) -> VoiceCodec {
+        self.quality.preset().unwrap_or(self.voice)
+    }
+
     /// Sanity limits the engine relies on. Returns the first problem found.
     pub fn validate(&self) -> Result<(), String> {
         if self.version != SETTINGS_VERSION {
@@ -403,10 +522,10 @@ impl Settings {
                 self.version
             ));
         }
-        if !(16..=510).contains(&self.voice_bitrate_kbps) {
+        if !(16..=510).contains(&self.voice.bitrate_kbps) {
             return Err(format!(
                 "voice bitrate {} kbps out of 16..=510",
-                self.voice_bitrate_kbps
+                self.voice.bitrate_kbps
             ));
         }
         if !(-90.0..=0.0).contains(&self.vad_threshold_db) {
@@ -507,12 +626,75 @@ mod tests {
         }
     }
 
+    /// The named profiles next to the defaults, so the UI shows the same numbers the engine
+    /// sends and the fixed Opus facts come from one place.
+    #[test]
+    fn export_quality_profiles_json() {
+        let Some(dir) = std::env::var_os("TS_RS_EXPORT_DIR") else {
+            return;
+        };
+        let profiles: Vec<serde_json::Value> = QualityProfile::NAMED
+            .into_iter()
+            .map(|p| {
+                serde_json::json!({
+                    "id": p,
+                    "codec": p.preset().unwrap(),
+                })
+            })
+            .collect();
+        let json = serde_json::to_string_pretty(&serde_json::json!({
+            "profiles": profiles,
+            "fixed": OPUS_FIXED,
+        }))
+        .unwrap()
+            + "\n";
+        let path = std::path::Path::new(&dir).join("qualityProfiles.json");
+        if std::fs::read_to_string(&path).ok().as_deref() != Some(json.as_str()) {
+            std::fs::write(path, json).unwrap();
+        }
+    }
+
     #[test]
     fn validate_rejects_out_of_range_bitrate() {
         let s = Settings {
-            voice_bitrate_kbps: 4,
+            quality: QualityProfile::Custom,
+            voice: VoiceCodec {
+                bitrate_kbps: 4,
+                ..Settings::default().voice
+            },
             ..Settings::default()
         };
         assert!(s.validate().is_err());
+    }
+
+    #[test]
+    fn named_profiles_win_over_the_custom_values_and_are_found_again() {
+        let s = Settings {
+            quality: QualityProfile::Stress,
+            voice: VoiceCodec {
+                bitrate_kbps: 16,
+                stereo: false,
+                red: true,
+                dtx: true,
+            },
+            ..Settings::default()
+        };
+        let sent = s.voice_codec();
+        assert_eq!(sent.bitrate_kbps, 510);
+        assert!(sent.stereo && !sent.red && !sent.dtx);
+        for p in QualityProfile::NAMED {
+            assert_eq!(QualityProfile::matching(p.preset().unwrap()), p);
+            assert!((16..=510).contains(&p.preset().unwrap().bitrate_kbps));
+        }
+        assert_eq!(
+            QualityProfile::matching(s.voice),
+            QualityProfile::Custom,
+            "16 kbit/s with DTX is nobody's preset"
+        );
+        let custom = Settings {
+            quality: QualityProfile::Custom,
+            ..s
+        };
+        assert_eq!(custom.voice_codec(), custom.voice);
     }
 }

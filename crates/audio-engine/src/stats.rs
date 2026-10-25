@@ -21,15 +21,24 @@ pub fn network_stats(previous: Option<&NetStats>, now: &NetStats, seconds: f32) 
         .concealed_samples
         .saturating_sub(before.concealed_samples);
     let bytes = now.bytes_sent.saturating_sub(before.bytes_sent);
+    let header_bytes = now
+        .header_bytes_sent
+        .saturating_sub(before.header_bytes_sent);
+    let kbps = |bytes: u64| {
+        if seconds > 0.0 {
+            bytes as f32 * 8.0 / 1000.0 / seconds
+        } else {
+            0.0
+        }
+    };
 
     NetworkStats {
         rtt_ms: now.rtt_ms as f32,
         send_codec: now.send_codec.clone(),
-        send_kbps_recent: if seconds > 0.0 {
-            bytes as f32 * 8.0 / 1000.0 / seconds
-        } else {
-            0.0
-        },
+        send_kbps_recent: kbps(bytes),
+        send_payload_kbps_recent: kbps(bytes.saturating_sub(header_bytes)),
+        send_target_kbps: (now.send_target_bps / 1000.0) as f32,
+        send_channels: now.send_channels,
         packets_sent: saturate(now.packets_sent),
         uplink_loss_percent: (now.uplink_fraction_lost * 100.0) as f32,
         packets_received: saturate(now.packets_received),
@@ -68,6 +77,9 @@ mod tests {
             send_codec: "audio/opus".into(),
             packets_sent: 50 * seconds,
             bytes_sent: 8_000 * seconds,
+            header_bytes_sent: 1_000 * seconds,
+            send_target_bps: 80_000.0,
+            send_channels: 1,
             packets_received: 45 * seconds,
             packets_lost: 5 * seconds,
             jitter_buffer_delay_s: 1920.0 * seconds as f64,
@@ -85,6 +97,9 @@ mod tests {
         now.concealed_samples += 24_000 - 480;
         let stats = network_stats(Some(&totals(9)), &now, 1.0);
         assert_eq!(stats.send_kbps_recent, 64.0);
+        assert_eq!(stats.send_payload_kbps_recent, 56.0);
+        assert_eq!(stats.send_target_kbps, 80.0);
+        assert_eq!(stats.send_channels, 1);
         assert!((stats.loss_percent_recent - 52.63).abs() < 0.01);
         assert!((stats.concealed_percent_recent - 50.0).abs() < 0.01);
         assert!((stats.concealed_percent_total - 5.9).abs() < 0.01);

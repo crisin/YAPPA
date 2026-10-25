@@ -3,7 +3,9 @@
 use audio_engine::device::{AudioIo, DeviceCounters, DeviceList, OpenDevice};
 use audio_engine::mixer::MixerRt;
 use audio_engine::{spawn, EngineConfig, EngineHandle};
-use engine_protocol::{AudioDevice, Command, ConnectionState, Event, Settings, TrackKind};
+use engine_protocol::{
+    AudioDevice, Command, ConnectionState, Event, QualityProfile, Settings, TrackKind, VoiceCodec,
+};
 use rtrb::Producer;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::mpsc;
@@ -63,7 +65,11 @@ impl Transport for FakeTransport {
         *self.0.hooks.lock().unwrap() = Some((Arc::new(events), receiver));
     }
     fn join(&mut self, url: &str, token: &str, options: PublishOptions) {
-        let call = format!("join {url} {token} {}", options.bitrate_bps);
+        let call = format!("join {url} {token} {}", describe(options));
+        self.0.calls.lock().unwrap().push(call);
+    }
+    fn set_publish(&mut self, options: PublishOptions) {
+        let call = format!("publish {}", describe(options));
         self.0.calls.lock().unwrap().push(call);
     }
     fn leave(&mut self) {
@@ -75,6 +81,17 @@ impl Transport for FakeTransport {
     fn voice_out(&self) -> Arc<dyn VoiceOut> {
         self.0.clone()
     }
+}
+
+/// `<bit/s> <channels>ch red=<bool> dtx=<bool>` — what the engine asked the transport for.
+fn describe(options: PublishOptions) -> String {
+    format!(
+        "{} {}ch red={} dtx={}",
+        options.bitrate_bps,
+        options.channels(),
+        options.red,
+        options.dtx
+    )
 }
 
 /// Defaults, but RNNoise: with the workspace's features unified the engine has the real
@@ -353,14 +370,22 @@ fn an_error_from_before_the_ui_listened_is_handed_over_on_resync() {
 #[test]
 fn join_uses_the_bitrate_from_the_settings_and_reports_the_room() {
     let rig = rig(Settings {
-        voice_bitrate_kbps: 96,
+        quality: QualityProfile::Custom,
+        voice: VoiceCodec {
+            bitrate_kbps: 96,
+            stereo: false,
+            red: true,
+            dtx: false,
+        },
         ..Settings::default()
     });
     rig.engine.send(Command::Join {
         url: "ws://test".into(),
         token: "tok".into(),
     });
-    rig.wait_until("join", || rig.wire.calls() == ["join ws://test tok 96000"]);
+    rig.wait_until("join", || {
+        rig.wire.calls() == ["join ws://test tok 96000 1ch red=true dtx=false"]
+    });
     rig.wire.emit(TransportEvent::State(LinkState::Connecting));
     rig.wait_state(ConnectionState::Connecting);
     rig.wire.emit(TransportEvent::Joined {
@@ -742,7 +767,11 @@ fn invalid_settings_are_rejected_and_the_old_ones_stay() {
     let rig = rig(settings());
     rig.engine.send(Command::ApplySettings {
         settings: Settings {
-            voice_bitrate_kbps: 4,
+            quality: QualityProfile::Custom,
+            voice: VoiceCodec {
+                bitrate_kbps: 4,
+                ..Settings::default().voice
+            },
             ..Settings::default()
         },
     });
@@ -751,7 +780,45 @@ fn invalid_settings_are_rejected_and_the_old_ones_stay() {
         _ => None,
     });
     assert!(message.contains("settings rejected"));
-    assert_eq!(rig.engine.settings().voice_bitrate_kbps, 80);
+    assert_eq!(rig.engine.settings().voice_codec().bitrate_kbps, 80);
+}
+
+/// A new profile during a call reaches the transport as new publish options — the session
+/// stays; a profile with the same values does not.
+#[test]
+fn a_quality_change_republishes_without_a_rejoin() {
+    let rig = rig(settings());
+    rig.join();
+    rig.engine.send(Command::ApplySettings {
+        settings: Settings {
+            quality: QualityProfile::Stress,
+            ..settings()
+        },
+    });
+    rig.wait_until("republish", || {
+        rig.wire.calls()
+            == [
+                "join ws://test tok 80000 1ch red=true dtx=false",
+                "publish 510000 2ch red=false dtx=false",
+            ]
+    });
+    // Custom with exactly the Stress values: nothing to do.
+    rig.engine.send(Command::ApplySettings {
+        settings: Settings {
+            quality: QualityProfile::Custom,
+            voice: QualityProfile::Stress.preset().unwrap(),
+            ..settings()
+        },
+    });
+    rig.engine.send(Command::ApplySettings {
+        settings: Settings {
+            quality: QualityProfile::Thrifty,
+            ..settings()
+        },
+    });
+    rig.wait_until("second republish", || rig.wire.calls().len() == 3);
+    assert_eq!(rig.wire.calls()[2], "publish 32000 1ch red=true dtx=false");
+    assert_eq!(rig.engine.settings().quality, QualityProfile::Thrifty);
 }
 
 #[test]

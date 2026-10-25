@@ -17,6 +17,17 @@ futures-util = { version = "0.3", optional = true }
 livekit = { version = "0.9", features = ["rustls-tls-native-roots"], optional = true }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"], optional = true }
 
+[dev-dependencies]
+criterion.workspace = true
+
+# Only criterion runs under `cargo bench` (libtest would reject criterion's flags).
+[lib]
+bench = false
+
+[[bench]]
+name = "upmix"
+harness = false
+
 [lints]
 workspace = true
 

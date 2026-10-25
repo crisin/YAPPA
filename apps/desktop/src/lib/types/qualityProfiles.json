@@ -1,0 +1,54 @@
+{
+  "fixed": {
+    "complexity": 9,
+    "frameMs": 20,
+    "inbandFec": true
+  },
+  "profiles": [
+    {
+      "codec": {
+        "bitrateKbps": 32,
+        "dtx": false,
+        "red": true,
+        "stereo": false
+      },
+      "id": "thrifty"
+    },
+    {
+      "codec": {
+        "bitrateKbps": 80,
+        "dtx": false,
+        "red": true,
+        "stereo": false
+      },
+      "id": "standard"
+    },
+    {
+      "codec": {
+        "bitrateKbps": 128,
+        "dtx": false,
+        "red": true,
+        "stereo": false
+      },
+      "id": "high"
+    },
+    {
+      "codec": {
+        "bitrateKbps": 192,
+        "dtx": false,
+        "red": true,
+        "stereo": false
+      },
+      "id": "studio"
+    },
+    {
+      "codec": {
+        "bitrateKbps": 510,
+        "dtx": false,
+        "red": false,
+        "stereo": true
+      },
+      "id": "stress"
+    }
+  ]
+}

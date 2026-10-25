@@ -59,6 +59,8 @@ pub struct ClientConfig {
     pub room: String,
     pub identity: String,
     pub bitrate: u64,
+    /// Two channels (dual mono): what the app's „Studio“ and „Stress“ profiles publish.
+    pub stereo: bool,
     pub red: bool,
     pub dtx: bool,
     /// A token issued elsewhere (`cargo xtask livekit token`); without one the client
@@ -143,13 +145,17 @@ impl Client {
                 log.event(
                     &cfg.identity,
                     format!(
-                        "published voice track: {} bit/s, red={}, dtx={}",
-                        cfg.bitrate, cfg.red, cfg.dtx
+                        "published voice track: {} bit/s, {}ch, red={}, dtx={}",
+                        cfg.bitrate,
+                        if cfg.stereo { 2 } else { 1 },
+                        cfg.red,
+                        cfg.dtx
                     ),
                 );
                 let ctx = Pump {
                     runtime: tokio::runtime::Handle::current(),
                     native,
+                    stereo: cfg.stereo,
                     log: log.clone(),
                     stop: stop.clone(),
                     stats: pump.clone(),
@@ -199,7 +205,8 @@ fn dev_token(cfg: &ClientConfig) -> Result<String> {
 
 async fn publish(room: &Room, cfg: &ClientConfig) -> Result<NativeAudioSource> {
     // queue_size_ms = 0: every 10 ms block goes straight to the encoder, no extra buffer.
-    let native = NativeAudioSource::new(AudioSourceOptions::default(), SAMPLE_RATE, 1, 0);
+    let channels = if cfg.stereo { 2 } else { 1 };
+    let native = NativeAudioSource::new(AudioSourceOptions::default(), SAMPLE_RATE, channels, 0);
     let track =
         LocalAudioTrack::create_audio_track("voice", RtcAudioSource::Native(native.clone()));
     let options = TrackPublishOptions {
@@ -221,6 +228,8 @@ async fn publish(room: &Room, cfg: &ClientConfig) -> Result<NativeAudioSource> {
 struct Pump {
     runtime: tokio::runtime::Handle,
     native: NativeAudioSource,
+    /// Two channels: the block goes out as dual mono, like the app's transport does.
+    stereo: bool,
     log: Arc<Log>,
     stop: Arc<AtomicBool>,
     stats: Arc<PumpStats>,
@@ -236,6 +245,7 @@ impl Pump {
             _ => None,
         };
         let mut block = [0i16; BLOCK];
+        let mut both = [0i16; 2 * BLOCK];
         let mut deadline = Instant::now();
         let mut last = None::<Instant>;
         while !self.stop.load(Relaxed) {
@@ -268,11 +278,24 @@ impl Pump {
                     }
                 }
             }
-            let frame = AudioFrame {
-                data: Cow::Borrowed(&block[..]),
-                sample_rate: SAMPLE_RATE,
-                num_channels: 1,
-                samples_per_channel: BLOCK as u32,
+            let frame = if self.stereo {
+                for (pair, &s) in both.chunks_exact_mut(2).zip(&block) {
+                    pair[0] = s;
+                    pair[1] = s;
+                }
+                AudioFrame {
+                    data: Cow::Borrowed(&both[..]),
+                    sample_rate: SAMPLE_RATE,
+                    num_channels: 2,
+                    samples_per_channel: BLOCK as u32,
+                }
+            } else {
+                AudioFrame {
+                    data: Cow::Borrowed(&block[..]),
+                    sample_rate: SAMPLE_RATE,
+                    num_channels: 1,
+                    samples_per_channel: BLOCK as u32,
+                }
             };
             let start = Instant::now();
             if is_click {

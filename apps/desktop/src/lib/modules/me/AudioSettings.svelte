@@ -4,6 +4,7 @@
   // pro view. Microphone and speaking mode are parts the onboarding (U4) shows too.
   import { getApp } from '../../app.svelte';
   import MicTest from './MicTest.svelte';
+  import QualityPicker from './QualityPicker.svelte';
   import TalkMode from './TalkMode.svelte';
   import type { DenoiserKind } from '../../types/DenoiserKind';
 
@@ -37,6 +38,13 @@
       <option value={d.id}>{d.label}</option>
     {/each}
   </select>
+
+  <QualityPicker />
+  {#if app.view === 'pro'}
+    <button class="quiet tight" onclick={() => app.openMe('netzwerk')}>
+      Bitrate, Stereo, RED und DTX einzeln in „Netzwerk“
+    </button>
+  {/if}
 
   <label for="output">Ausgabe</label>
   <select
@@ -101,6 +109,10 @@
 
   input[type='range'] {
     accent-color: var(--color-accent);
+  }
+
+  .tight {
+    margin-top: 0;
   }
 
   .quiet {
