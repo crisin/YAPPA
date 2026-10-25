@@ -102,8 +102,14 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 - [ ] Bumps when the files are touched anyway: LiveKit server v1.13.10, `livekit` 0.9.6
 - [ ] Phase 2 · Quality: second media server with failover (presence room needs a home,
       ADR-005 revisit), Prometheus/Grafana, load, AEC, four weeks without an outage
-- [ ] Phase 3 · Extensions: soundboard (inspector, byte streams on the presence room,
-      `soundboard` track), app audio (`AppCapture`, music track, stage tile), lobby radio,
+- [ ] Soundboard round 2 (after the POC, ADR-010): hotkeys per sound (same hook as PTT, a
+      key table in the app settings), library sync between clients (byte streams on the
+      presence room, hash-addressed), „spielt gerade“ on the tiles (the track's level into
+      `Levels`), per-sound volume, drift compensation on the local slot if the first evening
+      shows gaps. *Problem while gaming:* a meme needs a key, not a mouse trip. *Planes:*
+      client + presence room for the sync; no control plane. *Not built:* server storage,
+      a shared library owned by the admin.
+- [ ] Phase 3 · Extensions: app audio (`AppCapture`, music track, stage tile), lobby radio,
       effects, S4/CLAP, text chat (`chat` topic), hub module
 - [ ] Mobile: sketch in `docs/01-vision-v1.md` section 10; ADR (way A or B) before the first
       task
@@ -126,6 +132,26 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] Soundboard POC (ADR-010, 2026-10-25): a `yappa-sounds` thread in the engine plays
+      files (symphonia: WAV, FLAC, OGG, MP3, M4A → 48 kHz mono via the A1 resampler, cut
+      at 60 s, cached) one 10 ms block at a time, self-paced a block ahead, up to eight
+      overlapping through the soundboard gain and a limiter — out on a second LiveKit
+      track `soundboard` (96 kbit/s mono, DTX, published for the whole session next to
+      the voice) and into a second local mixer slot of the monitor's kind, so the clicker
+      hears it. Receivers key mixer slots by (identity, track): `SetPeerVolume { track:
+      soundboard }` and the mute land on that track, no leveler on it, `SLOTS` 24 → 48.
+      Protocol additive: `PlaySound`, `StopSounds`, `Event::Sounds`,
+      `Settings.soundboard_gain_db`. The library is the folder `<app data>/soundboard/`
+      (shell: list, add a picked file over IPC, open in Explorer). UI: inspector
+      „Soundboard“ (search, grid with the playing state, Stopp, my volume, add, open
+      folder) from a button next to the room title and the palette; the person inspector
+      gets a soundboard volume and mute. Glossary and help. Tests: decoder (stereo 44.1 →
+      mono 48, cut, garbage), the thread (overlap, limiter, stop, failure), mixer (second
+      track next to the voice, local slot), engine integration (out on the track, into
+      the own mix, error for a missing file, per-track mute), shell (names, listing), UI
+      (list, play, stop, search, gain, add, refuse, per-person). Not verified: a real
+      call over the server with two clients (the user's review step), bandwidth of the
+      idle track, pacing on a PC without a raised timer resolution
 - [x] D1 Release pipeline (ADR-006, 2026-10-25): `cargo xtask release <channel>` —
       version bump (`Cargo.toml` as the one source, npm files follow), changelog cut
       Unreleased → `## <version> (<date>)` with the notes as release notes, signed

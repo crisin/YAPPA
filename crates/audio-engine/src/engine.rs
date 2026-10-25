@@ -7,6 +7,7 @@ use crate::chain::{Chain, ChainConfig, STAGES};
 use crate::device::{AudioIo, DeviceList, OpenDevice};
 use crate::mixer::{mixer, MixerControl, MixerRt, MonitorFeed};
 use crate::mute::MuteState;
+use crate::soundboard::{self, SoundCommand, SoundEvent, SoundThread};
 use crate::stats::network_stats;
 use dsp::Resampler;
 use dsp::{db_to_gain, gain_to_db};
@@ -26,6 +27,16 @@ use transport::{
     AudioReceiver, FrameSink, LinkState, NetStats, PublishOptions, Transport, TransportEvent,
     VoiceOut, BLOCK,
 };
+
+/// The protocol's track kinds as the transport names them; `None` for a track that does
+/// not exist yet (music, phase 3).
+fn track_kind(kind: TrackKind) -> Option<transport::TrackKind> {
+    match kind {
+        TrackKind::Voice => Some(transport::TrackKind::Voice),
+        TrackKind::Soundboard => Some(transport::TrackKind::Soundboard),
+        TrackKind::Music => None,
+    }
+}
 
 /// How often levels go to the UI.
 const LEVEL_INTERVAL: Duration = Duration::from_millis(33);
@@ -57,6 +68,7 @@ impl Default for EngineConfig {
 enum Msg {
     Command(Command),
     Transport(TransportEvent),
+    Sound(SoundEvent),
     Shutdown,
 }
 
@@ -122,10 +134,27 @@ pub fn spawn(
             .expect("spawn the pump thread")
     };
 
+    // The soundboard (ADR-010): its own paced thread, out to the transport's second track
+    // and into the local mix at once.
+    let sound = {
+        let events = tx.clone();
+        let feed = mixer.sound_feed().expect("the sound feed is taken once");
+        soundboard::spawn(
+            transport.sound_out(),
+            feed,
+            settings.soundboard_gain_db,
+            move |event| {
+                let _ = events.send(Msg::Sound(event));
+            },
+        )
+    };
+
     let settings = Arc::new(Mutex::new(settings));
     let (mixer_back, mixer_returned) = mpsc::channel();
     let mut engine = Engine {
         transport,
+        sound,
+        playing: Vec::new(),
         io,
         on_event: Box::new(on_event),
         pending_errors: RefCell::new(BTreeMap::new()),
@@ -182,6 +211,9 @@ enum ErrorSource {
 
 struct Engine {
     transport: Box<dyn Transport>,
+    /// The soundboard thread (ADR-010) and which of its files play right now.
+    sound: SoundThread,
+    playing: Vec<String>,
     io: Box<dyn AudioIo>,
     on_event: Box<dyn Fn(Event) + Send>,
     /// Errors that still stand, by source — for a UI that attaches after they happened
@@ -254,6 +286,7 @@ impl Engine {
             match rx.recv_timeout(LEVEL_INTERVAL) {
                 Ok(Msg::Command(command)) => self.command(command),
                 Ok(Msg::Transport(event)) => self.transport_event(event),
+                Ok(Msg::Sound(event)) => self.sound_event(event),
                 Ok(Msg::Shutdown) | Err(RecvTimeoutError::Disconnected) => break,
                 Err(RecvTimeoutError::Timeout) => {}
             }
@@ -339,25 +372,34 @@ impl Engine {
             Command::ToggleDeafened => self.change_mute(MuteState::toggle_deafened),
             Command::SetPeerVolume {
                 identity,
-                track: TrackKind::Voice,
+                track,
                 gain_db,
-            } => {
-                let gain_db = gain_db.clamp(*PEER_GAIN_DB.start(), *PEER_GAIN_DB.end());
-                tracing::info!(%identity, gain_db, "peer volume");
-                self.mixer
-                    .set_peer(&identity, |mix| mix.gain = db_to_gain(gain_db));
-            }
+            } => match track_kind(track) {
+                Some(kind) => {
+                    let gain_db = gain_db.clamp(*PEER_GAIN_DB.start(), *PEER_GAIN_DB.end());
+                    tracing::info!(%identity, ?kind, gain_db, "peer volume");
+                    self.mixer
+                        .set_peer(&identity, kind, |mix| mix.gain = db_to_gain(gain_db));
+                }
+                None => tracing::debug!(?track, "no such track yet"),
+            },
             Command::SetPeerMuted {
                 identity,
-                track: TrackKind::Voice,
+                track,
                 muted,
-            } => {
-                tracing::info!(%identity, muted, "peer mute");
-                self.mixer.set_peer(&identity, |mix| mix.muted = muted);
+            } => match track_kind(track) {
+                Some(kind) => {
+                    tracing::info!(%identity, ?kind, muted, "peer mute");
+                    self.mixer
+                        .set_peer(&identity, kind, |mix| mix.muted = muted);
+                }
+                None => tracing::debug!(?track, "no such track yet"),
+            },
+            Command::PlaySound { path } => {
+                tracing::info!(%path, "sound requested");
+                self.sound.send(SoundCommand::Play(path));
             }
-            Command::SetPeerVolume { track, .. } | Command::SetPeerMuted { track, .. } => {
-                tracing::debug!(?track, "only the voice track exists so far");
-            }
+            Command::StopSounds => self.sound.send(SoundCommand::Stop),
             Command::ApplySettings { settings } => self.apply_settings(settings),
             Command::Join { url, token } => {
                 tracing::info!(%url, "join requested");
@@ -391,6 +433,9 @@ impl Engine {
                 self.emit_mute_state();
                 self.emit(Event::MonitorState {
                     on: self.mixer.monitor_on(),
+                });
+                self.emit(Event::Sounds {
+                    playing: self.playing.clone(),
                 });
                 if let Some((room, identity)) = self.room.clone() {
                     self.emit(Event::Joined { room, identity });
@@ -451,6 +496,9 @@ impl Engine {
         if old.auto_level != new.auto_level {
             self.mixer.set_leveling(new.auto_level);
         }
+        if old.soundboard_gain_db != new.soundboard_gain_db {
+            self.sound.send(SoundCommand::Gain(new.soundboard_gain_db));
+        }
         let chain = ChainConfig::from(&new);
         if chain != ChainConfig::from(&old) {
             let _ = self.chain_tx.send(chain);
@@ -490,6 +538,21 @@ impl Engine {
             "joining again after a lost session"
         );
         self.join();
+    }
+
+    // ── soundboard (ADR-010) ────────────────────────────────────────────────────────────
+
+    fn sound_event(&mut self, event: SoundEvent) {
+        match event {
+            SoundEvent::Playing(playing) => {
+                self.playing = playing.clone();
+                self.emit(Event::Sounds { playing });
+            }
+            // A file that will not play is told once; nothing to resolve later.
+            SoundEvent::Failed { path, reason } => self.emit(Event::Error {
+                message: format!("sound {path}: {reason}"),
+            }),
+        }
     }
 
     // ── transport ───────────────────────────────────────────────────────────────────────
@@ -1041,11 +1104,11 @@ fn failed(device: &Option<OpenDevice>) -> bool {
 struct Speakers(Arc<MixerControl>);
 
 impl AudioReceiver for Speakers {
-    fn speaker_started(&self, identity: &str) -> Box<dyn FrameSink> {
-        match self.0.speaker(identity) {
+    fn speaker_started(&self, identity: &str, kind: transport::TrackKind) -> Box<dyn FrameSink> {
+        match self.0.speaker(identity, kind) {
             Some(sink) => Box::new(sink),
             None => {
-                tracing::error!(%identity, "no free mixer slot — this person will not be heard");
+                tracing::error!(%identity, ?kind, "no free mixer slot — this track will not be heard");
                 Box::new(Discard)
             }
         }

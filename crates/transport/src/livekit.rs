@@ -11,8 +11,8 @@
 //! parameters are `pub(crate)` in the SDK, so a bitrate change also needs a republish.
 
 use crate::{
-    interleave_dual_mono, AudioReceiver, EventFn, LinkState, NetStats, PublishOptions, Transport,
-    TransportEvent, VoiceOut, BLOCK, SAMPLE_RATE,
+    interleave_dual_mono, AudioReceiver, EventFn, LinkState, NetStats, PublishOptions, TrackKind,
+    Transport, TransportEvent, VoiceOut, BLOCK, SAMPLE_RATE, SOUNDBOARD_PUBLISH,
 };
 use futures_util::StreamExt;
 use livekit::options::{AudioEncoding, TrackPublishOptions};
@@ -47,6 +47,8 @@ struct Lost {
 pub struct LiveKitTransport {
     runtime: tokio::runtime::Runtime,
     voice: Arc<Voice>,
+    /// The soundboard's source (ADR-010): mono, published once per session.
+    sound: Arc<Sound>,
     hooks: Option<Hooks>,
     session: Option<mpsc::UnboundedSender<Control>>,
     /// The session's task, to wait for a clean goodbye at shutdown.
@@ -93,11 +95,12 @@ impl LiveKitTransport {
         // The sources outlive sessions: every (re)publish makes a new track from one of
         // them. Two of them, because a source's channel count is fixed at creation and the
         // pump thread must not wait for a lock to find the current one.
-        let (mono, stereo) = {
+        let (mono, stereo, sound_source) = {
             let _in_runtime = runtime.enter();
             (
                 NativeAudioSource::new(AudioSourceOptions::default(), SAMPLE_RATE, 1, 0),
                 NativeAudioSource::new(AudioSourceOptions::default(), SAMPLE_RATE, 2, 0),
+                NativeAudioSource::new(AudioSourceOptions::default(), SAMPLE_RATE, 1, 0),
             )
         };
         let voice = Arc::new(Voice {
@@ -108,9 +111,16 @@ impl LiveKitTransport {
             live_session: AtomicU64::new(0),
             errors: AtomicU64::new(0),
         });
+        let sound = Arc::new(Sound {
+            source: sound_source,
+            runtime: runtime.handle().clone(),
+            live_session: AtomicU64::new(0),
+            errors: AtomicU64::new(0),
+        });
         Ok(Self {
             runtime,
             voice,
+            sound,
             hooks: None,
             session: None,
             task: None,
@@ -147,6 +157,7 @@ impl Transport for LiveKitTransport {
             options,
             muted: self.muted,
             voice: self.voice.clone(),
+            sound: self.sound.clone(),
             hooks,
         };
         self.task = Some(self.runtime.spawn(session.run(control_rx)));
@@ -177,6 +188,10 @@ impl Transport for LiveKitTransport {
 
     fn voice_out(&self) -> Arc<dyn VoiceOut> {
         self.voice.clone()
+    }
+
+    fn sound_out(&self) -> Arc<dyn VoiceOut> {
+        self.sound.clone()
     }
 }
 
@@ -257,12 +272,46 @@ impl VoiceOut for Voice {
     }
 }
 
+/// The soundboard's end of the wire (ADR-010): one mono source, blocks only while a sound
+/// plays — DTX keeps the track quiet in between.
+struct Sound {
+    source: NativeAudioSource,
+    runtime: tokio::runtime::Handle,
+    /// Like [`Voice::live_session`]: the session whose soundboard track is published.
+    live_session: AtomicU64,
+    errors: AtomicU64,
+}
+
+impl VoiceOut for Sound {
+    fn send(&self, block: &[i16]) {
+        if self.live_session.load(Relaxed) == 0 {
+            return;
+        }
+        let Ok(block) = <&[i16; BLOCK]>::try_from(block) else {
+            return;
+        };
+        let frame = AudioFrame {
+            data: Cow::Borrowed(&block[..]),
+            sample_rate: SAMPLE_RATE,
+            num_channels: 1,
+            samples_per_channel: BLOCK as u32,
+        };
+        if let Err(e) = self.runtime.block_on(self.source.capture_frame(&frame)) {
+            let n = self.errors.fetch_add(1, Relaxed);
+            if n.is_multiple_of(1000) {
+                tracing::warn!(error = %e, failures = n + 1, "handing a soundboard block to LiveKit failed");
+            }
+        }
+    }
+}
+
 struct Session {
     url: String,
     token: String,
     options: PublishOptions,
     muted: bool,
     voice: Arc<Voice>,
+    sound: Arc<Sound>,
     hooks: Hooks,
 }
 
@@ -279,10 +328,14 @@ impl Session {
         hooks.emit(TransportEvent::State(LinkState::Disconnected));
     }
 
-    /// Stops our voice, unless a newer session has taken over in the meantime.
+    /// Stops our voice and soundboard, unless a newer session has taken over in the meantime.
     fn silence(&self) {
         let _ = self
             .voice
+            .live_session
+            .compare_exchange(self.hooks.session, 0, Relaxed, Relaxed);
+        let _ = self
+            .sound
             .live_session
             .compare_exchange(self.hooks.session, 0, Relaxed, Relaxed);
     }
@@ -335,11 +388,17 @@ impl Session {
             }
         };
         self.voice.live_session.store(hooks.session, Relaxed);
+        // The soundboard track (ADR-010) next to the voice, for the whole session. Not
+        // having it is no reason to end the call: the sounds just stay at home.
+        match self.publish_sound(&room).await {
+            Ok(()) => self.sound.live_session.store(hooks.session, Relaxed),
+            Err(e) => tracing::warn!(error = %e, "no soundboard track this session"),
+        }
         hooks.emit(TransportEvent::State(LinkState::Connected));
 
-        // One receive task per subscribed voice track, ended by the room's events — the
+        // One receive task per subscribed audio track, ended by the room's events — the
         // SDK's stream does not end by itself when a track goes away.
-        let mut speakers: HashMap<TrackSid, (String, AbortHandle)> = HashMap::new();
+        let mut speakers: HashMap<TrackSid, (String, TrackKind, AbortHandle)> = HashMap::new();
         let mut stats = tokio::time::interval(STATS_INTERVAL);
         stats.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let result = loop {
@@ -374,22 +433,27 @@ impl Session {
                 event = events.recv() => match event {
                     Some(RoomEvent::TrackSubscribed { track: RemoteTrack::Audio(track), participant, publication }) => {
                         let identity = participant.identity().to_string();
+                        let kind = TrackKind::from_name(&publication.name());
                         // Mute changes arrive as events; who was muted before we came does not.
-                        if publication.is_muted() {
+                        if kind == TrackKind::Voice && publication.is_muted() {
                             hooks.emit(TransportEvent::ParticipantMuted { identity: identity.clone(), muted: true });
                         }
-                        tracing::info!(%identity, track = %track.sid(), "voice track subscribed");
-                        let task = tokio::spawn(receive(track.clone(), identity.clone(), hooks.receiver.clone()));
-                        if let Some((_, old)) = speakers.insert(track.sid(), (identity.clone(), task.abort_handle())) {
+                        tracing::info!(%identity, ?kind, track = %track.sid(), "track subscribed");
+                        let task = tokio::spawn(receive(track.clone(), identity.clone(), kind, hooks.receiver.clone()));
+                        if let Some((_, _, old)) = speakers.insert(track.sid(), (identity.clone(), kind, task.abort_handle())) {
                             old.abort();
                         }
-                        hooks.emit(TransportEvent::VoiceStarted { identity });
+                        if kind == TrackKind::Voice {
+                            hooks.emit(TransportEvent::VoiceStarted { identity });
+                        }
                     }
                     Some(RoomEvent::TrackUnsubscribed { track, participant, .. }) => {
-                        if let Some((identity, task)) = speakers.remove(&track.sid()) {
+                        if let Some((identity, kind, task)) = speakers.remove(&track.sid()) {
                             task.abort();
-                            tracing::info!(%identity, "voice track ended");
-                            hooks.emit(TransportEvent::VoiceEnded { identity });
+                            tracing::info!(%identity, ?kind, "track ended");
+                            if kind == TrackKind::Voice {
+                                hooks.emit(TransportEvent::VoiceEnded { identity });
+                            }
                         } else {
                             tracing::debug!(identity = %participant.identity(), "untracked track unsubscribed");
                         }
@@ -448,9 +512,11 @@ impl Session {
         };
 
         self.silence();
-        for (_, (identity, task)) in speakers.drain() {
+        for (_, (identity, kind, task)) in speakers.drain() {
             task.abort();
-            hooks.emit(TransportEvent::VoiceEnded { identity });
+            if kind == TrackKind::Voice {
+                hooks.emit(TransportEvent::VoiceEnded { identity });
+            }
         }
         let _ = room.close().await;
         result
@@ -468,7 +534,7 @@ impl Session {
     ) -> Result<(LocalAudioTrack, TrackSid), Lost> {
         self.voice.stereo_live.store(options.stereo, Relaxed);
         let track = LocalAudioTrack::create_audio_track(
-            "voice",
+            TrackKind::Voice.name(),
             RtcAudioSource::Native(self.voice.source(options.stereo).clone()),
         );
         let publish = TrackPublishOptions {
@@ -502,6 +568,37 @@ impl Session {
     }
 }
 
+impl Session {
+    /// Publishes the soundboard track (ADR-010) with its fixed options. Its source is
+    /// `Unknown` on purpose: it is not a microphone, and nothing on the receiving side keys
+    /// on the source — the name tells the tracks apart.
+    async fn publish_sound(&self, room: &Room) -> Result<(), String> {
+        let track = LocalAudioTrack::create_audio_track(
+            TrackKind::Soundboard.name(),
+            RtcAudioSource::Native(self.sound.source.clone()),
+        );
+        let publish = TrackPublishOptions {
+            audio_encoding: Some(AudioEncoding {
+                max_bitrate: u64::from(SOUNDBOARD_PUBLISH.bitrate_bps),
+            }),
+            red: SOUNDBOARD_PUBLISH.red,
+            dtx: SOUNDBOARD_PUBLISH.dtx,
+            source: TrackSource::Unknown,
+            ..Default::default()
+        };
+        room.local_participant()
+            .publish_track(LocalTrack::Audio(track), publish)
+            .await
+            .map_err(|e| format!("could not publish the soundboard track: {e}"))?;
+        tracing::info!(
+            bitrate_bps = SOUNDBOARD_PUBLISH.bitrate_bps,
+            dtx = SOUNDBOARD_PUBLISH.dtx,
+            "soundboard track published"
+        );
+        Ok(())
+    }
+}
+
 fn joined(participant: &RemoteParticipant) -> TransportEvent {
     let identity = participant.identity().to_string();
     let name = match participant.name() {
@@ -521,9 +618,14 @@ fn mute_change(participant: &Participant, muted: bool, room: &Room) -> Option<Tr
     Some(TransportEvent::ParticipantMuted { identity, muted })
 }
 
-/// Decoded frames of one remote speaker, until the task is aborted.
-async fn receive(track: RemoteAudioTrack, identity: String, receiver: Arc<dyn AudioReceiver>) {
-    let mut sink = receiver.speaker_started(&identity);
+/// Decoded frames of one remote track, until the task is aborted.
+async fn receive(
+    track: RemoteAudioTrack,
+    identity: String,
+    kind: TrackKind,
+    receiver: Arc<dyn AudioReceiver>,
+) {
+    let mut sink = receiver.speaker_started(&identity, kind);
     let options = NativeAudioStreamOptions {
         queue_size_frames: Some(RECEIVE_QUEUE_FRAMES),
     };

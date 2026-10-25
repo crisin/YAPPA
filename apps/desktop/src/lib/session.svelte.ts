@@ -9,6 +9,7 @@ import type { LogEntry } from './types/LogEntry';
 import type { Participant } from './types/Participant';
 import type { PeerLevel } from './types/PeerLevel';
 import type { Settings } from './types/Settings';
+import type { Sound } from './types/Sound';
 import type { StageLevel } from './types/StageLevel';
 import type { TransmitMode } from './types/TransmitMode';
 import type { Stats } from './types/Stats';
@@ -61,6 +62,13 @@ export class Session {
   /** Per person, as set here: volume in dB and local mute. */
   peerGainDb = $state<Record<string, number>>({});
   peerMuted = $state<Record<string, boolean>>({});
+  /** The same for their soundboard track (ADR-010). */
+  peerSoundGainDb = $state<Record<string, number>>({});
+  peerSoundMuted = $state<Record<string, boolean>>({});
+  /** The soundboard (ADR-010): the library, what plays, and why a file was refused. */
+  sounds = $state<Sound[]>([]);
+  playing = $state<string[]>([]);
+  soundProblem = $state<string | null>(null);
   /** The last problem the engine reported, until dismissed. */
   error = $state<string | null>(null);
   invite = $state('');
@@ -129,6 +137,9 @@ export class Session {
         break;
       case 'monitorState':
         this.monitor = event.on;
+        break;
+      case 'sounds':
+        this.playing = event.playing;
         break;
       case 'log':
         this.log = [...this.log, event.entry].slice(-LOG_LIMIT);
@@ -248,5 +259,53 @@ export class Session {
 
   exportLogs(): Promise<string> {
     return this.#engine.exportLogs();
+  }
+
+  // ── soundboard (ADR-010) ──────────────────────────────────────────────────────────────
+
+  /** Reads the sound folder again. */
+  async loadSounds() {
+    this.sounds = await this.#engine.sounds();
+  }
+
+  /** Plays a sound for everybody in the channel, and for me; the engine answers with
+   * `sounds`. */
+  playSound(path: string) {
+    return this.#engine.send({ type: 'playSound', path });
+  }
+
+  stopSounds() {
+    return this.#engine.send({ type: 'stopSounds' });
+  }
+
+  isPlaying(path: string): boolean {
+    return this.playing.includes(path);
+  }
+
+  /** Copies a picked file into the folder; a refusal lands in `soundProblem`. */
+  async addSound(file: File) {
+    this.soundProblem = null;
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      await this.#engine.addSound(file.name, bytes);
+      await this.loadSounds();
+    } catch (reason) {
+      this.soundProblem = String((reason as { message?: string })?.message ?? reason);
+    }
+  }
+
+  openSoundFolder() {
+    return this.#engine.openSoundFolder();
+  }
+
+  setPeerSoundGain(identity: string, gainDb: number) {
+    this.peerSoundGainDb[identity] = gainDb;
+    return this.#engine.send({ type: 'setPeerVolume', identity, track: 'soundboard', gainDb });
+  }
+
+  togglePeerSoundMute(identity: string) {
+    const muted = !this.peerSoundMuted[identity];
+    this.peerSoundMuted[identity] = muted;
+    return this.#engine.send({ type: 'setPeerMuted', identity, track: 'soundboard', muted });
   }
 }

@@ -5,6 +5,7 @@
 pub mod admin;
 pub mod api;
 pub mod logging;
+pub mod soundboard;
 pub mod updater;
 
 use api_types::{ClientInfo, Invite};
@@ -54,6 +55,8 @@ pub struct App {
     _devices: Option<platform::DeviceWatcher>,
     /// A downloaded update waiting for the click (D1).
     update: updater::UpdateSlot,
+    /// The soundboard's library folder (ADR-010).
+    sound_dir: std::path::PathBuf,
 }
 
 impl App {
@@ -184,6 +187,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         name => paths.app_log_dir()?.join("profiles").join(name),
     };
     let logging = logging::init(&log_dir)?;
+    let sound_dir = soundboard::folder(paths)?;
     tracing::info!(
         version = env!("CARGO_PKG_VERSION"),
         os = std::env::consts::OS,
@@ -328,6 +332,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         hotkeys,
         _devices: devices,
         update: updater::UpdateSlot::default(),
+        sound_dir,
     });
     // Registered after `manage`: the callback needs the App state.
     let handle = app.handle().clone();
@@ -417,6 +422,10 @@ pub fn run() {
             admin::admin_set_policy,
             updater::check_update,
             updater::install_update,
+            soundboard::soundboard_list,
+            soundboard::soundboard_folder,
+            soundboard::soundboard_open_folder,
+            soundboard::soundboard_add,
             pending_invite_link
         ])
         .build(tauri::generate_context!())

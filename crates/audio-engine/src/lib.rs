@@ -17,6 +17,7 @@ pub mod engine;
 pub mod mixer;
 pub mod mute;
 mod resample;
+pub mod soundboard;
 pub mod stats;
 
 pub use device::{AudioIo, CpalIo};

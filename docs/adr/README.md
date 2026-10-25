@@ -16,6 +16,7 @@ the planning doc gets an ADR when it switches to "Entschieden".
 | 007 | [`crates/client`, settings split engine/app, hotkeys behind a platform trait](007-client-core-settings-hotkeys.md) | accepted (2026-10-23) |
 | 008 | [DeepFilterNet 3 (low-latency) is the default denoiser, built from a pinned libDF](008-deepfilternet-default-denoiser.md) | accepted (2026-10-23) |
 | 009 | [Audio first — resampling, device return, loudness levelling, drift; D1 waits](009-audio-priorities-after-interview.md) | accepted (2026-10-23) |
+| 010 | [Soundboard as a second track per participant, played from its own thread](010-soundboard-second-track.md) | accepted (2026-10-25) |
 
 Decided in ADR-000 already: project name yAPPA. ADR-001 overrides ADR-000 where it says so
 (control plane, UI framework, scripts, work tracking). ADR-004 to 007 come from the

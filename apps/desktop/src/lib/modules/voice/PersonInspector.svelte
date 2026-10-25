@@ -10,6 +10,8 @@
   const person = $derived(session.participants.find((p) => p.identity === id) ?? null);
   const gain = $derived(id ? (session.peerGainDb[id] ?? 0) : 0);
   const localMuted = $derived(id ? (session.peerMuted[id] ?? false) : false);
+  const soundGain = $derived(id ? (session.peerSoundGainDb[id] ?? 0) : 0);
+  const soundMuted = $derived(id ? (session.peerSoundMuted[id] ?? false) : false);
 </script>
 
 {#if person}
@@ -41,6 +43,22 @@
   </div>
   <button aria-pressed={localMuted} onclick={() => session.togglePeerMute(person.identity)}>
     {localMuted ? 'Für mich stumm' : 'Für mich stummschalten'}
+  </button>
+  <label for="inspector-sound-gain">Soundboard von {person.name} für mich</label>
+  <div class="row">
+    <input
+      id="inspector-sound-gain"
+      type="range"
+      min="-30"
+      max="12"
+      step="1"
+      value={soundGain}
+      oninput={(e) => session.setPeerSoundGain(person.identity, Number(e.currentTarget.value))}
+    />
+    <span class="db">{soundGain > 0 ? '+' : ''}{soundGain} dB</span>
+  </div>
+  <button aria-pressed={soundMuted} onclick={() => session.togglePeerSoundMute(person.identity)}>
+    {soundMuted ? 'Soundboard für mich stumm' : 'Soundboard für mich stummschalten'}
   </button>
   <p class="hint">Nur du hörst die Änderung.</p>
 {:else}

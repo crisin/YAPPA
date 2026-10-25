@@ -113,6 +113,15 @@ pub enum Command {
     SetMonitor {
         on: bool,
     },
+    /// Soundboard (ADR-010): play a sound file. It goes out on the own `soundboard` track
+    /// (the others can turn it down per person) and into the own playout mix. Several at
+    /// once overlap; a limiter keeps the sum below clipping. The engine answers with
+    /// [`Event::Sounds`] when the clip starts and when it ends.
+    PlaySound {
+        path: String,
+    },
+    /// Stops every playing sound at once.
+    StopSounds,
 }
 
 /// Engine -> UI.
@@ -182,6 +191,23 @@ pub enum Event {
     MonitorState {
         on: bool,
     },
+    /// Which of my own sounds are playing right now (paths as given to
+    /// [`Command::PlaySound`]). Sent on every change and on `Resync`.
+    Sounds {
+        playing: Vec<String>,
+    },
+}
+
+/// One sound in the soundboard folder, as the shell lists it for the UI (the folder is the
+/// library — drop a file in, and it is a button).
+#[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Sound {
+    /// File name without the extension — the button's label.
+    pub name: String,
+    /// Full path, what [`Command::PlaySound`] takes.
+    pub path: String,
 }
 
 /// One side of the sound hardware as it stands right now (A2).
@@ -578,6 +604,10 @@ pub struct Settings {
     /// Off, only the per-person volume applies.
     #[serde(default = "yes")]
     pub auto_level: bool,
+    /// How loud my soundboard sounds go out and play back for me, dB (−30..=12) — the
+    /// files come in all loudnesses; this is the one knob before the limiter.
+    #[serde(default)]
+    pub soundboard_gain_db: f32,
 }
 
 fn yes() -> bool {
@@ -609,6 +639,7 @@ impl Default for Settings {
             input_channel: 0,
             output_gain_db: 0.0,
             auto_level: true,
+            soundboard_gain_db: 0.0,
         }
     }
 }
@@ -644,6 +675,12 @@ impl Settings {
             return Err(format!(
                 "output gain {} dB out of -30..=12",
                 self.output_gain_db
+            ));
+        }
+        if !(-30.0..=12.0).contains(&self.soundboard_gain_db) {
+            return Err(format!(
+                "soundboard gain {} dB out of -30..=12",
+                self.soundboard_gain_db
             ));
         }
         if self.input_channel > 31 {
@@ -719,6 +756,42 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(stats.monitor, None);
+    }
+
+    #[test]
+    fn the_soundboard_commands_and_event_keep_the_tag_shape() {
+        assert_eq!(
+            serde_json::to_value(Command::PlaySound {
+                path: "C:/sounds/airhorn.mp3".into()
+            })
+            .unwrap(),
+            serde_json::json!({ "type": "playSound", "path": "C:/sounds/airhorn.mp3" })
+        );
+        assert_eq!(
+            serde_json::to_value(Command::StopSounds).unwrap(),
+            serde_json::json!({ "type": "stopSounds" })
+        );
+        let ev = Event::Sounds {
+            playing: vec!["a.wav".into()],
+        };
+        let json = serde_json::to_value(&ev).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({ "type": "sounds", "playing": ["a.wav"] })
+        );
+        let back: Event = serde_json::from_value(json).unwrap();
+        assert_eq!(ev, back);
+        // A settings file from before the soundboard still loads, at 0 dB.
+        let mut json = serde_json::to_value(Settings::default()).unwrap();
+        json.as_object_mut().unwrap().remove("soundboardGainDb");
+        let old: Settings = serde_json::from_value(json).unwrap();
+        assert_eq!(old.soundboard_gain_db, 0.0);
+        assert!(Settings {
+            soundboard_gain_db: 20.0,
+            ..Settings::default()
+        }
+        .validate()
+        .is_err());
     }
 
     #[test]

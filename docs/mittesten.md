@@ -87,7 +87,8 @@ Die genaue Ursache steht auch in der Diagnose-Datei (Zeile „control plane unre
 - Noch kein Push-to-Talk-Knopf.
 - Geräte müssen auf 48000 Hz stehen (Windows-Soundeinstellungen → Gerät → Format). Meldet
   yAPPA „kein 48-kHz-Modus", dort umstellen.
-- Kein Text-Chat, kein Soundboard.
+- Kein Text-Chat. Das Soundboard ist ein erster Wurf: Sounds als Dateien im Ordner, noch
+  ohne Tasten und ohne Verteilen der Dateien an die anderen.
 - Updates kommen noch von Hand: neuer Installer, drüberinstallieren.
 - Abmelden (**Ich → Konto**) heißt: Für den nächsten Start brauchst du einen neuen Link.
 - Stürzt yAPPA bei jemandem ab, steht er für die anderen noch etwa 20 Sekunden im Channel.
