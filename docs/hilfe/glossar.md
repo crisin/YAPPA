@@ -210,6 +210,20 @@ Gesprächs weiterzählen, bitte melden.
 
 Mehr dazu: [Pufferunterlauf (Wikipedia)](https://de.wikipedia.org/wiki/Pufferunterlauf)
 
+## Drift-Ausgleich
+
+Die Soundkarte der anderen Person und deine laufen nie exakt gleich schnell – ein paar
+Millionstel (ppm) Unterschied reichen, damit sich alle paar Minuten ein Frame ansammelt oder
+fehlt. yAPPA spielt die Stimme deshalb ein winziges bisschen schneller oder langsamer ab
+(höchstens 0,5 %, unhörbar), damit ihr Vorrat immer gleich groß bleibt.
+
+Die Diagnose zeigt pro Person, wie weit die Uhren auseinanderliegen und wie viel von ihrer
+Stimme gerade vorliegt (um 25 ms). Steht der Wert dauerhaft am Anschlag, kommt der Ausgleich
+nicht mehr mit – dann springt die Wiedergabe als Notbremse, und „Sprünge in der Wiedergabe“
+zählt hoch.
+
+Mehr dazu: [Taktdrift (Wikipedia)](https://de.wikipedia.org/wiki/Clock_drift)
+
 ## Pegel
 
 Wie laut ein Signal ist, in Dezibel relativ zum Maximum (dBFS). 0 dB ist das lauteste

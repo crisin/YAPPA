@@ -6,16 +6,20 @@
 
 mod biquad;
 mod compressor;
+mod drift;
 mod gate;
 mod level;
 mod leveler;
 mod limiter;
 mod resampler;
+mod varispeed;
 
 pub use biquad::{Biquad, BiquadKind, Coefficients};
 pub use compressor::{Compressor, CompressorParams};
+pub use drift::{DriftController, DriftParams};
 pub use gate::{Gate, GateParams};
 pub use level::{db_to_gain, gain_to_db, rms};
 pub use leveler::{Leveler, LevelerParams};
 pub use limiter::Limiter;
 pub use resampler::Resampler;
+pub use varispeed::{Varispeed, MAX_DEVIATION};

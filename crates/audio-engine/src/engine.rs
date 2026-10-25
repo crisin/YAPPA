@@ -899,11 +899,13 @@ impl Engine {
             self.mixer.underruns() + counted(&self.playout, |c| c.driver_xruns.load(Relaxed));
         let mut speakers: Vec<SpeakerStats> = self
             .mixer
-            .leveler_gains()
+            .speakers()
             .into_iter()
-            .map(|(identity, leveler_db)| SpeakerStats {
+            .map(|(identity, slot)| SpeakerStats {
                 identity,
-                leveler_db,
+                leveler_db: slot.leveler_db,
+                drift_ratio: slot.drift_ratio,
+                playout_fill_ms: slot.fill_ms,
             })
             .collect();
         speakers.sort_by(|a, b| a.identity.cmp(&b.identity));
@@ -983,6 +985,20 @@ impl Engine {
                     .speakers
                     .iter()
                     .map(|s| format!("{}:{:+.1}", s.identity, s.leveler_db))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                // A6: the playback ratio in ppm and the ring's fill per speaker.
+                drift = %stats
+                    .speakers
+                    .iter()
+                    .map(|s| {
+                        format!(
+                            "{}:{:+.0}ppm/{:.0}ms",
+                            s.identity,
+                            (s.drift_ratio - 1.0) * 1e6,
+                            s.playout_fill_ms
+                        )
+                    })
                     .collect::<Vec<_>>()
                     .join(" "),
                 participants = self.participants.len(),

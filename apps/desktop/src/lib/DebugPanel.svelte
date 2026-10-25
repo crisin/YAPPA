@@ -165,6 +165,25 @@
             warn: (stats.monitor?.underruns ?? 0) + (stats.monitor?.droppedBlocks ?? 0) > 0,
             term: 'mich-selbst-hoeren',
           },
+          {
+            // A6: how far each speaker's clock is from ours (ppm the playback is sped up
+            // or slowed down) and how much of their voice is queued. Orange when a ratio
+            // sits at its limit: the compensation cannot keep up, skips will follow.
+            label: 'Drift-Ausgleich',
+            value:
+              stats.speakers.length === 0
+                ? '–'
+                : stats.speakers
+                    .map((s) => {
+                      const ppm = (s.driftRatio - 1) * 1e6;
+                      const sign = ppm > 0.5 ? '+' : ppm < -0.5 ? '−' : '';
+                      return `${s.identity} ${sign}${fixed(Math.abs(ppm), 0)} ppm · ${fixed(s.playoutFillMs, 0)} ms`;
+                    })
+                    .join(' · '),
+            // 0.0049, not 0.005: the engine reports the f32-rounded clamp (1.00499999…).
+            warn: stats.speakers.some((s) => Math.abs(s.driftRatio - 1) >= 0.0049),
+            term: 'drift-ausgleich',
+          },
         ]
       : [],
   );

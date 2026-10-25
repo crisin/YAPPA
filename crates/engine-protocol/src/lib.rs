@@ -364,6 +364,19 @@ pub struct SpeakerStats {
     pub identity: String,
     /// What the leveler adds to this voice right now, dB (−12..12; 0 while it is off).
     pub leveler_db: f32,
+    /// How much faster (> 1) or slower (< 1) than real time this voice is played to hold
+    /// its buffer at the cushion (A6): their clock against our output device, within
+    /// 1 ± 0.005. 1.0 while they are silent.
+    #[serde(default = "unity")]
+    pub drift_ratio: f32,
+    /// How much of this voice is queued for playout, ms, averaged over ≈ 1.5 s. Held at
+    /// the cushion (≈ 25 ms for a 10 ms callback); 0 while they are silent.
+    #[serde(default)]
+    pub playout_fill_ms: f32,
+}
+
+fn unity() -> f32 {
+    1.0
 }
 
 /// From the transport's WebRTC statistics. "Recent" values cover the time since the
