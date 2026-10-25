@@ -6,6 +6,12 @@
 //!
 //! Per slot a [`Leveler`] (A4) brings every voice to about the same level before the manual
 //! per-person volume is applied on top; the sum then passes the limiter.
+//!
+//! Next to the speakers sits one local slot of its own kind, the **monitor** (A5, „Mich
+//! selbst hören“): the pump feeds the send chain's output into it through a [`MonitorFeed`]
+//! while the Signalkette page asks for it, and the callback adds it to the mix without a
+//! leveler or a per-person volume — what goes out is what one hears, plus the master volume
+//! and the limiter like everything else.
 
 use dsp::{Leveler, LevelerParams, Limiter};
 use rtrb::{Consumer, Producer, RingBuffer};
@@ -25,6 +31,13 @@ pub const PREFILL: usize = 2 * BLOCK;
 pub const HIGH_WATER: usize = 10 * BLOCK;
 /// Ring size per speaker: 200 ms. A frame that does not fit is dropped by the sink.
 const RING: usize = 20 * BLOCK;
+/// The monitor's ring: 200 ms like a speaker's. The pump delivers one block every 10 ms and
+/// the callback drains it at the same pace; more than the cushion ever sits there only
+/// while the two clocks drift apart — then the callback trims it back (the ADR-003 skip,
+/// acceptable for a path that is open only while one tunes the chain). The cushion is
+/// capped at half the ring, so a device with a huge callback (2048 frames and more) still
+/// starts and the trim still fires (realtime review 2026-10-25).
+const MONITOR_RING: usize = RING;
 
 #[derive(Default)]
 struct Slot {
@@ -44,8 +57,23 @@ struct Slot {
 const CEILING_DB: f32 = -1.0;
 const RELEASE_MS: f32 = 80.0;
 
+/// The monitor slot's switches and counters (A5). `on` is read by the pump (feed or not) and
+/// by the callback (mix or drain).
+#[derive(Default)]
+struct Monitor {
+    on: AtomicBool,
+    /// Most samples found in the ring when the callback read it, since the control thread
+    /// last took the value — the ring's share of the monitor latency.
+    queued_max: AtomicU32,
+    /// Times the callback found the ring short while the monitor played.
+    underruns: AtomicU32,
+    /// Blocks the pump could not queue because the ring was full.
+    dropped_blocks: AtomicU32,
+}
+
 #[derive(Default)]
 struct Shared {
+    monitor: Monitor,
     slots: [Slot; SLOTS],
     /// Master gain (linear, `f32` bits), unity until set.
     master: AtomicU32,
@@ -83,6 +111,8 @@ struct Routing {
 pub struct MixerControl {
     shared: Arc<Shared>,
     routing: Mutex<Routing>,
+    /// The monitor ring's write side, until the pump takes it ([`MixerControl::monitor_feed`]).
+    monitor_feed: Mutex<Option<Producer<f32>>>,
 }
 
 pub struct MixerRt {
@@ -91,6 +121,9 @@ pub struct MixerRt {
     playing: [bool; SLOTS],
     /// One per slot, allocated here — never in the callback.
     levelers: Vec<Leveler>,
+    /// The monitor slot (A5): the own send chain's output, in f32 as the chain has it.
+    monitor: Consumer<f32>,
+    monitor_playing: bool,
     limiter: Limiter,
 }
 
@@ -110,6 +143,7 @@ pub fn mixer() -> (Arc<MixerControl>, MixerRt) {
         levelers.push(Leveler::new(sample_rate, LevelerParams::default()));
     }
     free.reverse(); // hand out slot 0 first
+    let (monitor_producer, monitor) = RingBuffer::new(MONITOR_RING);
     let control = Arc::new(MixerControl {
         shared: shared.clone(),
         routing: Mutex::new(Routing {
@@ -117,12 +151,15 @@ pub fn mixer() -> (Arc<MixerControl>, MixerRt) {
             active: HashMap::new(),
             peers: HashMap::new(),
         }),
+        monitor_feed: Mutex::new(Some(monitor_producer)),
     });
     let rt = MixerRt {
         shared,
         rings,
         playing: [false; SLOTS],
         levelers,
+        monitor,
+        monitor_playing: false,
         limiter: Limiter::new(sample_rate, CEILING_DB, RELEASE_MS),
     };
     (control, rt)
@@ -186,6 +223,7 @@ impl MixerRt {
                 self.shared.underruns.fetch_add(1, Relaxed);
             }
         }
+        self.render_monitor(out, deafened);
         let master = f32::from_bits(self.shared.master.load(Relaxed));
         if master != 1.0 {
             for o in out.iter_mut() {
@@ -194,12 +232,59 @@ impl MixerRt {
         }
         self.limiter.process(out);
     }
+
+    /// Adds the own send chain's output (A5) into `out` while the monitor is on. Its own
+    /// slot kind: no leveler, no per-person volume, and its own cushion — the pump delivers
+    /// 10 ms blocks, so one block more than the callback asks for is enough to never run
+    /// dry between two deliveries. Off, the ring is drained so switching on again starts
+    /// fresh. Real-time safe like [`MixerRt::render`].
+    fn render_monitor(&mut self, out: &mut [f32], deafened: bool) {
+        let monitor = &self.shared.monitor;
+        let ring = &mut self.monitor;
+        if !monitor.on.load(Relaxed) {
+            if self.monitor_playing || ring.slots() > 0 {
+                discard(ring, ring.slots());
+                self.monitor_playing = false;
+            }
+            return;
+        }
+        let wanted = out.len();
+        let mut queued = ring.slots();
+        let cushion = PREFILL.max(wanted + BLOCK).min(MONITOR_RING / 2);
+        if !self.monitor_playing {
+            if queued < cushion {
+                return;
+            }
+            self.monitor_playing = true;
+        }
+        if queued > 2 * cushion {
+            // The microphone's clock runs ahead of the output's: trim back to the cushion
+            // rather than letting the latency grow.
+            discard(ring, queued - cushion);
+            queued = ring.slots();
+        }
+        monitor.queued_max.fetch_max(queued as u32, Relaxed);
+        let take = queued.min(wanted);
+        if let Ok(chunk) = ring.read_chunk(take) {
+            if !deafened {
+                let (head, tail) = chunk.as_slices();
+                for (o, s) in out.iter_mut().zip(head.iter().chain(tail)) {
+                    *o += *s;
+                }
+            }
+            chunk.commit_all();
+        }
+        if take < wanted {
+            self.monitor_playing = false;
+            monitor.underruns.fetch_add(1, Relaxed);
+        }
+    }
 }
 
 /// i16 → -1..1.
 const NORM: f32 = 1.0 / i16::MAX as f32;
 
-fn discard(ring: &mut Consumer<i16>, n: usize) {
+fn discard<T: Copy>(ring: &mut Consumer<T>, n: usize) {
     if let Ok(chunk) = ring.read_chunk(n.min(ring.slots())) {
         chunk.commit_all();
     }
@@ -296,6 +381,68 @@ impl MixerControl {
     /// Frames a sink could not queue because its ring was full.
     pub fn dropped_frames(&self) -> u32 {
         self.shared.dropped_frames.load(Relaxed)
+    }
+
+    // ── monitor (A5) ────────────────────────────────────────────────────────────────────
+
+    /// The write side of the monitor slot, for the pump. There is one; the second call
+    /// returns `None`.
+    pub fn monitor_feed(self: &Arc<Self>) -> Option<MonitorFeed> {
+        let producer = self.monitor_feed.lock().unwrap().take()?;
+        Some(MonitorFeed {
+            shared: self.shared.clone(),
+            producer,
+        })
+    }
+
+    /// „Mich selbst hören“ on or off. On, the pump starts feeding the next block and the
+    /// callback plays once the cushion is there; off, both stop at once and the callback
+    /// empties the ring on its next run, so switching on again starts fresh. (No flush flag
+    /// on the way in: the pump's first block would race it and be thrown away.)
+    pub fn set_monitor(&self, on: bool) {
+        let monitor = &self.shared.monitor;
+        if on && !monitor.on.load(Relaxed) {
+            monitor.queued_max.store(0, Relaxed);
+        }
+        monitor.on.store(on, Relaxed);
+    }
+
+    pub fn monitor_on(&self) -> bool {
+        self.shared.monitor.on.load(Relaxed)
+    }
+
+    /// The most samples the callback found in the monitor ring since the last call — the
+    /// ring's share of the monitor latency, in samples at 48 kHz.
+    pub fn take_monitor_queued_max(&self) -> u32 {
+        self.shared.monitor.queued_max.swap(0, Relaxed)
+    }
+
+    /// Times the monitor ran dry while playing (total).
+    pub fn monitor_underruns(&self) -> u32 {
+        self.shared.monitor.underruns.load(Relaxed)
+    }
+
+    /// Blocks the pump could not queue for the monitor because its ring was full (total).
+    pub fn monitor_dropped_blocks(&self) -> u32 {
+        self.shared.monitor.dropped_blocks.load(Relaxed)
+    }
+}
+
+/// The pump's end of the monitor slot (A5): one block after the send chain, as often as the
+/// chain runs. Does nothing while the monitor is off, so the pump can call it every block.
+pub struct MonitorFeed {
+    shared: Arc<Shared>,
+    producer: Producer<f32>,
+}
+
+impl MonitorFeed {
+    pub fn block(&mut self, samples: &[f32]) {
+        if !self.shared.monitor.on.load(Relaxed) {
+            return;
+        }
+        if self.producer.push_entire_slice(samples).is_err() {
+            self.shared.monitor.dropped_blocks.fetch_add(1, Relaxed);
+        }
     }
 }
 
@@ -636,6 +783,166 @@ mod tests {
             .all(|s| (*s - 0.25).abs() < 1e-3));
     }
 
+    // ── monitor (A5) ────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn the_monitor_is_silent_off_and_plays_the_chain_output_on() {
+        let (control, mut rt) = mixer();
+        let mut feed = control.monitor_feed().unwrap();
+        assert!(control.monitor_feed().is_none(), "one feed, for the pump");
+        feed.block(&[0.5; BLOCK]);
+        feed.block(&[0.5; BLOCK]);
+        assert!(
+            render(&mut rt, BLOCK).iter().all(|s| *s == 0.0),
+            "off: nothing queued"
+        );
+        assert_eq!(control.monitor_dropped_blocks(), 0);
+        control.set_monitor(true);
+        assert!(control.monitor_on());
+        feed.block(&[0.5; BLOCK]);
+        assert!(
+            render(&mut rt, BLOCK).iter().all(|s| *s == 0.0),
+            "one block: cushion first"
+        );
+        feed.block(&[0.5; BLOCK]);
+        let out = render(&mut rt, BLOCK);
+        assert!(
+            out.iter().all(|s| (*s - 0.5).abs() < 1e-6),
+            "unity, no leveler: {}",
+            out[0]
+        );
+        assert_eq!(control.take_monitor_queued_max(), 2 * BLOCK as u32);
+        assert_eq!(control.take_monitor_queued_max(), 0, "taken");
+        assert_eq!(control.monitor_underruns(), 0);
+    }
+
+    #[test]
+    fn the_monitor_sums_with_the_speakers_and_follows_master_and_deafen() {
+        let (control, mut rt) = mixer();
+        let mut feed = control.monitor_feed().unwrap();
+        let mut anna = control.speaker("anna").unwrap();
+        control.set_monitor(true);
+        render(&mut rt, BLOCK);
+        for _ in 0..3 {
+            anna.frame(&[HALF; BLOCK]);
+            feed.block(&[0.25; BLOCK]);
+        }
+        let out = render(&mut rt, BLOCK);
+        assert!(out.iter().all(|s| (*s - 0.75).abs() < 1e-3), "{}", out[0]);
+        control.set_master_db(-6.0);
+        let out = render(&mut rt, BLOCK);
+        assert!(out.iter().all(|s| (*s - 0.375).abs() < 3e-3), "{}", out[0]);
+        control.set_deafened(true);
+        feed.block(&[0.25; BLOCK]);
+        assert!(
+            render(&mut rt, BLOCK).iter().all(|s| *s == 0.0),
+            "deaf: silent"
+        );
+        control.set_deafened(false);
+        assert_eq!(
+            control.monitor_underruns(),
+            0,
+            "drained while deaf, not dry"
+        );
+    }
+
+    #[test]
+    fn switching_the_monitor_off_stops_it_at_once_and_on_again_starts_fresh() {
+        let (control, mut rt) = mixer();
+        let mut feed = control.monitor_feed().unwrap();
+        control.set_monitor(true);
+        for _ in 0..5 {
+            feed.block(&[0.5; BLOCK]);
+        }
+        assert!(render(&mut rt, BLOCK).iter().all(|s| *s > 0.4));
+        control.set_monitor(false);
+        feed.block(&[0.5; BLOCK]); // the pump may be a block behind the switch
+        assert!(
+            render(&mut rt, BLOCK).iter().all(|s| *s == 0.0),
+            "off: silent now"
+        );
+        control.set_monitor(true);
+        feed.block(&[-0.5; BLOCK]);
+        assert!(
+            render(&mut rt, BLOCK).iter().all(|s| *s == 0.0),
+            "the old blocks are gone, the cushion is not there yet"
+        );
+        feed.block(&[-0.5; BLOCK]);
+        assert!(
+            render(&mut rt, BLOCK).iter().all(|s| *s < -0.4),
+            "only the new"
+        );
+    }
+
+    #[test]
+    fn the_monitor_trims_a_backlog_and_counts_running_dry() {
+        let (control, mut rt) = mixer();
+        let mut feed = control.monitor_feed().unwrap();
+        control.set_monitor(true);
+        for _ in 0..8 {
+            feed.block(&[0.5; BLOCK]);
+        }
+        render(&mut rt, BLOCK);
+        assert_eq!(
+            control.take_monitor_queued_max(),
+            2 * BLOCK as u32,
+            "trimmed to the cushion before reading"
+        );
+        render(&mut rt, BLOCK);
+        assert_eq!(control.monitor_underruns(), 0);
+        let out = render(&mut rt, BLOCK);
+        assert!(out.iter().all(|s| *s == 0.0));
+        assert_eq!(control.monitor_underruns(), 1);
+        feed.block(&[0.5; BLOCK]);
+        render(&mut rt, BLOCK);
+        assert_eq!(
+            control.monitor_underruns(),
+            1,
+            "waits for the cushion, no second one"
+        );
+        // 20 blocks fit, one is still waiting: of 21 more, two are dropped and counted.
+        for _ in 0..21 {
+            feed.block(&[0.5; BLOCK]);
+        }
+        assert_eq!(control.monitor_dropped_blocks(), 2);
+    }
+
+    /// A device that asks for 2048 frames at a time (macOS, Bluetooth, exclusive mode) must
+    /// still hear the monitor and still get the drift trim.
+    #[test]
+    fn the_monitor_works_with_a_large_output_callback() {
+        const CALLBACK: usize = 2048;
+        let (control, mut rt) = mixer();
+        let mut feed = control.monitor_feed().unwrap();
+        control.set_monitor(true);
+        let mut heard = 0;
+        for callback in 0..200 {
+            let (before, after) = (
+                callback * CALLBACK / BLOCK,
+                (callback + 1) * CALLBACK / BLOCK,
+            );
+            for _ in before..after {
+                feed.block(&[0.5; BLOCK]);
+            }
+            heard += render(&mut rt, CALLBACK)
+                .iter()
+                .filter(|s| **s > 0.4)
+                .count();
+        }
+        assert_eq!(control.monitor_dropped_blocks(), 0);
+        assert_eq!(control.monitor_underruns(), 0);
+        assert!(
+            heard > 190 * CALLBACK,
+            "plays almost from the start: {heard}"
+        );
+        // A backlog is trimmed even though 2 × cushion would exceed the ring.
+        for _ in 0..20 {
+            feed.block(&[0.5; BLOCK]);
+        }
+        render(&mut rt, CALLBACK);
+        assert!(control.take_monitor_queued_max() <= (MONITOR_RING / 2) as u32);
+    }
+
     proptest! {
         /// Whatever arrives in whatever rhythm: the output stays in range and nothing panics.
         #[test]
@@ -644,12 +951,17 @@ mod tests {
         ) {
             let (control, mut rt) = mixer();
             let mut sinks = vec![control.speaker("a").unwrap(), control.speaker("b").unwrap()];
+            let mut feed = control.monitor_feed().unwrap();
+            control.set_monitor(true);
             for (frames, wanted, sample, gain) in steps {
                 control.set_peer("a", |m| m.gain = gain);
                 for sink in &mut sinks {
                     for _ in 0..frames {
                         sink.frame(&[sample; BLOCK]);
                     }
+                }
+                for _ in 0..frames {
+                    feed.block(&[f32::from(sample) * NORM * gain; BLOCK]);
                 }
                 let out = render(&mut rt, wanted);
                 prop_assert!(out.iter().all(|s| (-1.0..=1.0).contains(s)));

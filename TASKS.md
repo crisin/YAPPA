@@ -38,8 +38,6 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 **A · Audio block** (ADR-009, interview 2026-10-23) — before M4; order is the decision
 
-- [ ] A5 Monitor „Mich selbst hören“ in the Signalkette: chain output into the playout
-      mix as a local slot while the page is open
 - [ ] A6 Drift compensation: hold each speaker's playout ring at the cushion with a
       gentle continuous correction instead of the ≈ 80 ms skip (ADR-003 known gap)
 
@@ -127,6 +125,23 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] A5 Monitor „Mich selbst hören“ (ADR-009, 2026-10-25): a slot kind of its own in the
+      mixer — the pump pushes the send chain's f32 output (after the limiter, before the
+      mute) through a `MonitorFeed` into an `rtrb` ring of 200 ms, the output callback adds
+      it to the mix without leveler or per-person volume, with the same cushion rule as the
+      speakers (one block more than the callback asks for) and a trim back to the cushion
+      when the clocks drift apart (cushion capped at half the ring, so a 2048-frame callback
+      still works — realtime review); no flush flag on the way in (the pump's first block would
+      race it), off drains the ring on the next callback. `Command::SetMonitor`,
+      `Event::MonitorState`, `Stats.monitor` (latency estimated from capture buffer + chain
+      delay + ring depth + playout buffer, plus underruns and dropped blocks; also in the stats
+      log line). The
+      Signalkette page switches it on while open and off on leave; `AppSettings.listening`
+      (headset/speakers, from the onboarding) — on speakers the page warns of feedback and
+      does not start it by itself. Glossary entry, diagnosis row, mock engine, UI tests.
+      Measured (Ryzen 7 7700X, release): mixer 20 speakers 13.53 (A4 baseline; a run before this change
+      under a parallel build gave 18.3) → 13.5–13.9 µs per 10 ms block with the monitor off and
+      13.8–13.9 µs with it on (two runs; the difference is within the noise).
 - [x] A4 Loudness levelling at the receiver (ADR-009, 2026-10-25): `dsp::Leveler` per
       mixer slot — speech-gated RMS over 400 ms (blocks under −50 dBFS neither measured nor
       acted on, so pauses are not pumped up), target −20 dBFS, ±12 dB, +3 / −6 dB per

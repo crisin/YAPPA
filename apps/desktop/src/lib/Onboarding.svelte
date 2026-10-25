@@ -43,6 +43,8 @@
   function chooseListening(choice: 'headset' | 'speakers') {
     listening = choice;
     void app.setTransmitMode(choice === 'speakers' ? 'pushToTalk' : 'voiceActivation');
+    // Remembered for „Mich selbst hören“ (A5): with speakers it would howl.
+    void app.updateAppSettings({ listening: choice });
   }
 
   async function finish() {

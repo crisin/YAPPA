@@ -285,6 +285,24 @@ wirkt auch mitten im Spiel. Die anderen sehen „stumm“ oder „taub“ hinter
 Hebst du Taub wieder auf, ist dein Mikrofon so wie davor: an, wenn es an war, aus, wenn du
 es vorher selbst ausgeschaltet hattest.
 
+## Mich selbst hören
+
+Ein Schalter in der Signalkette (Profi): Du hörst deine eigene Stimme so, wie sie bei den
+anderen ankommt – nach Hochpass, Rauschunterdrückung, Gate, EQ, Kompressor und Limiter,
+aber ohne den Weg über den Server.
+
+Der Ton geht direkt vom Mikrofon in deinen Kopfhörer, etwa 40 bis 60 ms später (die
+Puffer von Mikrofon und Ausgabe, die Rauschunterdrückung und ein kleiner Vorrat gegen
+Aussetzer). Das ist zum Einstellen gedacht, nicht zum Reden: Sobald du die Seite
+verlässt, ist er wieder aus. Stumm ändert nichts daran – so kannst du in Ruhe am Klang
+drehen, ohne dass die anderen etwas hören.
+
+Mit Lautsprechern statt Kopfhörern hört das Mikrofon die eigene Stimme wieder, und das
+schaukelt sich zu einem Pfeifen hoch (Rückkopplung). Darum warnt die Seite dann und
+schaltet nicht von selbst ein.
+
+Mehr dazu: [Rückkopplung (Wikipedia)](https://de.wikipedia.org/wiki/Rückkopplung_(Akustik))
+
 ## Rauschunterdrückung
 
 Entfernt Lüfter, Tastatur und Straßenlärm aus dem Mikrofonsignal, bevor es gesendet wird.

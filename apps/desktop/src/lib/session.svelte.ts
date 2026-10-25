@@ -56,6 +56,8 @@ export class Session {
    */
   muted = $state(false);
   deafened = $state(false);
+  /** „Mich selbst hören“ (A5) as the engine has it (`monitorState`). */
+  monitor = $state(false);
   /** Per person, as set here: volume in dB and local mute. */
   peerGainDb = $state<Record<string, number>>({});
   peerMuted = $state<Record<string, boolean>>({});
@@ -124,6 +126,9 @@ export class Session {
       case 'muteState':
         this.muted = event.muted;
         this.deafened = event.deafened;
+        break;
+      case 'monitorState':
+        this.monitor = event.on;
         break;
       case 'log':
         this.log = [...this.log, event.entry].slice(-LOG_LIMIT);
@@ -223,6 +228,11 @@ export class Session {
 
   refreshDevices() {
     return this.#engine.send({ type: 'refreshDevices' });
+  }
+
+  /** „Mich selbst hören“ on or off; the engine answers with `monitorState`. */
+  setMonitor(on: boolean) {
+    return this.#engine.send({ type: 'setMonitor', on });
   }
 
   setPeerGain(identity: string, gainDb: number) {

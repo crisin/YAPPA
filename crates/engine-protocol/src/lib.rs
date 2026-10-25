@@ -106,6 +106,13 @@ pub enum Command {
     SetPttPressed {
         pressed: bool,
     },
+    /// „Mich selbst hören“ (A5): the own send chain's output — after gate, EQ, compressor
+    /// and limiter, before the mute — goes into the local playout mix, without the network.
+    /// The Signalkette page switches it on while it is open and off when it closes; the
+    /// engine answers every change with [`Event::MonitorState`].
+    SetMonitor {
+        on: bool,
+    },
 }
 
 /// Engine -> UI.
@@ -170,6 +177,10 @@ pub enum Event {
     MuteState {
         muted: bool,
         deafened: bool,
+    },
+    /// „Mich selbst hören“ as the engine has it (A5). Sent on every change and on `Resync`.
+    MonitorState {
+        on: bool,
     },
 }
 
@@ -324,6 +335,25 @@ pub struct Stats {
     /// diagnostics file shows who arrives too quiet or too loud.
     #[serde(default)]
     pub speakers: Vec<SpeakerStats>,
+    /// The monitor path (A5) while „Mich selbst hören“ is on; `None` while it is off.
+    #[serde(default)]
+    pub monitor: Option<MonitorStats>,
+}
+
+/// „Mich selbst hören“ in the diagnosis (A5).
+#[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct MonitorStats {
+    /// Microphone to headphone on the local path, ms — estimated from the buffers it passes:
+    /// the capture callback, the chain's own delay, the most that sat in the monitor ring
+    /// since the last snapshot, and the playout callback. No network, no jitter buffer.
+    pub latency_ms: f32,
+    /// Times the monitor ran dry while playing (total since start).
+    pub underruns: u32,
+    /// Chain blocks that did not fit into the monitor ring (total since start) — the
+    /// output callback is not draining it.
+    pub dropped_blocks: u32,
 }
 
 /// One remote speaker in the diagnosis.
@@ -653,6 +683,29 @@ mod tests {
         );
         let back: Event = serde_json::from_value(json).unwrap();
         assert_eq!(ev, back);
+    }
+
+    #[test]
+    fn the_monitor_command_and_event_keep_the_tag_shape() {
+        assert_eq!(
+            serde_json::to_value(Command::SetMonitor { on: true }).unwrap(),
+            serde_json::json!({ "type": "setMonitor", "on": true })
+        );
+        let ev = Event::MonitorState { on: false };
+        let json = serde_json::to_value(&ev).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({ "type": "monitorState", "on": false })
+        );
+        let back: Event = serde_json::from_value(json).unwrap();
+        assert_eq!(ev, back);
+        // Older stats without the field still load.
+        let stats: Stats = serde_json::from_value(serde_json::json!({
+            "network": null, "capture": null, "playout": null, "sendIntervalMaxMs": 0.0,
+            "sendBlocksDropped": 0, "playoutFramesDropped": 0, "playoutSkips": 0
+        }))
+        .unwrap();
+        assert_eq!(stats.monitor, None);
     }
 
     #[test]

@@ -70,6 +70,20 @@ impl KeyAction {
     }
 }
 
+/// What the person has on their ears, as chosen in the onboarding („Was hast du auf den
+/// Ohren?“). Speakers feed the output back into the microphone, so „Mich selbst hören“ (A5)
+/// would howl: the UI warns and does not start it by itself.
+#[derive(Serialize, Deserialize, TS, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum Listening {
+    /// Set up before this field existed, or never asked.
+    #[default]
+    Unknown,
+    Headset,
+    Speakers,
+}
+
 /// Everything about the app that is not audio. Unknown fields are ignored and missing ones
 /// take their defaults, so older and newer files both load.
 #[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq)]
@@ -88,6 +102,8 @@ pub struct AppSettings {
     pub deafen_key: Option<String>,
     pub notifications: bool,
     pub update_channel: UpdateChannel,
+    /// Headset or speakers (A5); `Unknown` for a file from before.
+    pub listening: Listening,
 }
 
 impl Default for AppSettings {
@@ -101,6 +117,7 @@ impl Default for AppSettings {
             deafen_key: None,
             notifications: true,
             update_channel: UpdateChannel::Stable,
+            listening: Listening::Unknown,
         }
     }
 }

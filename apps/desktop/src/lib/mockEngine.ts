@@ -64,6 +64,8 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
   let deafened = false;
   let mutedBeforeDeafen = false;
   const micMuted = () => muted || deafened;
+  /** „Mich selbst hören“ (A5). */
+  let monitor = false;
   let ticks = 0;
   let timer: ReturnType<typeof setInterval> | undefined;
 
@@ -140,6 +142,8 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
     chainLatencyMs: 10,
     speakers:
       connected && people.length > 0 ? [{ identity: people[0].identity, levelerDb: 4.5 }] : [],
+    // Capture 10 ms + chain 10 ms + ring 20 ms + playout 10 ms, as the engine estimates it.
+    monitor: monitor ? { latencyMs: 50, underruns: 0, droppedBlocks: 0 } : null,
   });
 
   // Ten times per second is enough to see the meters move.
@@ -216,6 +220,13 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
       case 'toggleDeafened':
         changeMute(() => setDeafened(!deafened));
         break;
+      case 'setMonitor':
+        monitor = command.on;
+        emit({ type: 'monitorState', on: monitor });
+        // The real engine reports once a second; here at once, so the page shows the
+        // latency without a wait.
+        emit({ type: 'stats', stats: stats() });
+        break;
       case 'setInputDevice':
         settings.inputDevice = command.id;
         break;
@@ -236,6 +247,7 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
         emit(devices());
         emit(deviceState());
         emit(muteState());
+        emit({ type: 'monitorState', on: monitor });
         break;
       default:
         break;

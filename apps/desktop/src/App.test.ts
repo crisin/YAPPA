@@ -10,17 +10,22 @@ const devInvite = encodeInvite({ url: 'wss://voice.example', token: 'tok' });
 
 beforeEach(() => localStorage.clear());
 
-/** The app with its own mocks in one scene; waits until the gang is loaded. */
-async function start(scene: Scene = 'call') {
+/** The app with its own mocks in one scene; waits until the gang is loaded. `prepare` may
+ * change the mocks before the first render (settings as an older install left them). */
+async function start(
+  scene: Scene = 'call',
+  prepare?: (api: ReturnType<typeof createMockApi>) => Promise<void>,
+) {
   const engine = createMockEngine(scene);
   const api = createMockApi(scene, engine);
+  await prepare?.(api);
   const result = render(App, { props: { api, engine } });
   if (scene === 'call' || scene === 'member' || scene === 'lobby') {
     await screen.findByRole('heading', { level: 1, name: /^Hallo / });
   } else if (scene === 'login') {
     await screen.findByRole('heading', { level: 1, name: 'Willkommen bei yAPPA' });
   }
-  return result;
+  return { ...result, engine, api };
 }
 
 const rail = () => screen.getByRole('navigation', { name: 'Bereiche' });
@@ -223,7 +228,7 @@ describe('Mute and deafen (A3)', () => {
 
 describe('Voice module: the way in', () => {
   it('asks for a name, then microphone and speaking mode, and lands in the lobby', async () => {
-    await start('login');
+    const { api } = await start('login');
     expect(screen.getByRole('list', { name: 'Schritte' })).toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Bereiche' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Beitreten' })).toBeDisabled();
@@ -252,6 +257,8 @@ describe('Voice module: the way in', () => {
     expect(screen.getByRole('button', { name: /Taste/ })).toBeInTheDocument();
     await fireEvent.click(screen.getByRole('radio', { name: /^Headset/ }));
     await waitFor(() => expect(screen.getByRole('radio', { name: /^Automatisch/ })).toBeChecked());
+    // Remembered for „Mich selbst hören“ (A5).
+    await waitFor(async () => expect((await api.appSettings()).listening).toBe('headset'));
     await fireEvent.click(done);
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Lobby' })).toBeInTheDocument();
@@ -473,6 +480,48 @@ describe('Settings: Einfach und Profi', () => {
     await fireEvent.click(eq);
     await fireEvent.click(screen.getByRole('button', { name: 'Band hinzufügen' }));
     await waitFor(() => expect(eq).toHaveTextContent('1 Band'));
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('hears myself while the Signalkette is open and stops the moment it closes (A5)', async () => {
+    const { engine } = await start();
+    const seen: boolean[] = [];
+    await engine.subscribe((event) => {
+      if (event.type === 'monitorState') seen.push(event.on);
+    });
+    await openMe('Signalkette');
+    const monitor = await screen.findByRole('checkbox', { name: 'Mich selbst hören' });
+    await waitFor(() => expect(monitor).toBeChecked());
+    expect(await screen.findByText(/etwa 50 ms Mikro bis Kopfhörer/)).toBeInTheDocument();
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+    await fireEvent.click(monitor);
+    await waitFor(() => expect(monitor).not.toBeChecked());
+    expect(screen.queryByText(/Mikro bis Kopfhörer/)).not.toBeInTheDocument();
+    await fireEvent.click(monitor);
+    await waitFor(() => expect(monitor).toBeChecked());
+    await openMe('Audio und Sprechen');
+    expect(seen.at(-1)).toBe(false);
+    // The wish survives within the run: open again, on again.
+    await openMe('Signalkette');
+    await waitFor(() =>
+      expect(screen.getByRole('checkbox', { name: 'Mich selbst hören' })).toBeChecked(),
+    );
+    await openMe('Diagnose');
+    expect(await screen.findByText('Mich selbst hören')).toBeInTheDocument();
+    expect(screen.getByText('aus')).toBeInTheDocument();
+  });
+
+  it('warns on speakers and does not start hearing myself by itself (A5)', async () => {
+    const { container } = await start('call', async (api) =>
+      api.setAppSettings({ ...(await api.appSettings()), listening: 'speakers' }),
+    );
+    await openMe('Signalkette');
+    const monitor = await screen.findByRole('checkbox', { name: 'Mich selbst hören' });
+    expect(monitor).not.toBeChecked();
+    expect(screen.getByRole('note')).toHaveTextContent('Rückkopplung');
+    expect(screen.queryByText(/Mikro bis Kopfhörer/)).not.toBeInTheDocument();
+    await fireEvent.click(monitor);
+    await waitFor(() => expect(monitor).toBeChecked());
     expect(await axe(container)).toHaveNoViolations();
   });
 });
