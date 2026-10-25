@@ -47,6 +47,11 @@ export class AppState {
   appSettings = $state<AppSettings | null>(null);
   /** Set right after a first login: the onboarding runs instead of the shell until done. */
   onboarding = $state<OnboardingStep | null>(null);
+  /**
+   * „Mich selbst hören“ as last switched on the Signalkette page (A5), for this run of the
+   * app; `null` = not touched yet, then the page decides from what is on the ears.
+   */
+  hearMyself = $state<boolean | null>(null);
   view = $derived<SettingsView>(this.appSettings?.view ?? 'simple');
 
   readonly session: Session;

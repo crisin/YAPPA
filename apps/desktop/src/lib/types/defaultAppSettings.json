@@ -6,5 +6,6 @@
   "muteKey": null,
   "deafenKey": null,
   "notifications": true,
-  "updateChannel": "stable"
+  "updateChannel": "stable",
+  "listening": "unknown"
 }

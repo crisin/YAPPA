@@ -156,6 +156,15 @@
                       .join(' · '),
             term: 'lautstaerke-angleich',
           },
+          {
+            // A5: the local path's latency while the Signalkette page listens to itself.
+            label: 'Mich selbst hören',
+            value: stats.monitor
+              ? `an · etwa ${fixed(stats.monitor.latencyMs, 0)} ms Mikro bis Kopfhörer · ${stats.monitor.underruns} Aussetzer · ${stats.monitor.droppedBlocks} verworfen`
+              : 'aus',
+            warn: (stats.monitor?.underruns ?? 0) + (stats.monitor?.droppedBlocks ?? 0) > 0,
+            term: 'mich-selbst-hoeren',
+          },
         ]
       : [],
   );

@@ -5,14 +5,15 @@
 
 use crate::chain::{Chain, ChainConfig, STAGES};
 use crate::device::{AudioIo, DeviceList, OpenDevice};
-use crate::mixer::{mixer, MixerControl, MixerRt};
+use crate::mixer::{mixer, MixerControl, MixerRt, MonitorFeed};
 use crate::mute::MuteState;
 use crate::stats::network_stats;
 use dsp::Resampler;
 use dsp::{db_to_gain, gain_to_db};
 use engine_protocol::{
-    AudioDevice, Command, ConnectionState, DeviceSlot, DeviceStats, Event, NetworkStats,
-    Participant, PeerLevel, Settings, SpeakerStats, StageLevel, Stats, TrackKind, PROTOCOL_VERSION,
+    AudioDevice, Command, ConnectionState, DeviceSlot, DeviceStats, Event, MonitorStats,
+    NetworkStats, Participant, PeerLevel, Settings, SpeakerStats, StageLevel, Stats, TrackKind,
+    PROTOCOL_VERSION,
 };
 use rtrb::{Consumer, RingBuffer};
 use std::cell::RefCell;
@@ -112,9 +113,12 @@ pub fn spawn(
     let pump_thread = {
         let (pump, voice) = (pump.clone(), transport.voice_out());
         let first = ChainConfig::from(&settings);
+        let monitor = mixer
+            .monitor_feed()
+            .expect("the monitor feed is taken once");
         std::thread::Builder::new()
             .name("yappa-pump".into())
-            .spawn(move || run_pump(&pump, ring_rx, chain_rx, first, voice.as_ref()))
+            .spawn(move || run_pump(&pump, ring_rx, chain_rx, first, voice.as_ref(), monitor))
             .expect("spawn the pump thread")
     };
 
@@ -320,6 +324,13 @@ impl Engine {
             Command::SetPttPressed { pressed } => {
                 self.pump.ptt.store(pressed, Relaxed);
             }
+            Command::SetMonitor { on } => {
+                if on != self.mixer.monitor_on() {
+                    tracing::info!(on, "monitor (hear myself)");
+                    self.mixer.set_monitor(on);
+                }
+                self.emit(Event::MonitorState { on });
+            }
             Command::SetMuted { muted } => self.change_mute(|m| m.set_muted(muted)),
             Command::SetDeafened { deafened } => {
                 self.change_mute(|m| m.set_deafened(deafened));
@@ -378,6 +389,9 @@ impl Engine {
                 self.sync_device_state(true);
                 self.emit(Event::Connection { state: self.state });
                 self.emit_mute_state();
+                self.emit(Event::MonitorState {
+                    on: self.mixer.monitor_on(),
+                });
                 if let Some((room, identity)) = self.room.clone() {
                     self.emit(Event::Joined { room, identity });
                 }
@@ -895,6 +909,28 @@ impl Engine {
         speakers.sort_by(|a, b| a.identity.cmp(&b.identity));
         let busy_blocks = self.pump.busy_blocks.swap(0, Relaxed);
         let busy_sum = self.pump.busy_sum_ns.swap(0, Relaxed);
+        let chain_latency_ms =
+            self.pump.chain_latency.load(Relaxed) as f32 / (transport::SAMPLE_RATE as f32 / 1000.0);
+        let monitor = self.mixer.monitor_on().then(|| {
+            // Each device buffer in its own rate; chain and ring at 48 kHz. An estimate from
+            // buffer depths, not a measured round trip — see `MonitorStats::latency_ms`.
+            let device_ms = |open: &Option<OpenDevice>| {
+                open.as_ref().map_or(0.0, |d| {
+                    d.counters.callback_frames.load(Relaxed) as f32 * 1000.0
+                        / d.sample_rate.max(1) as f32
+                })
+            };
+            let ring_ms = self.mixer.take_monitor_queued_max() as f32
+                / (transport::SAMPLE_RATE as f32 / 1000.0);
+            MonitorStats {
+                latency_ms: device_ms(&self.capture)
+                    + chain_latency_ms
+                    + ring_ms
+                    + device_ms(&self.playout),
+                underruns: self.mixer.monitor_underruns(),
+                dropped_blocks: self.mixer.monitor_dropped_blocks(),
+            }
+        });
         let stats = Stats {
             network: self.net.clone(),
             capture: device(&self.capture, overruns),
@@ -903,8 +939,7 @@ impl Engine {
             send_blocks_dropped: self.pump.dropped_blocks.load(Relaxed),
             playout_frames_dropped: self.mixer.dropped_frames(),
             playout_skips: self.mixer.skips(),
-            chain_latency_ms: self.pump.chain_latency.load(Relaxed) as f32
-                / (transport::SAMPLE_RATE as f32 / 1000.0),
+            chain_latency_ms,
             pump_busy_max_ms: self.pump.busy_max_ns.swap(0, Relaxed) as f32 / 1e6,
             pump_busy_mean_ms: if busy_blocks == 0 {
                 0.0
@@ -912,7 +947,17 @@ impl Engine {
                 busy_sum as f32 / busy_blocks as f32 / 1e6
             },
             speakers,
+            monitor,
         };
+        if let Some(m) = &stats.monitor {
+            tracing::debug!(
+                target: "stats",
+                latency_ms = m.latency_ms,
+                underruns = m.underruns,
+                dropped_blocks = m.dropped_blocks,
+                "monitor"
+            );
+        }
         if self.state != ConnectionState::Disconnected {
             // One line per second in the log file: enough to reconstruct an evening.
             let net = stats.network.clone().unwrap_or_default();
@@ -1051,6 +1096,7 @@ fn run_pump(
     configs: mpsc::Receiver<ChainConfig>,
     first: ChainConfig,
     voice: &dyn VoiceOut,
+    mut monitor: MonitorFeed,
 ) {
     // Built here: DeepFilterNet cannot move between threads (ADR-008).
     let mut chain = Chain::new(first);
@@ -1148,6 +1194,9 @@ fn run_pump(
             shared.stage_levels[i].store(level.to_bits(), Relaxed);
         }
         publish_chain(shared, &chain);
+        // „Mich selbst hören“ (A5) takes the chain's output before the mute: one can tune
+        // the chain while muted without the others hearing a thing. Does nothing while off.
+        monitor.block(&block);
         if shared.muted.load(Relaxed) {
             block.fill(0.0);
         }

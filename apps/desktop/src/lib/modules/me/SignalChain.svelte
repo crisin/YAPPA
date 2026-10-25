@@ -34,6 +34,18 @@
   const busyMax = $derived(session.stats?.pumpBusyMaxMs ?? null);
   const latency = $derived(session.stats?.chainLatencyMs ?? null);
 
+  // „Mich selbst hören“ (A5): the chain's output goes into the own headphones while this
+  // page is open and the switch is on — off the moment the page closes. With speakers
+  // (onboarding choice) the microphone would hear the output again: the switch starts off
+  // and a warning stands next to it.
+  const speakers = $derived(app.appSettings?.listening === 'speakers');
+  const monitorWanted = $derived(app.hearMyself ?? !speakers);
+  const monitorLatency = $derived(session.stats?.monitor?.latencyMs ?? null);
+  $effect(() => {
+    void session.setMonitor(monitorWanted);
+    return () => void session.setMonitor(false);
+  });
+
   const denoisers: { id: DenoiserKind; label: string; short: string }[] = [
     { id: 'deepFilter', label: 'DeepFilterNet (stark)', short: 'DeepFilterNet' },
     { id: 'rnnoise', label: 'RNNoise (leicht, wenig CPU)', short: 'RNNoise' },
@@ -87,6 +99,27 @@
 
 <section class="chain" aria-labelledby="chain-title">
   <h1 id="chain-title">Signalkette</h1>
+
+  <div class="monitor">
+    <label class="check">
+      <input
+        type="checkbox"
+        checked={session.monitor}
+        onchange={(e) => (app.hearMyself = e.currentTarget.checked)}
+      />
+      Mich selbst hören
+    </label>
+    <Info term="mich-selbst-hoeren" />
+    {#if session.monitor && monitorLatency !== null}
+      <span class="muted">etwa {fixed(monitorLatency, 0)} ms Mikro bis Kopfhörer</span>
+    {/if}
+    {#if speakers}
+      <p class="muted warn" role="note">
+        Du hast bei der Einrichtung „Lautsprecher“ gewählt. Mit Lautsprechern hört dein Mikro die
+        eigene Stimme wieder – das gibt eine Rückkopplung (Pfeifen). Nur mit Kopfhörern einschalten.
+      </p>
+    {/if}
+  </div>
 
   <dl class="cost">
     <div class:warn={busyMax !== null && busyMax > 5}>
@@ -364,6 +397,18 @@
   }
 
   .cost .warn dd {
+    color: var(--color-warning);
+  }
+
+  .monitor {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .monitor .warn {
+    flex-basis: 100%;
     color: var(--color-warning);
   }
 
