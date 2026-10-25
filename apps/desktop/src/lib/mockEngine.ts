@@ -78,6 +78,13 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
     outputs: [{ id: 'out-1', name: 'Kopfhörer', isDefault: true }],
   });
 
+  // Browser mode: everything as chosen; `?scene=` has no unplugged headset yet.
+  const deviceState = (): Event => ({
+    type: 'deviceState',
+    input: { open: 'Headset-Mikrofon', fallback: false, missing: null },
+    output: { open: 'Kopfhörer', fallback: false, missing: null },
+  });
+
   const stats = (): Stats => ({
     network: connected
       ? {
@@ -188,6 +195,7 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
       case 'refreshDevices':
       case 'resync':
         emit(devices());
+        emit(deviceState());
         break;
       default:
         break;

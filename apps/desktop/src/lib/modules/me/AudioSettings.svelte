@@ -6,6 +6,7 @@
   import MicTest from './MicTest.svelte';
   import QualityPicker from './QualityPicker.svelte';
   import TalkMode from './TalkMode.svelte';
+  import { Session } from '../../session.svelte';
   import type { DenoiserKind } from '../../types/DenoiserKind';
 
   const app = getApp();
@@ -20,6 +21,7 @@
   ];
 
   const settings = $derived(session.settings);
+  const outputAway = $derived(Session.fallbackNote('Ausgabe', session.outputState));
 </script>
 
 <section class="audio" aria-labelledby="audio-title">
@@ -57,6 +59,9 @@
       <option value={device.id}>{device.name}</option>
     {/each}
   </select>
+  {#if outputAway}
+    <p class="away" role="status">{outputAway}</p>
+  {/if}
   <label for="volume">Lautstärke aller anderen: {Math.round(settings?.outputGainDb ?? 0)} dB</label>
   <input
     id="volume"
@@ -113,6 +118,12 @@
 
   .tight {
     margin-top: 0;
+  }
+
+  .away {
+    margin: 0;
+    color: var(--color-warning);
+    font-size: var(--font-size-sm);
   }
 
   .quiet {

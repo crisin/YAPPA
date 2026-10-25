@@ -90,6 +90,32 @@ describe('Session', () => {
     expect(session.error).toBeNull();
   });
 
+  it('says in German which device stands in, and nothing once the chosen one is back', () => {
+    const session = new Session(createMockEngine());
+    expect(session.deviceNote).toBeNull();
+    session.apply({
+      type: 'deviceState',
+      input: { open: 'Mikrofon (Realtek)', fallback: true, missing: 'Headset-Mikrofon' },
+      output: { open: 'Kopfhörer', fallback: false, missing: null },
+    });
+    expect(session.deviceNote).toBe(
+      'Mikrofon „Headset-Mikrofon“ ist gerade nicht angeschlossen – solange läuft „Mikrofon (Realtek)“. Es kommt von selbst zurück, sobald es wieder da ist.',
+    );
+    // Never seen before (chosen on an earlier start): no name, and nothing else to open.
+    session.apply({
+      type: 'deviceState',
+      input: { open: 'Headset-Mikrofon', fallback: false, missing: null },
+      output: { open: null, fallback: true, missing: null },
+    });
+    expect(session.deviceNote).toMatch(/^Dein gewähltes Ausgabe-Gerät .* keine andere Ausgabe/);
+    session.apply({
+      type: 'deviceState',
+      input: { open: 'Headset-Mikrofon', fallback: false, missing: null },
+      output: { open: 'Kopfhörer', fallback: false, missing: null },
+    });
+    expect(session.deviceNote).toBeNull();
+  });
+
   it('keeps the newest log entries only', () => {
     const session = new Session(createMockEngine());
     for (let n = 0; n < LOG_LIMIT + 5; n += 1) {

@@ -4,14 +4,14 @@
 //! callbacks, which this thread only talks to through rings and atomics.
 
 use crate::chain::{Chain, ChainConfig, STAGES};
-use crate::device::{AudioIo, OpenDevice};
+use crate::device::{AudioIo, DeviceList, OpenDevice};
 use crate::mixer::{mixer, MixerControl, MixerRt};
 use crate::stats::network_stats;
 use dsp::Resampler;
 use dsp::{db_to_gain, gain_to_db};
 use engine_protocol::{
-    Command, ConnectionState, DeviceStats, Event, NetworkStats, Participant, PeerLevel, Settings,
-    StageLevel, Stats, TrackKind, PROTOCOL_VERSION,
+    AudioDevice, Command, ConnectionState, DeviceSlot, DeviceStats, Event, NetworkStats,
+    Participant, PeerLevel, Settings, StageLevel, Stats, TrackKind, PROTOCOL_VERSION,
 };
 use rtrb::{Consumer, RingBuffer};
 use std::cell::RefCell;
@@ -131,6 +131,10 @@ pub fn spawn(
         mixer_returned,
         capture: None,
         playout: None,
+        devices: DeviceList::default(),
+        device_names: HashMap::new(),
+        device_state: None,
+        poll_age: 0,
         pump,
         ring_tx,
         chain_tx,
@@ -187,6 +191,15 @@ struct Engine {
     mixer_returned: mpsc::Receiver<MixerRt>,
     capture: Option<OpenDevice>,
     playout: Option<OpenDevice>,
+    /// The device list as last read — the yardstick for "something changed" while polling
+    /// (A2).
+    devices: DeviceList,
+    /// Every device name ever listed, by id: the chosen device's name while it is away.
+    device_names: HashMap<String, String>,
+    /// The last [`Event::DeviceState`] sent, so it goes out only on change.
+    device_state: Option<(DeviceSlot, DeviceSlot)>,
+    /// Seconds since the device list was last polled while degraded.
+    poll_age: u32,
     pump: Arc<PumpShared>,
     /// The capture ring and the device's sample rate, for the pump.
     ring_tx: mpsc::Sender<(Consumer<f32>, u32)>,
@@ -354,12 +367,13 @@ impl Engine {
                 self.clear_room();
                 self.set_state(ConnectionState::Disconnected);
             }
-            Command::RefreshDevices => self.emit_devices(),
+            Command::RefreshDevices => self.refresh_devices(),
             Command::Resync => {
                 self.emit(Event::Ready {
                     protocol_version: PROTOCOL_VERSION,
                 });
                 self.emit_devices();
+                self.sync_device_state(true);
                 self.emit(Event::Connection { state: self.state });
                 if let Some((room, identity)) = self.room.clone() {
                     self.emit(Event::Joined { room, identity });
@@ -545,8 +559,19 @@ impl Engine {
 
     // ── devices ─────────────────────────────────────────────────────────────────────────
 
-    fn emit_devices(&self) {
+    /// Reads the device list and remembers it (names included).
+    fn list_devices(&mut self) -> DeviceList {
         let list = self.io.devices();
+        for device in list.inputs.iter().chain(&list.outputs) {
+            self.device_names
+                .insert(device.id.clone(), device.name.clone());
+        }
+        self.devices = list.clone();
+        list
+    }
+
+    fn emit_devices(&mut self) {
+        let list = self.list_devices();
         tracing::info!(
             inputs = list.inputs.len(),
             outputs = list.outputs.len(),
@@ -556,6 +581,93 @@ impl Engine {
             inputs: list.inputs,
             outputs: list.outputs,
         });
+    }
+
+    /// The hardware changed (OS notification through the shell, or the button in the
+    /// settings): new list to the UI, and the chosen device back if it is there (A2).
+    fn refresh_devices(&mut self) {
+        self.emit_devices();
+        self.take_back();
+        self.sync_device_state(false);
+    }
+
+    /// Reopens a side whose chosen device is listed again but not open — or, with
+    /// „Standardgerät“ chosen, whose system default moved to another device (a headset
+    /// plugged in becomes the default; the open stream would stay on the old one).
+    fn take_back(&mut self) {
+        let (wanted_in, wanted_out) = self.wanted_devices();
+        let open_in = self.capture.as_ref().and_then(|d| d.id.as_deref());
+        if wants_reopen(wanted_in.as_deref(), open_in, &self.devices.inputs) {
+            tracing::info!("the microphone to use is available — opening it");
+            self.open_capture(wanted_in.as_deref());
+        }
+        let open_out = self.playout.as_ref().and_then(|d| d.id.as_deref());
+        if wants_reopen(wanted_out.as_deref(), open_out, &self.devices.outputs) {
+            tracing::info!("the output to use is available — opening it");
+            self.open_playout(wanted_out.as_deref());
+        }
+    }
+
+    fn wanted_devices(&self) -> (Option<String>, Option<String>) {
+        let settings = self.settings.lock().unwrap();
+        (
+            settings.input_device.clone(),
+            settings.output_device.clone(),
+        )
+    }
+
+    /// How often (in seconds) to poll the device list: every second while a chosen device
+    /// is away, every fifth while merely nothing is open on a side (a PC without a
+    /// microphone would otherwise enumerate for the whole evening), never otherwise.
+    fn poll_every(&self) -> Option<u32> {
+        let (wanted_in, wanted_out) = self.wanted_devices();
+        let open_in = self.capture.as_ref().and_then(|d| d.id.as_deref());
+        let open_out = self.playout.as_ref().and_then(|d| d.id.as_deref());
+        if wanted_in.is_some_and(|w| open_in != Some(w.as_str()))
+            || wanted_out.is_some_and(|w| open_out != Some(w.as_str()))
+        {
+            Some(1)
+        } else if self.capture.is_none() || self.playout.is_none() {
+            Some(5)
+        } else {
+            None
+        }
+    }
+
+    fn slot(&self, wanted: Option<&str>, open: &Option<OpenDevice>) -> DeviceSlot {
+        let open_id = open.as_ref().and_then(|d| d.id.as_deref());
+        let fallback = wanted.is_some_and(|w| open_id != Some(w));
+        DeviceSlot {
+            open: open.as_ref().map(|d| d.name.clone()),
+            fallback,
+            missing: if fallback {
+                wanted.and_then(|w| self.device_names.get(w).cloned())
+            } else {
+                None
+            },
+        }
+    }
+
+    /// [`Event::DeviceState`] when it changed (or `always`).
+    fn sync_device_state(&mut self, always: bool) {
+        let (wanted_in, wanted_out) = self.wanted_devices();
+        let state = (
+            self.slot(wanted_in.as_deref(), &self.capture),
+            self.slot(wanted_out.as_deref(), &self.playout),
+        );
+        if always || self.device_state.as_ref() != Some(&state) {
+            if state.0.fallback || state.1.fallback {
+                tracing::warn!(
+                    microphone = ?state.0, output = ?state.1,
+                    "running on a stand-in device"
+                );
+            }
+            self.emit(Event::DeviceState {
+                input: state.0.clone(),
+                output: state.1.clone(),
+            });
+            self.device_state = Some(state);
+        }
     }
 
     /// Opens the microphone; if the wanted one fails, the system default.
@@ -574,15 +686,22 @@ impl Engine {
                     let _ = self.ring_tx.send((ring, device.sample_rate));
                     self.capture = Some(device);
                     // The asked-for device works: a stored error is resolved. A fallback to
-                    // the default keeps it — "your microphone is not connected" stays true.
+                    // the default keeps it — "no microphone found" stays true.
                     if candidate == id {
                         self.resolved(ErrorSource::Microphone);
                     }
-                    return;
+                    break;
+                }
+                // The chosen device is away: a state, not an error — the default stands
+                // in and the device is taken back when it returns (A2). Only the last
+                // resort failing is an error.
+                Err(e) if candidate.is_some() => {
+                    tracing::warn!("microphone: {e} — the default stands in");
                 }
                 Err(e) => self.error(ErrorSource::Microphone, format!("microphone: {e}")),
             }
         }
+        self.sync_device_state(false);
     }
 
     /// Opens the output; if the wanted one fails, the system default.
@@ -596,7 +715,7 @@ impl Engine {
                     ErrorSource::Output,
                     "output: the mixer did not come back from the last device".into(),
                 );
-                return;
+                break;
             };
             match self
                 .io
@@ -611,14 +730,19 @@ impl Engine {
                     if candidate == id {
                         self.resolved(ErrorSource::Output);
                     }
-                    return;
+                    break;
                 }
                 Err(e) => {
                     self.reclaim_mixer();
-                    self.error(ErrorSource::Output, format!("output: {e}"));
+                    if candidate.is_some() {
+                        tracing::warn!("output: {e} — the default stands in");
+                    } else {
+                        self.error(ErrorSource::Output, format!("output: {e}"));
+                    }
                 }
             }
         }
+        self.sync_device_state(false);
     }
 
     fn reclaim_mixer(&mut self) {
@@ -628,26 +752,35 @@ impl Engine {
         }
     }
 
-    /// A device that reported an error (unplugged, driver reset) is reopened on the default.
+    /// Once a second. A device that reported an error (unplugged, driver reset) is reopened
+    /// — the chosen one first, else the default. While a side runs on a stand-in, the
+    /// device list is polled so the chosen device comes back even where the OS sends no
+    /// notifications (macOS today); on Windows the shell's watcher is usually first.
     fn check_devices(&mut self) {
+        let (wanted_in, wanted_out) = self.wanted_devices();
+        let mut changed = false;
         if failed(&self.capture) {
-            self.error(
-                ErrorSource::Microphone,
-                "the microphone stopped working — switching to the default device".into(),
-            );
-            self.open_capture(None);
-            self.emit_devices();
+            tracing::warn!("the microphone stopped working — reopening");
+            self.open_capture(wanted_in.as_deref());
+            changed = true;
         }
         if failed(&self.playout) {
-            self.error(
-                ErrorSource::Output,
-                "the output stopped working — switching to the default device".into(),
-            );
-            self.open_playout(None);
-            self.emit_devices();
+            tracing::warn!("the output stopped working — reopening");
+            self.open_playout(wanted_out.as_deref());
+            changed = true;
+        }
+        self.poll_age += 1;
+        let due = self
+            .poll_every()
+            .is_some_and(|every| self.poll_age >= every);
+        if changed || due {
+            self.poll_age = 0;
+            let before = self.devices.clone();
+            if self.list_devices() != before {
+                self.refresh_devices();
+            }
         }
     }
-
     // ── levels and stats ────────────────────────────────────────────────────────────────
 
     fn emit_levels(&mut self, now: Instant) {
@@ -768,6 +901,20 @@ fn candidates(id: Option<&str>) -> Vec<Option<&str>> {
     match id {
         Some(id) => vec![Some(id), None],
         None => vec![None],
+    }
+}
+
+/// Whether a side should be (re)opened given the current list: the chosen device is listed
+/// but not the open one, or — with the default chosen — the default is another device than
+/// the open one, or nothing is open and there is something to open.
+fn wants_reopen(wanted: Option<&str>, open: Option<&str>, listed: &[AudioDevice]) -> bool {
+    let target = match wanted {
+        Some(id) => Some(id),
+        None => listed.iter().find(|d| d.is_default).map(|d| d.id.as_str()),
+    };
+    match target {
+        Some(target) => open != Some(target) && listed.iter().any(|d| d.id == target),
+        None => false,
     }
 }
 

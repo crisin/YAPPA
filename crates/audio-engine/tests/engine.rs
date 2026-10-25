@@ -4,7 +4,8 @@ use audio_engine::device::{AudioIo, DeviceCounters, DeviceList, OpenDevice};
 use audio_engine::mixer::MixerRt;
 use audio_engine::{spawn, EngineConfig, EngineHandle};
 use engine_protocol::{
-    AudioDevice, Command, ConnectionState, Event, QualityProfile, Settings, TrackKind, VoiceCodec,
+    AudioDevice, Command, ConnectionState, DeviceSlot, Event, QualityProfile, Settings, TrackKind,
+    VoiceCodec,
 };
 use rtrb::Producer;
 use std::sync::atomic::Ordering::Relaxed;
@@ -126,12 +127,39 @@ fn pcm(value: i16) -> f32 {
 
 // ── fake sound hardware ─────────────────────────────────────────────────────────────────
 
+/// Two microphones (`mic1`, `mic2`) and two outputs (`out1`, `out2`); `gone` never exists.
 #[derive(Default)]
 struct Hardware {
     opened: Mutex<Vec<String>>,
     microphone: Mutex<Option<Producer<f32>>>,
     counters: Mutex<Option<Arc<DeviceCounters>>>,
     speaker: Arc<Mutex<Option<MixerRt>>>,
+    /// Unplugged right now: not listed, not openable (A2).
+    absent: Mutex<Vec<String>>,
+    /// The system default microphone; `None` = `mic1`.
+    default_input: Mutex<Option<String>>,
+}
+
+impl Hardware {
+    fn unplug(&self, name: &str) {
+        self.absent.lock().unwrap().push(name.into());
+    }
+
+    fn plug_in(&self, name: &str) {
+        self.absent.lock().unwrap().retain(|n| n != name);
+    }
+
+    fn is_absent(&self, name: &str) -> bool {
+        name == "gone" || self.absent.lock().unwrap().iter().any(|n| n == name)
+    }
+
+    fn default_input(&self) -> String {
+        self.default_input
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap_or_else(|| "mic1".into())
+    }
 }
 
 struct FakeIo(Arc<Hardware>);
@@ -152,6 +180,7 @@ impl Drop for FakeStream {
 
 fn open(name: &str, keep: Box<dyn std::any::Any + Send>) -> OpenDevice {
     OpenDevice {
+        id: Some(name.into()),
         name: name.into(),
         sample_rate: 48_000,
         channels: 1,
@@ -163,14 +192,22 @@ fn open(name: &str, keep: Box<dyn std::any::Any + Send>) -> OpenDevice {
 
 impl AudioIo for FakeIo {
     fn devices(&self) -> DeviceList {
-        let device = |id: &str| AudioDevice {
+        let default_input = self.0.default_input();
+        let device = |id: &str, default: &str| AudioDevice {
             id: id.into(),
             name: id.to_uppercase(),
-            is_default: id.ends_with('1'),
+            is_default: id == default,
+        };
+        let present = |names: &[&str], default: &str| -> Vec<AudioDevice> {
+            names
+                .iter()
+                .filter(|n| !self.0.is_absent(n))
+                .map(|n| device(n, default))
+                .collect()
         };
         DeviceList {
-            inputs: vec![device("mic1"), device("mic2")],
-            outputs: vec![device("out1")],
+            inputs: present(&["mic1", "mic2"], &default_input),
+            outputs: present(&["out1", "out2"], "out1"),
         }
     }
 
@@ -180,15 +217,19 @@ impl AudioIo for FakeIo {
         channel: u16,
         ring: Producer<f32>,
     ) -> Result<OpenDevice, String> {
-        let name = id.unwrap_or("mic1");
+        let default = self.0.default_input();
+        let name = id.unwrap_or(&default);
         let mut opened = self.0.opened.lock().unwrap();
         opened.push(format!("capture {name}"));
         if channel > 0 {
             opened.push(format!("channel {channel}"));
         }
         drop(opened);
-        if name == "gone" {
-            return Err("the selected device is not connected".into());
+        if self.0.is_absent(name) {
+            return Err(match id {
+                Some(_) => "the selected device is not connected".into(),
+                None => "no microphone found".into(),
+            });
         }
         *self.0.microphone.lock().unwrap() = Some(ring);
         let mut device = open(name, Box::new(()));
@@ -212,7 +253,7 @@ impl AudioIo for FakeIo {
             .lock()
             .unwrap()
             .push(format!("playout {name}"));
-        if name == "gone" {
+        if self.0.is_absent(name) {
             let _ = back.send(mixer);
             return Err("the selected device is not connected".into());
         }
@@ -279,6 +320,22 @@ impl Rig {
         });
     }
 
+    /// The next [`Event::DeviceState`] that satisfies `wanted`; an [`Event::Error`] on
+    /// the way fails the test — a missing or returning device is a state, not an error.
+    fn wait_device_state(
+        &self,
+        what: &str,
+        wanted: impl Fn(&DeviceSlot, &DeviceSlot) -> bool,
+    ) -> (DeviceSlot, DeviceSlot) {
+        self.wait(what, |e| match e {
+            Event::DeviceState { input, output } if wanted(input, output) => {
+                Some((input.clone(), output.clone()))
+            }
+            Event::Error { message } => panic!("error while waiting for {what}: {message}"),
+            _ => None,
+        })
+    }
+
     fn wait_until(&self, what: &str, mut done: impl FnMut() -> bool) {
         let deadline = Instant::now() + Duration::from_secs(5);
         while !done() {
@@ -329,11 +386,14 @@ fn a_missing_device_falls_back_to_the_default_and_says_so() {
         output_device: Some("gone".into()),
         ..Settings::default()
     });
-    let message = rig.wait("error", |e| match e {
-        Event::Error { message } => Some(message.clone()),
-        _ => None,
+    // Not an error (the call works on the default), but a state the UI shows (A2). The
+    // engine never saw "gone", so it has no name for it.
+    let (input, output) = rig.wait_device_state("both on the stand-in", |i, o| {
+        i.fallback && o.fallback && o.open.is_some()
     });
-    assert!(message.contains("not connected"), "{message}");
+    assert_eq!(input.open.as_deref(), Some("mic1"));
+    assert_eq!(input.missing, None);
+    assert_eq!(output.open.as_deref(), Some("out1"));
     rig.wait_until("fallbacks opened", || {
         *rig.hardware.opened.lock().unwrap()
             == [
@@ -349,16 +409,33 @@ fn a_missing_device_falls_back_to_the_default_and_says_so() {
 
 #[test]
 fn an_error_from_before_the_ui_listened_is_handed_over_on_resync() {
-    // No microphone at start: the error goes out before the window listens. The next
-    // resync carries it again, once.
-    let rig = rig(Settings {
-        input_device: Some("gone".into()),
-        ..Settings::default()
-    });
+    // No microphone at all at start: the error goes out before the window listens. The
+    // next resync carries it again, once.
+    let wire = Arc::new(Wire::default());
+    let hardware = Arc::new(Hardware::default());
+    hardware.unplug("mic1");
+    hardware.unplug("mic2");
+    let (tx, events) = mpsc::channel();
+    let engine = spawn(
+        Box::new(FakeTransport(wire.clone())),
+        Box::new(FakeIo(hardware.clone())),
+        settings(),
+        EngineConfig::default(),
+        move |event| {
+            let _ = tx.send(event);
+        },
+    );
+    let rig = Rig {
+        engine,
+        events,
+        wire,
+        hardware,
+    };
     let first = rig.wait("error", |e| match e {
         Event::Error { message } => Some(message.clone()),
         _ => None,
     });
+    assert!(first.contains("no microphone found"), "{first}");
     rig.engine.send(Command::Resync);
     let again = rig.wait("error again", |e| match e {
         Event::Error { message } => Some(message.clone()),
@@ -735,15 +812,13 @@ fn changing_the_output_keeps_the_speakers() {
     );
 }
 
-#[test]
-fn a_failed_microphone_is_reopened_on_the_default() {
-    let rig = rig(Settings {
-        input_device: Some("mic2".into()),
-        ..Settings::default()
-    });
+/// Pulls the open microphone's plug: the stream reports an error and the device leaves
+/// the list, like a USB headset unplugged in a call.
+fn unplug_open_microphone(rig: &Rig, name: &str) {
     rig.wait_until("microphone open", || {
         rig.hardware.counters.lock().unwrap().is_some()
     });
+    rig.hardware.unplug(name);
     rig.hardware
         .counters
         .lock()
@@ -752,14 +827,110 @@ fn a_failed_microphone_is_reopened_on_the_default() {
         .unwrap()
         .failed
         .store(true, Relaxed);
-    let message = rig.wait("error", |e| match e {
-        Event::Error { message } => Some(message.clone()),
+}
+
+#[test]
+fn an_unplugged_microphone_is_replaced_by_the_default_and_taken_back_when_it_returns() {
+    let rig = rig(Settings {
+        input_device: Some("mic2".into()),
+        ..Settings::default()
+    });
+    rig.wait_device_state("mic2 open", |i, _| i.open.as_deref() == Some("mic2"));
+    unplug_open_microphone(&rig, "mic2");
+
+    // Within the next second: mic2 tried first (it is the chosen one), then the default.
+    let (input, _) = rig.wait_device_state("stand-in", |i, _| i.fallback);
+    assert_eq!(input.open.as_deref(), Some("mic1"));
+    assert_eq!(
+        input.missing.as_deref(),
+        Some("MIC2"),
+        "named from the earlier list"
+    );
+    assert_eq!(
+        *rig.hardware.opened.lock().unwrap(),
+        [
+            "capture mic2",
+            "playout out1",
+            "capture mic2",
+            "capture mic1"
+        ]
+    );
+    let inputs = rig.wait("list without mic2", |e| match e {
+        Event::Devices { inputs, .. } => Some(inputs.clone()),
         _ => None,
     });
-    assert!(message.contains("microphone stopped working"));
-    rig.wait_until("default reopened", || {
-        *rig.hardware.opened.lock().unwrap() == ["capture mic2", "playout out1", "capture mic1"]
+    assert_eq!(inputs.len(), 1);
+    assert_eq!(
+        rig.engine.settings().input_device.as_deref(),
+        Some("mic2"),
+        "the choice stays"
+    );
+
+    // Plugged in again: found by polling (no OS notification in this rig), opened, state
+    // cleared — the call never stopped.
+    rig.hardware.plug_in("mic2");
+    let (input, _) = rig.wait_device_state("mic2 back", |i, _| !i.fallback);
+    assert_eq!(input.open.as_deref(), Some("mic2"));
+    assert_eq!(input.missing, None);
+    assert_eq!(
+        rig.hardware.opened.lock().unwrap().last().unwrap(),
+        "capture mic2"
+    );
+}
+
+#[test]
+fn a_refresh_takes_the_chosen_output_back_and_keeps_the_speakers() {
+    let rig = rig(Settings {
+        output_device: Some("out2".into()),
+        ..Settings::default()
     });
+    rig.hardware.unplug("out2");
+    let (_, output) = rig.wait_device_state("stand-in", |_, o| o.fallback && o.open.is_some());
+    assert_eq!(output.open.as_deref(), Some("out1"));
+    let mut anna = rig.wire.receiver().speaker_started("u1");
+
+    // The shell's device watcher reports a change (or the person clicks „Geräte neu
+    // einlesen“): the list is read again and out2 opened at once.
+    rig.hardware.plug_in("out2");
+    rig.engine.send(Command::RefreshDevices);
+    let (_, output) = rig.wait_device_state("out2 back", |_, o| !o.fallback);
+    assert_eq!(output.open.as_deref(), Some("out2"));
+    rig.wait_until("mixer in the new stream", || {
+        rig.hardware.speaker.lock().unwrap().is_some()
+    });
+    // Same mixer, same slot: Anna is still heard.
+    let mut out = vec![0f32; BLOCK];
+    let mut speaker = rig.hardware.speaker.lock().unwrap();
+    speaker.as_mut().unwrap().render(&mut out); // a fresh slot is flushed first
+    for _ in 0..2 {
+        anna.frame(&[16384; BLOCK]);
+    }
+    speaker.as_mut().unwrap().render(&mut out);
+    assert!(out.iter().all(|s| (*s - 0.5).abs() < 1e-3));
+}
+
+#[test]
+fn with_the_default_chosen_a_new_system_default_is_followed() {
+    // „Standardgerät“ and a headset is plugged in: Windows makes it the default, the open
+    // stream would stay on the old one — a refresh moves over.
+    let rig = rig(settings());
+    rig.wait_device_state("default open", |i, _| i.open.as_deref() == Some("mic1"));
+    *rig.hardware.default_input.lock().unwrap() = Some("mic2".into());
+    rig.engine.send(Command::RefreshDevices);
+    let (input, _) = rig.wait_device_state("new default", |i, _| i.open.as_deref() == Some("mic2"));
+    assert!(!input.fallback);
+    assert_eq!(
+        rig.engine.settings().input_device,
+        None,
+        "still „Standardgerät“"
+    );
+    // A second refresh with nothing new changes nothing.
+    let before = rig.hardware.opened.lock().unwrap().len();
+    rig.engine.send(Command::RefreshDevices);
+    rig.wait("devices again", |e| {
+        matches!(e, Event::Devices { .. }).then_some(())
+    });
+    assert_eq!(rig.hardware.opened.lock().unwrap().len(), before);
 }
 
 #[test]

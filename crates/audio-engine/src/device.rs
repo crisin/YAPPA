@@ -34,6 +34,9 @@ pub struct DeviceCounters {
 
 /// An open stream. Dropping it closes the device.
 pub struct OpenDevice {
+    /// The device's id as the device list shows it (`None` when the backend has none) —
+    /// so the engine can tell whether the chosen device or a stand-in is open (A2).
+    pub id: Option<String>,
     pub name: String,
     pub sample_rate: u32,
     pub channels: u16,
@@ -296,6 +299,7 @@ fn opened(
     stream: cpal::Stream,
 ) -> OpenDevice {
     OpenDevice {
+        id: device_id(device),
         name: device_name(device),
         sample_rate: config.sample_rate(),
         channels: config.channels(),

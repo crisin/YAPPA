@@ -3,6 +3,7 @@
 import type { Engine } from './engine';
 import type { AudioDevice } from './types/AudioDevice';
 import type { ConnectionState } from './types/ConnectionState';
+import type { DeviceSlot } from './types/DeviceSlot';
 import type { Event } from './types/Event';
 import type { LogEntry } from './types/LogEntry';
 import type { Participant } from './types/Participant';
@@ -44,6 +45,9 @@ export class Session {
   log = $state<LogEntry[]>([]);
   inputs = $state<AudioDevice[]>([]);
   outputs = $state<AudioDevice[]>([]);
+  /** What is actually open on each side (A2): the chosen device, or a stand-in. */
+  inputState = $state<DeviceSlot | null>(null);
+  outputState = $state<DeviceSlot | null>(null);
   settings = $state<Settings | null>(null);
   muted = $state(false);
   deafened = $state(false);
@@ -108,6 +112,10 @@ export class Session {
         this.inputs = event.inputs;
         this.outputs = event.outputs;
         break;
+      case 'deviceState':
+        this.inputState = event.input;
+        this.outputState = event.output;
+        break;
       case 'log':
         this.log = [...this.log, event.entry].slice(-LOG_LIMIT);
         break;
@@ -121,6 +129,29 @@ export class Session {
 
   get inRoom(): boolean {
     return this.connection !== 'disconnected';
+  }
+
+  /**
+   * One German line about a side that runs on a stand-in (A2) — for the banner and the
+   * settings; `null` while the chosen device is open.
+   */
+  static fallbackNote(side: 'Mikrofon' | 'Ausgabe', slot: DeviceSlot | null): string | null {
+    if (!slot?.fallback) return null;
+    const chosen = slot.missing ? `${side} „${slot.missing}“` : `Dein gewähltes ${side}-Gerät`;
+    const standIn = slot.open
+      ? `solange läuft „${slot.open}“`
+      : side === 'Mikrofon'
+        ? 'und kein anderes Mikrofon ist da'
+        : 'und keine andere Ausgabe ist da';
+    return `${chosen} ist gerade nicht angeschlossen – ${standIn}. Es kommt von selbst zurück, sobald es wieder da ist.`;
+  }
+
+  /** The device banner text, the microphone first; `null` when both sides are as chosen. */
+  get deviceNote(): string | null {
+    return (
+      Session.fallbackNote('Mikrofon', this.inputState) ??
+      Session.fallbackNote('Ausgabe', this.outputState)
+    );
   }
 
   async join() {

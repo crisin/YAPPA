@@ -123,6 +123,22 @@
     });
   });
 
+  // A device that is away (A2): the engine runs on the default until it is back — the
+  // banner says so and goes by itself, it cannot be closed before.
+  $effect(() => {
+    const note = session.deviceNote;
+    untrack(() => {
+      if (note) {
+        shell.showBanner({
+          id: 'device',
+          priority: BANNER.reconnecting,
+          text: note,
+          dismissible: false,
+        });
+      } else shell.clearBanner('device');
+    });
+  });
+
   // A problem while switching channels during a call (token refused, server away): the
   // stage shows the people then, so the banner carries it; outside a room the stage does.
   $effect(() => {
