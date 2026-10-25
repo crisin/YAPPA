@@ -122,7 +122,7 @@ checksum = "fb5dfbc6d8d2675589ccbe4d0fd61df2419075625f8c1a62325e718e2b0049f9"
 
 [[package]]
 name = "api-types"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64 0.23.1",
  "serde",
@@ -328,7 +328,7 @@ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
 name = "audio-engine"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cpal",
  "criterion",
@@ -793,7 +793,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
 name = "client"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "api-types",
  "base64 0.23.1",
@@ -909,7 +909,7 @@ dependencies = [
 
 [[package]]
 name = "control"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "api-types",
  "axum",
@@ -1448,7 +1448,7 @@ dependencies = [
 
 [[package]]
 name = "denoise"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "deep_filter",
  "engine-protocol",
@@ -1670,7 +1670,7 @@ dependencies = [
 
 [[package]]
 name = "dsp"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "criterion",
  "insta",
@@ -1760,7 +1760,7 @@ checksum = "66b7e2430c6dff6a955451e2cfc438f09cea1965a9d6f87f7e3b90decc014099"
 
 [[package]]
 name = "engine-protocol"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -4510,7 +4510,7 @@ checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 
 [[package]]
 name = "platform"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "rdev",
  "tracing",
@@ -5910,7 +5910,7 @@ dependencies = [
 
 [[package]]
 name = "spike-s1"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cpal",
  "futures-util",
@@ -5922,7 +5922,7 @@ dependencies = [
 
 [[package]]
 name = "spike-s2"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "denoise",
  "dsp",
@@ -5932,7 +5932,7 @@ dependencies = [
 
 [[package]]
 name = "spike-s6"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "api-types",
  "control",
@@ -7325,7 +7325,7 @@ dependencies = [
 
 [[package]]
 name = "transport"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "criterion",
  "futures-util",
@@ -8384,7 +8384,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "api-types",
  "insta",
@@ -8396,7 +8396,7 @@ dependencies = [
 
 [[package]]
 name = "yappa-desktop"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "api-types",
  "audio-engine",
