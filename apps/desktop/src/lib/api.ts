@@ -7,6 +7,7 @@ import type { AppSettings } from './types/AppSettings';
 import type { Channel } from './types/Channel';
 import type { EventEntry } from './types/EventEntry';
 import type { InviteCode } from './types/InviteCode';
+import type { KeyAction } from './types/KeyAction';
 import type { Member } from './types/Member';
 import type { PresenceEntry } from './types/PresenceEntry';
 import type { PublicConfig } from './types/PublicConfig';
@@ -59,10 +60,11 @@ export interface Api {
   appSettings(): Promise<AppSettings>;
   setAppSettings(settings: AppSettings): Promise<void>;
   /**
-   * Waits for the next key or mouse button and makes it the push-to-talk key; `null` when
-   * cancelled (Escape) or nothing came within 10 s.
+   * Waits for the next key or mouse button and makes it the key of `action` (push-to-talk,
+   * mute, deafen); `null` when cancelled (Escape) or nothing came within 10 s. Rejects with
+   * `key_taken` when another action already has that key.
    */
-  capturePttKey(): Promise<string | null>;
+  captureKey(action: KeyAction): Promise<string | null>;
   /** False when the global hook is not running: the key then only works in the window. */
   hotkeysGlobal(): Promise<boolean>;
   admin: {

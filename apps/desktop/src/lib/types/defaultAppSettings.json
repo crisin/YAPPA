@@ -3,6 +3,8 @@
   "view": "simple",
   "theme": "dark",
   "pttKey": null,
+  "muteKey": null,
+  "deafenKey": null,
   "notifications": true,
   "updateChannel": "stable"
 }

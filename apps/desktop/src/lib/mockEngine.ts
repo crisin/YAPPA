@@ -58,11 +58,35 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
   let connected = false;
   /** Who is in the room now; the first one talks in waves. */
   let people: Participant[] = [];
+  // Microphone and hearing as `audio-engine/src/mute.rs` has them: deafened implies muted,
+  // undeafening gives the microphone back as it was.
   let muted = false;
+  let deafened = false;
+  let mutedBeforeDeafen = false;
+  const micMuted = () => muted || deafened;
   let ticks = 0;
   let timer: ReturnType<typeof setInterval> | undefined;
 
   const emit = (event: Event) => handlers.forEach((handler) => handler(event));
+  const muteState = (): Event => ({ type: 'muteState', muted: micMuted(), deafened });
+  const setMuted = (on: boolean) => {
+    muted = on;
+    if (!on) deafened = false;
+  };
+  const setDeafened = (on: boolean) => {
+    if (on && !deafened) {
+      mutedBeforeDeafen = muted;
+      deafened = true;
+    } else if (!on && deafened) {
+      deafened = false;
+      muted = mutedBeforeDeafen;
+    }
+  };
+  const changeMute = (change: () => void) => {
+    const before = JSON.stringify(muteState());
+    change();
+    if (JSON.stringify(muteState()) !== before) emit(muteState());
+  };
   const log = (message: string) =>
     emit({
       type: 'log',
@@ -123,7 +147,7 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
     emit({
       type: 'levels',
       inputDb: -38 + 10 * wave,
-      gateOpen: !muted,
+      gateOpen: !micMuted(),
       peers:
         connected && people.length > 0
           ? [{ identity: people[0].identity, levelDb: -30 + 12 * wave, speaking: wave > 0 }]
@@ -136,9 +160,9 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
         { id: 'input', ...level(-38 + 10 * wave) },
         { id: 'highpass', ...level(-39 + 10 * wave) },
         { id: 'denoiser', ...level(-41 + 10 * wave) },
-        { id: 'gate', ...level(muted ? -120 : -41 + 10 * wave, !muted) },
-        { id: 'eq', ...level(muted ? -120 : -40 + 10 * wave) },
-        { id: 'compressor', ...level(muted ? -120 : -36 + 6 * wave) },
+        { id: 'gate', ...level(micMuted() ? -120 : -41 + 10 * wave, !micMuted()) },
+        { id: 'eq', ...level(micMuted() ? -120 : -40 + 10 * wave) },
+        { id: 'compressor', ...level(micMuted() ? -120 : -36 + 6 * wave) },
       ],
     });
     if (ticks % 10 === 0) emit({ type: 'stats', stats: stats() });
@@ -178,7 +202,16 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
         log('left');
         break;
       case 'setMuted':
-        muted = command.muted;
+        changeMute(() => setMuted(command.muted));
+        break;
+      case 'setDeafened':
+        changeMute(() => setDeafened(command.deafened));
+        break;
+      case 'toggleMuted':
+        changeMute(() => setMuted(!micMuted()));
+        break;
+      case 'toggleDeafened':
+        changeMute(() => setDeafened(!deafened));
         break;
       case 'setInputDevice':
         settings.inputDevice = command.id;
@@ -193,9 +226,13 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
         settings.transmitMode = command.mode;
         break;
       case 'refreshDevices':
+        emit(devices());
+        emit(deviceState());
+        break;
       case 'resync':
         emit(devices());
         emit(deviceState());
+        emit(muteState());
         break;
       default:
         break;

@@ -140,14 +140,32 @@ describe('Session', () => {
     await session.setOutput(null);
 
     expect(sent).toEqual([
-      { type: 'setMuted', muted: true },
-      { type: 'setDeafened', deafened: true },
+      { type: 'toggleMuted' },
+      { type: 'toggleDeafened' },
       { type: 'setPeerVolume', identity: 'anna', track: 'voice', gainDb: -6 },
       { type: 'setPeerMuted', identity: 'anna', track: 'voice', muted: true },
       { type: 'setInputDevice', id: 'mic-2' },
       { type: 'setOutputDevice', id: null },
     ]);
     expect(session.settings?.inputDevice).toBe('mic-2');
+  });
+
+  it('follows the engine for mute and deafen: deafen implies mute, undeafen restores', async () => {
+    const session = new Session(createMockEngine());
+    const stop = await session.start();
+    expect([session.muted, session.deafened]).toEqual([false, false]);
+    await session.toggleDeafen();
+    expect([session.muted, session.deafened]).toEqual([true, true]);
+    await session.toggleDeafen();
+    expect([session.muted, session.deafened]).toEqual([false, false]);
+    await session.toggleMute();
+    await session.toggleDeafen();
+    await session.toggleDeafen();
+    expect([session.muted, session.deafened]).toEqual([true, false]);
+    // A key press in a game reaches the UI the same way: as the engine's event.
+    session.apply({ type: 'muteState', muted: false, deafened: false });
+    expect(session.muted).toBe(false);
+    stop();
   });
 
   it('receives levels and stats from the running engine', async () => {

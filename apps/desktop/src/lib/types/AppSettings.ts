@@ -14,4 +14,12 @@ theme: string,
 /**
  * Push-to-talk key as the platform hotkey layer names it; `None` = not set (S3).
  */
-pttKey: string | null, notifications: boolean, updateChannel: UpdateChannel, };
+pttKey: string | null, 
+/**
+ * Global key that flips the microphone (A3); `None` = not set.
+ */
+muteKey: string | null, 
+/**
+ * Global key that flips hearing (A3); `None` = not set.
+ */
+deafenKey: string | null, notifications: boolean, updateChannel: UpdateChannel, };

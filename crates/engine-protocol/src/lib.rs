@@ -57,12 +57,22 @@ pub enum Command {
     SetTransmitMode {
         mode: TransmitMode,
     },
+    /// Microphone off. Unmuting while deafened also undeafens: nobody wants to talk into a
+    /// room they cannot hear.
     SetMuted {
         muted: bool,
     },
+    /// Hear nothing — and, implied, send nothing. Undeafening gives the microphone back
+    /// the state it had before. The engine answers every change with
+    /// [`Event::MuteState`].
     SetDeafened {
         deafened: bool,
     },
+    /// The mute key (A3) or the dock button: flip the microphone. The engine owns the
+    /// state, so a key in a game and a click in the window can never disagree.
+    ToggleMuted,
+    /// The deafen key or the dock button: flip hearing (and, implied, the microphone).
+    ToggleDeafened,
     /// Receive side: per remote user and track.
     SetPeerVolume {
         identity: String,
@@ -153,6 +163,13 @@ pub enum Event {
     DeviceState {
         input: DeviceSlot,
         output: DeviceSlot,
+    },
+    /// Microphone and hearing as the engine has them (A3). `muted` is what is in effect:
+    /// true while deafened too. Sent on every change and on `Resync`; the dock and the
+    /// presence follow this, never their own guess.
+    MuteState {
+        muted: bool,
+        deafened: bool,
     },
 }
 
@@ -593,6 +610,25 @@ mod tests {
                 "type": "setPeerVolume", "identity": "u1", "track": "soundboard", "gainDb": -6.0
             })
         );
+    }
+
+    #[test]
+    fn unit_commands_and_the_mute_state_event_keep_the_tag_shape() {
+        assert_eq!(
+            serde_json::to_value(Command::ToggleDeafened).unwrap(),
+            serde_json::json!({ "type": "toggleDeafened" })
+        );
+        let ev = Event::MuteState {
+            muted: true,
+            deafened: false,
+        };
+        let json = serde_json::to_value(&ev).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({ "type": "muteState", "muted": true, "deafened": false })
+        );
+        let back: Event = serde_json::from_value(json).unwrap();
+        assert_eq!(ev, back);
     }
 
     #[test]

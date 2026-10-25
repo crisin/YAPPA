@@ -49,6 +49,11 @@ export class Session {
   inputState = $state<DeviceSlot | null>(null);
   outputState = $state<DeviceSlot | null>(null);
   settings = $state<Settings | null>(null);
+  /**
+   * Microphone off and hearing off, as the engine reports them (`muteState`): the dock
+   * button and the global key (A3) both end there, so this never guesses. `muted` is what is
+   * in effect — true while deafened too.
+   */
   muted = $state(false);
   deafened = $state(false);
   /** Per person, as set here: volume in dB and local mute. */
@@ -116,6 +121,10 @@ export class Session {
         this.inputState = event.input;
         this.outputState = event.output;
         break;
+      case 'muteState':
+        this.muted = event.muted;
+        this.deafened = event.deafened;
+        break;
       case 'log':
         this.log = [...this.log, event.entry].slice(-LOG_LIMIT);
         break;
@@ -179,14 +188,14 @@ export class Session {
     return this.#engine.send({ type: 'leave' });
   }
 
+  /** Flips the microphone; the engine answers with `muteState`. */
   toggleMute() {
-    this.muted = !this.muted;
-    return this.#engine.send({ type: 'setMuted', muted: this.muted });
+    return this.#engine.send({ type: 'toggleMuted' });
   }
 
+  /** Flips hearing (and, implied, the microphone); the engine answers with `muteState`. */
   toggleDeafen() {
-    this.deafened = !this.deafened;
-    return this.#engine.send({ type: 'setDeafened', deafened: this.deafened });
+    return this.#engine.send({ type: 'toggleDeafened' });
   }
 
   /** `null` = system default. */

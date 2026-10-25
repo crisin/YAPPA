@@ -8,7 +8,7 @@ pub mod logging;
 
 use api_types::{ClientInfo, Invite};
 use audio_engine::{CpalIo, EngineConfig, EngineHandle};
-use client::{AppSettings, Client, Profile};
+use client::{AppSettings, Client, KeyAction, Profile};
 use engine_protocol::{AppInfo, Command, Event, LogEntry, Settings, PROTOCOL_VERSION};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -46,7 +46,7 @@ pub struct App {
     client: Arc<Client>,
     app_settings: Mutex<AppSettings>,
     presence: api::PresenceSlot,
-    /// Global hotkeys (push-to-talk), running for the app's lifetime.
+    /// Global hotkeys (push-to-talk, mute, deafen), running for the app's lifetime.
     hotkeys: platform::Hotkeys,
     /// Audio device hot-plug notifications from the OS (A2); `None` where the OS has none
     /// — the engine then polls while a device is missing. Kept so it is dropped at exit.
@@ -56,6 +56,26 @@ pub struct App {
 impl App {
     fn with_engine<T>(&self, f: impl FnOnce(&EngineHandle) -> T) -> Option<T> {
         self.engine.lock().unwrap().as_ref().map(f)
+    }
+}
+
+/// The settings' name for a key and the hook's are two enums on purpose: `client` knows
+/// no OS, `platform` knows no settings file (ADR-007).
+fn hook_action(action: KeyAction) -> platform::HotkeyAction {
+    match action {
+        KeyAction::Ptt => platform::HotkeyAction::PushToTalk,
+        KeyAction::Mute => platform::HotkeyAction::Mute,
+        KeyAction::Deafen => platform::HotkeyAction::Deafen,
+    }
+}
+
+/// Hands every key in the settings to the hook (at start and after every change).
+pub(crate) fn bind_keys(hotkeys: &platform::Hotkeys, settings: &AppSettings) {
+    for action in KeyAction::ALL {
+        hotkeys.set_key(
+            hook_action(action),
+            settings.key(action).map(str::to_string),
+        );
     }
 }
 
@@ -211,6 +231,18 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
+        // Mute and deafen (A3) are the engine's state; the others see it as presence
+        // attributes (ADR-005), whether a key in a game or the dock flipped it.
+        if let Event::MuteState { muted, deafened } = &event {
+            if let Some(app) = handle.try_state::<App>() {
+                if let Some(presence) = app.presence.0.lock().unwrap().as_ref() {
+                    presence.update(|state| {
+                        state.muted = *muted;
+                        state.deafened = *deafened;
+                    });
+                }
+            }
+        }
         if matches!(event, Event::Stats { .. }) {
             let current = for_saving
                 .upgrade()
@@ -253,17 +285,25 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     if first_link.is_some() {
         tracing::info!("started with an invite link");
     }
-    // Push-to-talk (S3): the hook calls this from its own thread when the key goes down
-    // or up; the engine opens the send path in PTT mode.
-    let for_ptt = Arc::downgrade(&engine);
-    let hotkeys = platform::Hotkeys::start(move |pressed| {
-        if let Some(engine) = for_ptt.upgrade() {
+    // Global keys (S3, A3): the hook calls this from its own thread when a key goes down
+    // or up. Push-to-talk is held — the engine opens the send path while it is down; mute
+    // and deafen flip on the press and ignore the release.
+    let for_keys = Arc::downgrade(&engine);
+    let hotkeys = platform::Hotkeys::start(move |action, down| {
+        use platform::HotkeyAction;
+        let command = match (action, down) {
+            (HotkeyAction::PushToTalk, pressed) => Command::SetPttPressed { pressed },
+            (HotkeyAction::Mute, true) => Command::ToggleMuted,
+            (HotkeyAction::Deafen, true) => Command::ToggleDeafened,
+            (HotkeyAction::Mute | HotkeyAction::Deafen, false) => return,
+        };
+        if let Some(engine) = for_keys.upgrade() {
             if let Some(engine) = engine.lock().unwrap().as_ref() {
-                engine.send(Command::SetPttPressed { pressed });
+                engine.send(command);
             }
         }
     });
-    hotkeys.set_ptt(loaded.app.ptt_key.clone());
+    bind_keys(&hotkeys, &loaded.app);
     // Headset plugged in or out (A2): the engine reads its device list again and takes the
     // chosen device back. The watcher calls from its own thread.
     let for_devices = Arc::downgrade(&engine);
@@ -352,7 +392,7 @@ pub fn run() {
             api::voice_leave,
             api::app_settings,
             api::set_app_settings,
-            api::capture_ptt_key,
+            api::capture_key,
             api::hotkeys_global,
             admin::admin_members,
             admin::admin_set_role,

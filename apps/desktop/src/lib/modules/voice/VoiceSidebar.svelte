@@ -21,9 +21,15 @@
   }
 
   function stateText(person: PresenceEntry): string {
-    const muted = session.participants.find((p) => p.identity === person.userId)?.muted;
-    if (person.userId === gang.me?.id && session.muted) return 'stumm';
-    if (muted) return 'stumm';
+    // Mute and deafen come as presence (A3, ADR-005) so they show in every channel, not
+    // only in mine; the room's own mute flag is the fallback for an older client.
+    const inRoomMuted = session.participants.find((p) => p.identity === person.userId)?.muted;
+    if (person.userId === gang.me?.id) {
+      if (session.deafened) return 'taub';
+      if (session.muted) return 'stumm';
+    }
+    if (person.state.deafened) return 'taub';
+    if (person.state.muted || inRoomMuted) return 'stumm';
     if (person.state.away) return 'abwesend';
     if (person.state.talk === 'ptt') return 'PTT';
     return '';

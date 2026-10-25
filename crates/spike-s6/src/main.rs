@@ -123,6 +123,7 @@ async fn main() -> Result<(), String> {
             app: "nightly 0.1.0".into(),
             talk: TalkMode::Vad,
             away: false,
+            ..PresenceState::default()
         };
         let sent = Instant::now();
         room_a
@@ -172,6 +173,7 @@ async fn main() -> Result<(), String> {
                 app: "nightly 0.1.0".into(),
                 talk: TalkMode::Ptt,
                 away: true,
+                ..PresenceState::default()
             }
             .to_attributes(),
         )

@@ -38,8 +38,6 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 **A · Audio block** (ADR-009, interview 2026-10-23) — before M4; order is the decision
 
-- [ ] A3 Global mute and deafen keys in „Tasten“ through the existing hook; dock shows
-      the state (user: before the next evening)
 - [ ] A4 Loudness levelling at the receiver: `dsp::Leveler` per mixer slot (≈ 400 ms
       level, target ≈ −20 dBFS, ±12 dB, slow, idle below the noise floor), manual volume
       stays an offset; current gain per speaker in the diagnosis; mixer bench before/after
@@ -132,6 +130,17 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] A3 Global mute and deafen keys (ADR-009, 2026-10-25): „Stumm“ and „Taub“ next to
+      push-to-talk in Profi → „Tasten“, same hook (`platform::Hotkeys` now carries three
+      actions), same capture dialog, one key does one thing (`AppSettings::assign_key`
+      names the holder). The engine owns the state (`audio_engine::mute::MuteState`:
+      deafen implies mute, undeafen gives the microphone back as it was) and answers every
+      change with `Event::MuteState`; key, dock button and UI all go through
+      `ToggleMuted`/`ToggleDeafened`. Presence carries `muted`/`deaf` (ADR-005), so the
+      channel tree shows „stumm“/„taub“ behind the name for everybody. Keys survive a
+      restart (app settings). Verified: unit tests in mute/platform/client/api-types,
+      engine integration test (silence on the wire while deafened), UI tests, browser mode
+      by hand; not verified: a real key press in a fullscreen game (user, testabend).
 - [x] Audio quality tiers (2026-10-25): profiles Sparsam/Standard/Hoch/Studio/Stress in
       the settings schema (v3, migration from the bare bitrate), the values behind them
       (bitrate, mono/stereo, RED, DTX) editable in Profi → „Netzwerk“, a profile change

@@ -15,6 +15,7 @@ pub mod chain;
 pub mod device;
 pub mod engine;
 pub mod mixer;
+pub mod mute;
 mod resample;
 pub mod stats;
 

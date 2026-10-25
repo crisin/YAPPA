@@ -5,7 +5,7 @@
 
 use crate::App;
 use api_types::{Channel, PresenceEntry, PresenceState, PublicConfig, TalkMode, User};
-use client::{ApiFailure, AppSettings, Client};
+use client::{ApiFailure, AppSettings, Client, KeyAction};
 use engine_protocol::Command;
 use serde::Deserialize;
 use std::sync::{Arc, Mutex};
@@ -47,6 +47,7 @@ pub async fn start_presence(handle: &AppHandle, app: &App, client: &Arc<Client>)
             .with_engine(|e| talk_mode(&e.settings()))
             .unwrap_or_default(),
         away: false,
+        ..PresenceState::default()
     };
     let emitter = handle.clone();
     let presence = client
@@ -56,6 +57,10 @@ pub async fn start_presence(handle: &AppHandle, app: &App, client: &Arc<Client>)
         .map_err(|e| ApiFailure::new("presence_failed", &e.to_string()))?;
     let old = app.presence.0.lock().expect("lock").replace(presence);
     retire(old);
+    // Mute and deafen are the engine's state (A3): a resync makes it send `MuteState`
+    // again, and the event callback writes it into the presence just created — so someone
+    // who muted before logging in is shown muted from the first moment.
+    app.with_engine(|e| e.send(Command::Resync));
     Ok(me.user)
 }
 
@@ -181,33 +186,41 @@ pub fn app_settings(app: State<'_, App>) -> AppSettings {
 }
 
 #[tauri::command]
-pub fn set_app_settings(app: State<'_, App>, settings: AppSettings) {
+pub fn set_app_settings(app: State<'_, App>, mut settings: AppSettings) {
+    settings.dedupe_keys();
     client::settings::save_app(app.client.profile(), &settings);
-    app.hotkeys.set_ptt(settings.ptt_key.clone());
+    crate::bind_keys(&app.hotkeys, &settings);
     *app.app_settings.lock().expect("lock") = settings;
 }
 
-/// Waits (up to 10 s) for the next key or mouse button and makes it the push-to-talk key.
-/// `None`: cancelled with Escape, or nothing pressed.
+/// Waits (up to 10 s) for the next key or mouse button and makes it the key of `action`
+/// (push-to-talk, mute or deafen). `None`: cancelled with Escape, or nothing pressed. A key
+/// another action already has is refused with `key_taken` and left as it was.
 #[tauri::command]
-pub async fn capture_ptt_key(app: State<'_, App>) -> Reply<Option<String>> {
+pub async fn capture_key(app: State<'_, App>, action: KeyAction) -> Reply<Option<String>> {
     let hotkeys = app.hotkeys.clone();
     let key = tauri::async_runtime::spawn_blocking(move || {
         hotkeys.capture_next(std::time::Duration::from_secs(10))
     })
     .await
     .map_err(|e| ApiFailure::new("capture_failed", &e.to_string()))?;
-    if let Some(key) = &key {
-        let settings = {
-            let mut settings = app.app_settings.lock().expect("lock");
-            settings.ptt_key = Some(key.clone());
-            settings.clone()
-        };
-        client::settings::save_app(app.client.profile(), &settings);
-        app.hotkeys.set_ptt(Some(key.clone()));
-        tracing::info!(%key, "push-to-talk key set");
-    }
-    Ok(key)
+    let Some(key) = key else {
+        return Ok(None);
+    };
+    let settings = {
+        let mut settings = app.app_settings.lock().expect("lock");
+        if let Err(holder) = settings.assign_key(action, &key) {
+            return Err(ApiFailure::new(
+                "key_taken",
+                &format!("Diese Taste ist schon für „{}“ belegt.", holder.label()),
+            ));
+        }
+        settings.clone()
+    };
+    client::settings::save_app(app.client.profile(), &settings);
+    crate::bind_keys(&app.hotkeys, &settings);
+    tracing::info!(%key, ?action, "global key set");
+    Ok(Some(key))
 }
 
 /// False when the global hook could not start: the key then only works in the window.

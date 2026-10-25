@@ -701,6 +701,65 @@ fn the_microphone_reaches_the_transport_in_blocks_and_mute_sends_silence() {
     });
 }
 
+/// A3: the mute and deafen keys flip the state in the engine; the UI and the presence
+/// follow `MuteState`. Deafened implies muted, and undeafening gives the microphone back.
+#[test]
+fn toggling_mute_and_deafen_reports_one_state_and_silences_the_wire() {
+    let rig = rig(transparent());
+    rig.wait_until("microphone open", || {
+        rig.hardware.microphone.lock().unwrap().is_some()
+    });
+    let mute_state = |e: &Event| match e {
+        Event::MuteState { muted, deafened } => Some((*muted, *deafened)),
+        _ => None,
+    };
+
+    rig.engine.send(Command::ToggleDeafened);
+    assert_eq!(rig.wait("deafened", mute_state), (true, true));
+    rig.wait_until("deafen mutes the transport too", || {
+        rig.wire.calls().contains(&"muted true".to_string())
+    });
+    {
+        let mut mic = rig.hardware.microphone.lock().unwrap();
+        for _ in 0..BLOCK {
+            mic.as_mut().unwrap().push(pcm(8000)).unwrap();
+        }
+    }
+    rig.wait_until("a block sent", || !rig.wire.sent.lock().unwrap().is_empty());
+    assert!(
+        rig.wire.sent.lock().unwrap()[0] == vec![0; BLOCK],
+        "deafened sends silence"
+    );
+
+    rig.engine.send(Command::ToggleDeafened);
+    assert_eq!(
+        rig.wait("undeafened", mute_state),
+        (false, false),
+        "the microphone was on before"
+    );
+    rig.wait_until("unmute reaches the transport", || {
+        rig.wire.calls().contains(&"muted false".to_string())
+    });
+
+    rig.engine.send(Command::ToggleMuted);
+    assert_eq!(rig.wait("muted", mute_state), (true, false));
+    rig.engine.send(Command::ToggleDeafened);
+    assert_eq!(rig.wait("deafened while muted", mute_state), (true, true));
+    rig.engine.send(Command::ToggleDeafened);
+    assert_eq!(
+        rig.wait("still muted", mute_state),
+        (true, false),
+        "undeafening keeps a microphone that was off"
+    );
+    rig.engine.send(Command::SetMuted { muted: true });
+    rig.engine.send(Command::Resync);
+    // No second `MuteState` for an unchanged mute — the next one is the resync's answer.
+    assert_eq!(
+        rig.wait("resync repeats the state", mute_state),
+        (true, false)
+    );
+}
+
 #[test]
 fn a_capture_backlog_is_dropped_not_sent_as_a_burst() {
     let rig = rig(transparent());
