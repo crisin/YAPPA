@@ -43,6 +43,33 @@ impl UpdateChannel {
     }
 }
 
+/// What a global key does (A3). The shell maps this onto the platform hook; the UI uses it
+/// to say which key it is choosing.
+#[derive(Serialize, Deserialize, TS, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum KeyAction {
+    /// Hold to talk (in the „Taste halten“ mode).
+    Ptt,
+    /// Press to flip the microphone.
+    Mute,
+    /// Press to flip hearing (and, implied, the microphone).
+    Deafen,
+}
+
+impl KeyAction {
+    pub const ALL: [KeyAction; 3] = [KeyAction::Ptt, KeyAction::Mute, KeyAction::Deafen];
+
+    /// How the UI names the action when it reports a conflict.
+    pub fn label(self) -> &'static str {
+        match self {
+            KeyAction::Ptt => "Push-to-Talk",
+            KeyAction::Mute => "Stumm",
+            KeyAction::Deafen => "Taub",
+        }
+    }
+}
+
 /// Everything about the app that is not audio. Unknown fields are ignored and missing ones
 /// take their defaults, so older and newer files both load.
 #[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq)]
@@ -55,6 +82,10 @@ pub struct AppSettings {
     pub theme: String,
     /// Push-to-talk key as the platform hotkey layer names it; `None` = not set (S3).
     pub ptt_key: Option<String>,
+    /// Global key that flips the microphone (A3); `None` = not set.
+    pub mute_key: Option<String>,
+    /// Global key that flips hearing (A3); `None` = not set.
+    pub deafen_key: Option<String>,
     pub notifications: bool,
     pub update_channel: UpdateChannel,
 }
@@ -66,8 +97,65 @@ impl Default for AppSettings {
             view: SettingsView::Simple,
             theme: "dark".into(),
             ptt_key: None,
+            mute_key: None,
+            deafen_key: None,
             notifications: true,
             update_channel: UpdateChannel::Stable,
+        }
+    }
+}
+
+impl AppSettings {
+    pub fn key(&self, action: KeyAction) -> Option<&str> {
+        match action {
+            KeyAction::Ptt => self.ptt_key.as_deref(),
+            KeyAction::Mute => self.mute_key.as_deref(),
+            KeyAction::Deafen => self.deafen_key.as_deref(),
+        }
+    }
+
+    fn key_mut(&mut self, action: KeyAction) -> &mut Option<String> {
+        match action {
+            KeyAction::Ptt => &mut self.ptt_key,
+            KeyAction::Mute => &mut self.mute_key,
+            KeyAction::Deafen => &mut self.deafen_key,
+        }
+    }
+
+    /// The action a key is bound to, if any.
+    pub fn action_of(&self, key: &str) -> Option<KeyAction> {
+        KeyAction::ALL
+            .into_iter()
+            .find(|a| self.key(*a) == Some(key))
+    }
+
+    /// Gives `action` the key. One key does one thing: a key another action already has is
+    /// refused and that action returned, so the UI can say „schon Push-to-Talk“. Setting
+    /// the key an action already has is fine.
+    pub fn assign_key(&mut self, action: KeyAction, key: &str) -> Result<(), KeyAction> {
+        match self.action_of(key) {
+            Some(holder) if holder != action => Err(holder),
+            _ => {
+                *self.key_mut(action) = Some(key.to_string());
+                Ok(())
+            }
+        }
+    }
+
+    /// Settings as the UI sent them may carry one key twice (two writers, a stale copy):
+    /// the later action in [`KeyAction::ALL`] loses its key, so the hook never fires two
+    /// actions on one press.
+    pub fn dedupe_keys(&mut self) {
+        for (n, action) in KeyAction::ALL.into_iter().enumerate() {
+            let Some(key) = self.key(action).map(str::to_string) else {
+                continue;
+            };
+            if KeyAction::ALL[..n]
+                .iter()
+                .any(|earlier| self.key(*earlier) == Some(key.as_str()))
+            {
+                *self.key_mut(action) = None;
+            }
         }
     }
 }
@@ -268,6 +356,35 @@ mod tests {
         assert_eq!(partial.view, SettingsView::Pro);
         assert_eq!(partial.theme, "dark");
         assert_eq!(partial.update_channel, UpdateChannel::Stable);
+    }
+
+    #[test]
+    fn one_key_does_one_thing() {
+        let mut app = AppSettings::default();
+        app.assign_key(KeyAction::Ptt, "Mouse4").unwrap();
+        assert_eq!(
+            app.assign_key(KeyAction::Mute, "Mouse4"),
+            Err(KeyAction::Ptt),
+            "the holder is named"
+        );
+        assert_eq!(app.mute_key, None);
+        app.assign_key(KeyAction::Ptt, "Mouse4").unwrap(); // the same again is fine
+        app.assign_key(KeyAction::Mute, "F7").unwrap();
+        app.assign_key(KeyAction::Deafen, "F8").unwrap();
+        assert_eq!(app.action_of("F8"), Some(KeyAction::Deafen));
+        assert_eq!(app.action_of("F9"), None);
+        app.assign_key(KeyAction::Deafen, "F7").unwrap_err();
+        assert_eq!(app.key(KeyAction::Deafen), Some("F8"));
+
+        let mut doubled = AppSettings {
+            ptt_key: Some("F7".into()),
+            mute_key: Some("F7".into()),
+            deafen_key: Some("F7".into()),
+            ..AppSettings::default()
+        };
+        doubled.dedupe_keys();
+        assert_eq!(doubled.ptt_key.as_deref(), Some("F7"));
+        assert_eq!((doubled.mute_key, doubled.deafen_key), (None, None));
     }
 
     /// Writes the TS for the UI (`cargo xtask gen-types`).

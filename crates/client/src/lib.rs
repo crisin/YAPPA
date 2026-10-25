@@ -28,7 +28,7 @@ pub mod settings;
 pub use api::{ApiClient, ApiFailure};
 pub use presence::{Presence, PresenceView};
 pub use profile::Profile;
-pub use settings::{AppSettings, SettingsView, UpdateChannel};
+pub use settings::{AppSettings, KeyAction, SettingsView, UpdateChannel};
 
 use api_types::{
     Channel, ClientInfo, InviteLink, PresenceState, PublicConfig, RedeemInviteRequest, User,

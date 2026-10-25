@@ -191,6 +191,36 @@ describe('Voice module: channel tree', () => {
   });
 });
 
+describe('Mute and deafen (A3)', () => {
+  it('shows stumm and taub from the presence and follows the engine for me', async () => {
+    const engine = createMockEngine('call');
+    const api = createMockApi('call', engine);
+    render(App, { props: { api, engine } });
+    await screen.findByRole('heading', { level: 1, name: /^Hallo / });
+    const raid = screen.getByRole('list', { name: 'Leute in Raid-Abend' });
+    expect(within(raid).getByText('Tim').nextElementSibling).toHaveTextContent('stumm');
+    // A key press in a game: the engine flips and reports; the dock shows it.
+    await engine.send({ type: 'toggleDeafened' });
+    await waitFor(() =>
+      expect(within(dock()).getByRole('button', { name: 'Ton stummschalten' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      ),
+    );
+    expect(within(dock()).getByRole('button', { name: 'Mikrofon stummschalten' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(within(dock()).getByText(/Mikrofon aus · Ton aus/)).toBeInTheDocument();
+    await engine.send({ type: 'toggleDeafened' });
+    await waitFor(() =>
+      expect(
+        within(dock()).getByRole('button', { name: 'Mikrofon stummschalten' }),
+      ).toHaveAttribute('aria-pressed', 'false'),
+    );
+  });
+});
+
 describe('Voice module: the way in', () => {
   it('asks for a name, then microphone and speaking mode, and lands in the lobby', async () => {
     await start('login');
@@ -391,6 +421,36 @@ describe('Settings: Einfach und Profi', () => {
     expect(
       await screen.findByRole('heading', { level: 1, name: 'Audio und Sprechen' }),
     ).toBeInTheDocument();
+  });
+
+  it('offers push-to-talk, mute and deafen keys in „Tasten“ and refuses a double key', async () => {
+    const engine = createMockEngine('call');
+    const api = createMockApi('call', engine);
+    render(App, { props: { api, engine } });
+    await screen.findByRole('heading', { level: 1, name: /^Hallo / });
+    await openMe('Tasten');
+    expect(screen.getByRole('heading', { level: 1, name: 'Tasten' })).toBeInTheDocument();
+    const section = (name: string) => screen.getByRole('region', { name: new RegExp(`^${name}`) });
+    for (const name of ['Push-to-Talk', 'Stumm', 'Taub']) {
+      expect(within(section(name)).getByText('keine')).toBeInTheDocument();
+    }
+    await fireEvent.click(
+      within(section('Stumm')).getByRole('button', { name: 'Taste festlegen' }),
+    );
+    expect(await within(section('Stumm')).findByText('F7')).toBeInTheDocument();
+    expect((await api.appSettings()).muteKey).toBe('F7');
+    // The mock presses F7 for „Stumm“ and F8 for „Taub“. Once F8 belongs to „Stumm“ (set
+    // by hand), choosing the „Taub“ key again runs into the one-key-one-thing rule.
+    await fireEvent.click(within(section('Taub')).getByRole('button', { name: 'Taste festlegen' }));
+    expect(await within(section('Taub')).findByText('F8')).toBeInTheDocument();
+    await api.setAppSettings({ ...(await api.appSettings()), muteKey: 'F8' });
+    await fireEvent.click(within(section('Taub')).getByRole('button', { name: 'Andere Taste' }));
+    expect(await within(section('Taub')).findByRole('alert')).toHaveTextContent(
+      'schon für „Stumm“ belegt',
+    );
+    await fireEvent.click(within(section('Taub')).getByRole('button', { name: 'Entfernen' }));
+    await waitFor(async () => expect((await api.appSettings()).deafenKey).toBeNull());
+    expect(within(section('Taub')).getByText('keine')).toBeInTheDocument();
   });
 
   it('shows the send chain as stages with levels, cost and parameters', async () => {

@@ -412,6 +412,12 @@ pub struct PresenceState {
     pub app: String,
     pub talk: TalkMode,
     pub away: bool,
+    /// Their microphone is off (A3) — by key or dock button; also true while deafened.
+    #[serde(default)]
+    pub muted: bool,
+    /// They hear nothing right now (A3) — they will not answer, so do not wait for them.
+    #[serde(default)]
+    pub deafened: bool,
 }
 
 /// One person as the presence room shows them: identity, name and their state.
@@ -429,11 +435,14 @@ impl PresenceState {
     pub const KEY_APP: &'static str = "app";
     pub const KEY_TALK: &'static str = "talk";
     pub const KEY_AWAY: &'static str = "away";
+    pub const KEY_MUTED: &'static str = "muted";
+    pub const KEY_DEAFENED: &'static str = "deaf";
 
     /// Attributes to send with `set_attributes`. Every key is always present: an empty
     /// value deletes the key on the server, which is how "no channel" and "not away" are
     /// expressed without a second round trip.
     pub fn to_attributes(&self) -> HashMap<String, String> {
+        let flag = |on: bool| if on { "1" } else { "" }.to_string();
         HashMap::from([
             (
                 Self::KEY_CHANNEL.to_string(),
@@ -441,10 +450,9 @@ impl PresenceState {
             ),
             (Self::KEY_APP.to_string(), self.app.clone()),
             (Self::KEY_TALK.to_string(), self.talk.as_str().to_string()),
-            (
-                Self::KEY_AWAY.to_string(),
-                if self.away { "1" } else { "" }.to_string(),
-            ),
+            (Self::KEY_AWAY.to_string(), flag(self.away)),
+            (Self::KEY_MUTED.to_string(), flag(self.muted)),
+            (Self::KEY_DEAFENED.to_string(), flag(self.deafened)),
         ])
     }
 
@@ -461,6 +469,8 @@ impl PresenceState {
             app: get(Self::KEY_APP).unwrap_or_default().to_string(),
             talk: TalkMode::parse(get(Self::KEY_TALK)),
             away: get(Self::KEY_AWAY).is_some(),
+            muted: get(Self::KEY_MUTED).is_some(),
+            deafened: get(Self::KEY_DEAFENED).is_some(),
         }
     }
 }
@@ -551,11 +561,15 @@ example/api/  ";
             app: "nightly 0.4.2".into(),
             talk: TalkMode::Ptt,
             away: true,
+            muted: true,
+            deafened: false,
         };
         let attributes = state.to_attributes();
         assert_eq!(attributes["channel"], "raid");
         assert_eq!(attributes["talk"], "ptt");
         assert_eq!(attributes["away"], "1");
+        assert_eq!(attributes["muted"], "1");
+        assert_eq!(attributes["deaf"], "");
         assert_eq!(PresenceState::from_attributes(&attributes), state);
     }
 
@@ -565,7 +579,9 @@ example/api/  ";
         // Empty = delete on the server; every key is sent so nothing stale survives.
         assert_eq!(cleared["channel"], "");
         assert_eq!(cleared["away"], "");
-        assert_eq!(cleared.len(), 4);
+        assert_eq!(cleared["muted"], "");
+        assert_eq!(cleared["deaf"], "");
+        assert_eq!(cleared.len(), 6);
         let odd = HashMap::from([
             ("channel".to_string(), String::new()),
             ("talk".to_string(), "telepathy".to_string()),
@@ -574,6 +590,10 @@ example/api/  ";
         assert_eq!(state.channel_id, None);
         assert_eq!(state.talk, TalkMode::Vad);
         assert!(!state.away);
+        assert!(
+            !state.muted && !state.deafened,
+            "an older client sends no mute keys"
+        );
     }
 
     #[test]

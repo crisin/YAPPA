@@ -13,4 +13,12 @@ channelId: string | null,
 /**
  * `<update channel> <version>`, e.g. `nightly 0.4.2`.
  */
-app: string, talk: TalkMode, away: boolean, };
+app: string, talk: TalkMode, away: boolean, 
+/**
+ * Their microphone is off (A3) — by key or dock button; also true while deafened.
+ */
+muted: boolean, 
+/**
+ * They hear nothing right now (A3) — they will not answer, so do not wait for them.
+ */
+deafened: boolean, };

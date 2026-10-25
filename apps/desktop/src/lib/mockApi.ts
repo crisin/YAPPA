@@ -10,6 +10,7 @@ import type { Channel } from './types/Channel';
 import defaultAppSettings from './types/defaultAppSettings.json';
 import type { EventEntry } from './types/EventEntry';
 import type { InviteCode } from './types/InviteCode';
+import type { KeyAction } from './types/KeyAction';
 import type { Member } from './types/Member';
 import type { Participant } from './types/Participant';
 import type { PresenceState } from './types/PresenceState';
@@ -55,6 +56,8 @@ const state = (channelId: string | null, extra: Partial<PresenceState> = {}): Pr
   app: 'nightly 0.1.0',
   talk: 'vad',
   away: false,
+  muted: false,
+  deafened: false,
   ...extra,
 });
 
@@ -62,7 +65,7 @@ const state = (channelId: string | null, extra: Partial<PresenceState> = {}): Pr
 const EVENING: Record<string, PresenceState> = {
   ben: state('raid'),
   sasha: state('raid'),
-  tim: state('raid'),
+  tim: state('raid', { muted: true }),
   lea: state('raid', { talk: 'ptt' }),
   mo: state('lobby'),
   jule: state('lobby'),
@@ -262,10 +265,20 @@ export function createMockApi(scene: Scene = DEFAULT_SCENE, engine?: Engine): Ap
       appSettings = structuredClone(settings);
       return Promise.resolve();
     },
-    // In the browser there is no hook: pretend the side button of the mouse was pressed.
-    capturePttKey() {
-      appSettings = { ...appSettings, pttKey: 'Mouse4' };
-      return Promise.resolve('Mouse4');
+    // In the browser there is no hook: pretend a key was pressed — the mouse side button
+    // for push-to-talk, F7 and F8 for mute and deafen. One key does one thing, as in Rust.
+    captureKey(action) {
+      const field = { ptt: 'pttKey', mute: 'muteKey', deafen: 'deafenKey' } as const;
+      const pressed = { ptt: 'Mouse4', mute: 'F7', deafen: 'F8' }[action];
+      const holder = (Object.keys(field) as KeyAction[]).find(
+        (a) => a !== action && appSettings[field[a]] === pressed,
+      );
+      if (holder) {
+        const label = { ptt: 'Push-to-Talk', mute: 'Stumm', deafen: 'Taub' }[holder];
+        return reject('key_taken', `Diese Taste ist schon für „${label}“ belegt.`);
+      }
+      appSettings = { ...appSettings, [field[action]]: pressed };
+      return Promise.resolve(pressed);
     },
     hotkeysGlobal: () => Promise.resolve(true),
     inviteLinks(handler) {

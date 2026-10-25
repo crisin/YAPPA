@@ -38,8 +38,6 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 **A · Audio block** (ADR-009, interview 2026-10-23) — before M4; order is the decision
 
-- [ ] A3 Global mute and deafen keys in „Tasten“ through the existing hook; dock shows
-      the state (user: before the next evening)
 - [ ] A5 Monitor „Mich selbst hören“ in the Signalkette: chain output into the playout
       mix as a local slot while the page is open
 - [ ] A6 Drift compensation: hold each speaker's playout ring at the cushion with a
@@ -141,6 +139,17 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
       stats log line. Measured before/after (Ryzen 7 7700X, release): mixer 20 speakers
       11.42 → 13.53 µs per 10 ms block (0.1 µs per speaker), leveler alone 0.71 µs,
       limiter 1.09 µs — the send chain gains ≈ 1 µs of its 5 ms budget.
+- [x] A3 Global mute and deafen keys (ADR-009, 2026-10-25): „Stumm“ and „Taub“ next to
+      push-to-talk in Profi → „Tasten“, same hook (`platform::Hotkeys` now carries three
+      actions), same capture dialog, one key does one thing (`AppSettings::assign_key`
+      names the holder). The engine owns the state (`audio_engine::mute::MuteState`:
+      deafen implies mute, undeafen gives the microphone back as it was) and answers every
+      change with `Event::MuteState`; key, dock button and UI all go through
+      `ToggleMuted`/`ToggleDeafened`. Presence carries `muted`/`deaf` (ADR-005), so the
+      channel tree shows „stumm“/„taub“ behind the name for everybody. Keys survive a
+      restart (app settings). Verified: unit tests in mute/platform/client/api-types,
+      engine integration test (silence on the wire while deafened), UI tests, browser mode
+      by hand; not verified: a real key press in a fullscreen game (user, testabend).
 - [x] Audio quality tiers (2026-10-25): profiles Sparsam/Standard/Hoch/Studio/Stress in
       the settings schema (v3, migration from the bare bitrate), the values behind them
       (bitrate, mono/stereo, RED, DTX) editable in Profi → „Netzwerk“, a profile change

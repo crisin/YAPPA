@@ -266,13 +266,24 @@ Mehr dazu: [Echokompensation (Wikipedia)](https://de.wikipedia.org/wiki/Echokomp
 
 ## Push-to-Talk
 
-Das Mikrofon ist nur offen, solange eine Taste gedrückt ist. Noch nicht in yAPPA – zurzeit
-ist das Mikrofon immer offen, solange es nicht stummgeschaltet ist.
+Das Mikrofon ist nur offen, solange eine Taste gedrückt ist. In yAPPA ist das der Modus
+„Taste halten“ unter „Audio und Sprechen“; die Taste wählst du dort oder unter „Tasten“.
 
-Geplant ist eine globale Taste, die auch funktioniert, wenn ein Spiel im Vollbild läuft.
-Dazu kommt eine Sprachaktivierung mit einstellbarer Schwelle als Alternative.
+Die Taste ist global: sie funktioniert auch, wenn ein Spiel im Vollbild läuft, und das
+Spiel bekommt sie trotzdem. Die Alternative ist die Sprachaktivierung mit einstellbarer
+Schwelle, die Voreinstellung.
 
 Mehr dazu: [Push-to-talk (Wikipedia)](https://de.wikipedia.org/wiki/Push-to-talk)
+
+## Stumm und Taub
+
+Stumm heißt: dein Mikrofon ist aus, du hörst aber alle. Taub heißt: du hörst nichts –
+und sendest auch nichts, denn wer nichts hört, will nicht ins Leere reden.
+
+Beides schaltest du im Dock unten links oder mit einer globalen Taste aus „Tasten“ – die
+wirkt auch mitten im Spiel. Die anderen sehen „stumm“ oder „taub“ hinter deinem Namen.
+Hebst du Taub wieder auf, ist dein Mikrofon so wie davor: an, wenn es an war, aus, wenn du
+es vorher selbst ausgeschaltet hattest.
 
 ## Rauschunterdrückung
 

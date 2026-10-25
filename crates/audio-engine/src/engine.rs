@@ -6,6 +6,7 @@
 use crate::chain::{Chain, ChainConfig, STAGES};
 use crate::device::{AudioIo, DeviceList, OpenDevice};
 use crate::mixer::{mixer, MixerControl, MixerRt};
+use crate::mute::MuteState;
 use crate::stats::network_stats;
 use dsp::Resampler;
 use dsp::{db_to_gain, gain_to_db};
@@ -136,6 +137,7 @@ pub fn spawn(
         device_names: HashMap::new(),
         device_state: None,
         poll_age: 0,
+        mute: MuteState::default(),
         pump,
         ring_tx,
         chain_tx,
@@ -201,6 +203,8 @@ struct Engine {
     device_state: Option<(DeviceSlot, DeviceSlot)>,
     /// Seconds since the device list was last polled while degraded.
     poll_age: u32,
+    /// Microphone and hearing (A3): one place, whatever flipped them.
+    mute: MuteState,
     pump: Arc<PumpShared>,
     /// The capture ring and the device's sample rate, for the pump.
     ring_tx: mpsc::Sender<(Consumer<f32>, u32)>,
@@ -316,15 +320,12 @@ impl Engine {
             Command::SetPttPressed { pressed } => {
                 self.pump.ptt.store(pressed, Relaxed);
             }
-            Command::SetMuted { muted } => {
-                tracing::info!(muted, "microphone mute");
-                self.pump.muted.store(muted, Relaxed);
-                self.transport.set_muted(muted);
-            }
+            Command::SetMuted { muted } => self.change_mute(|m| m.set_muted(muted)),
             Command::SetDeafened { deafened } => {
-                tracing::info!(deafened, "deafen");
-                self.mixer.set_deafened(deafened);
+                self.change_mute(|m| m.set_deafened(deafened));
             }
+            Command::ToggleMuted => self.change_mute(MuteState::toggle_muted),
+            Command::ToggleDeafened => self.change_mute(MuteState::toggle_deafened),
             Command::SetPeerVolume {
                 identity,
                 track: TrackKind::Voice,
@@ -376,6 +377,7 @@ impl Engine {
                 self.emit_devices();
                 self.sync_device_state(true);
                 self.emit(Event::Connection { state: self.state });
+                self.emit_mute_state();
                 if let Some((room, identity)) = self.room.clone() {
                     self.emit(Event::Joined { room, identity });
                 }
@@ -385,6 +387,35 @@ impl Engine {
                 }
             }
         }
+    }
+
+    /// One change to microphone or hearing, from a key, a button or a command: apply what
+    /// is in effect to the send path, the transport and the mix, and say so — once, and
+    /// only when something really changed.
+    fn change_mute(&mut self, change: impl FnOnce(&mut MuteState)) {
+        let before = self.mute.effective();
+        change(&mut self.mute);
+        let now = self.mute.effective();
+        if now == before {
+            return;
+        }
+        tracing::info!(muted = now.muted, deafened = now.deafened, "mute state");
+        if now.muted != before.muted {
+            self.pump.muted.store(now.muted, Relaxed);
+            self.transport.set_muted(now.muted);
+        }
+        if now.deafened != before.deafened {
+            self.mixer.set_deafened(now.deafened);
+        }
+        self.emit_mute_state();
+    }
+
+    fn emit_mute_state(&self) {
+        let now = self.mute.effective();
+        self.emit(Event::MuteState {
+            muted: now.muted,
+            deafened: now.deafened,
+        });
     }
 
     fn apply_settings(&mut self, new: Settings) {
