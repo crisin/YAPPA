@@ -2,10 +2,12 @@
 
 use audio_engine::device::{AudioIo, DeviceCounters, DeviceList, OpenDevice};
 use audio_engine::mixer::MixerRt;
-use audio_engine::{spawn, EngineConfig, EngineHandle};
+use audio_engine::{
+    spawn, AppCapture, CaptureHandle, CaptureSink, EngineConfig, EngineHandle, NoCapture,
+};
 use engine_protocol::{
-    AudioDevice, Command, ConnectionState, DeviceSlot, Event, QualityProfile, Settings, TrackKind,
-    VoiceCodec,
+    AppSource, AudioDevice, Command, ConnectionState, DeviceSlot, Event, QualityProfile, Settings,
+    TrackKind, VoiceCodec,
 };
 use rtrb::Producer;
 use std::sync::atomic::Ordering::Relaxed;
@@ -13,7 +15,8 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use transport::{
-    AudioReceiver, EventFn, LinkState, PublishOptions, Transport, TransportEvent, VoiceOut, BLOCK,
+    AudioReceiver, EventFn, LinkState, PublishOptions, StereoOut, Transport, TransportEvent,
+    VoiceOut, BLOCK,
 };
 
 const VOICE: transport::TrackKind = transport::TrackKind::Voice;
@@ -30,6 +33,17 @@ struct Wire {
     sent: Mutex<Vec<Vec<i16>>>,
     /// Blocks on the soundboard track (ADR-010).
     sound_sent: Mutex<Vec<Vec<i16>>>,
+    /// Frames on the music track (ADR-011), interleaved stereo.
+    music_sent: Mutex<Vec<Vec<i16>>>,
+}
+
+/// The app audio's end of the fake wire.
+struct MusicWire(Arc<Wire>);
+
+impl StereoOut for MusicWire {
+    fn send(&self, frame: &[i16]) {
+        self.0.music_sent.lock().unwrap().push(frame.to_vec());
+    }
 }
 
 /// The soundboard's end of the fake wire.
@@ -97,6 +111,85 @@ impl Transport for FakeTransport {
     }
     fn sound_out(&self) -> Arc<dyn VoiceOut> {
         Arc::new(SoundWire(self.0.clone()))
+    }
+    fn music_out(&self) -> Arc<dyn StereoOut> {
+        Arc::new(MusicWire(self.0.clone()))
+    }
+}
+
+// ── fake app capture (ADR-011) ──────────────────────────────────────────────────────────
+
+/// Two applications: `game` (pid 7) plays a steady 44.1 kHz stereo signal — left 0.5,
+/// right −0.5 — in 10 ms packets until stopped; `short` (pid 9) ends by itself after a few
+/// packets, as an application that closes would; every other pid is refused.
+struct FakeCapture(Arc<Wire>);
+
+struct FakeHandle {
+    stop: Arc<std::sync::atomic::AtomicBool>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl CaptureHandle for FakeHandle {}
+
+impl Drop for FakeHandle {
+    fn drop(&mut self) {
+        self.stop.store(true, Relaxed);
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+impl AppCapture for FakeCapture {
+    fn available(&self) -> bool {
+        true
+    }
+    fn list(&self) -> Result<Vec<AppSource>, String> {
+        self.0.calls.lock().unwrap().push("list apps".into());
+        Ok(vec![
+            AppSource {
+                pid: 7,
+                name: "game".into(),
+                active: true,
+            },
+            AppSource {
+                pid: 9,
+                name: "short".into(),
+                active: false,
+            },
+        ])
+    }
+    fn start(
+        &mut self,
+        pid: u32,
+        mut sink: Box<dyn CaptureSink>,
+    ) -> Result<Box<dyn CaptureHandle>, String> {
+        if pid != 7 && pid != 9 {
+            return Err("no such process".into());
+        }
+        self.0.calls.lock().unwrap().push(format!("capture {pid}"));
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let stopped = stop.clone();
+        let thread = std::thread::spawn(move || {
+            let mut packet = Vec::with_capacity(2 * 441);
+            for _ in 0..441 {
+                packet.extend_from_slice(&[0.5, -0.5]);
+            }
+            let mut n = 0;
+            while !stopped.load(Relaxed) {
+                if pid == 9 && n == 5 {
+                    sink.ended("the application closed".into());
+                    return;
+                }
+                sink.samples(&packet, 44_100, 2);
+                n += 1;
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        });
+        Ok(Box::new(FakeHandle {
+            stop,
+            thread: Some(thread),
+        }))
     }
 }
 
@@ -301,6 +394,7 @@ fn rig(settings: Settings) -> Rig {
     let engine = spawn(
         Box::new(FakeTransport(wire.clone())),
         Box::new(FakeIo(hardware.clone())),
+        Box::new(FakeCapture(wire.clone())),
         settings,
         config,
         move |event| {
@@ -435,6 +529,7 @@ fn an_error_from_before_the_ui_listened_is_handed_over_on_resync() {
     let engine = spawn(
         Box::new(FakeTransport(wire.clone())),
         Box::new(FakeIo(hardware.clone())),
+        Box::new(NoCapture),
         settings(),
         EngineConfig::default(),
         move |event| {
@@ -1411,4 +1506,241 @@ fn a_sound_goes_out_on_its_track_and_into_the_own_mix() {
         "the voice alone, the muted soundboard track not: {}",
         out[0]
     );
+}
+
+// ── app audio (ADR-011) ─────────────────────────────────────────────────────────────────
+
+/// The UI asks for the applications, starts one: its sound goes out on the music track in
+/// stereo at 48 kHz (converted from the capture's 44.1), through the app audio gain,
+/// nothing of it on the voice track; stop ends the stream; a refused pid is an error; an
+/// application that closes ends the stream with an error and the state follows.
+#[test]
+fn app_audio_goes_out_on_the_music_track_and_follows_start_stop_and_the_end() {
+    let rig = rig(transparent());
+    rig.join();
+    rig.engine.send(Command::ListApps);
+    let (available, apps) = rig.wait("apps", |e| match e {
+        Event::Apps { available, apps } => Some((*available, apps.clone())),
+        _ => None,
+    });
+    assert!(available);
+    assert_eq!(
+        apps.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(),
+        ["game", "short"]
+    );
+
+    rig.engine.send(Command::StartAppAudio {
+        pid: 7,
+        name: "Spiel".into(),
+    });
+    let app = rig.wait("app audio running", |e| match e {
+        Event::AppAudio { running: true, app } => Some(app.clone()),
+        _ => None,
+    });
+    assert_eq!(app.as_deref(), Some("Spiel"));
+    rig.wait_until("frames on the music track", || {
+        rig.wire.music_sent.lock().unwrap().len() >= 10
+    });
+    {
+        let frames = rig.wire.music_sent.lock().unwrap();
+        assert_eq!(frames[5].len(), 2 * BLOCK, "stereo, interleaved");
+        assert!(
+            (frames[5][100] - 16_384).abs() < 60,
+            "left: {}",
+            frames[5][100]
+        );
+        assert!(
+            (frames[5][101] - -16_384).abs() < 60,
+            "right: {}",
+            frames[5][101]
+        );
+        assert!(
+            rig.wire
+                .sent
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|b| b.iter().all(|s| *s == 0)),
+            "nothing of it on the voice track"
+        );
+    }
+    // The gain reaches the running stream.
+    rig.engine.send(Command::ApplySettings {
+        settings: Settings {
+            app_audio_gain_db: -6.0,
+            ..transparent()
+        },
+    });
+    rig.wait_until("−6 dB on the wire", || {
+        let frames = rig.wire.music_sent.lock().unwrap();
+        frames.last().is_some_and(|f| (f[100] - 8_192).abs() < 60)
+    });
+
+    rig.engine.send(Command::StopAppAudio);
+    rig.wait("app audio stopped", |e| {
+        matches!(
+            e,
+            Event::AppAudio {
+                running: false,
+                app: None
+            }
+        )
+        .then_some(())
+    });
+    let after_stop = rig.wire.music_sent.lock().unwrap().len();
+    std::thread::sleep(Duration::from_millis(60));
+    assert_eq!(
+        rig.wire.music_sent.lock().unwrap().len(),
+        after_stop,
+        "nothing more after the stop"
+    );
+
+    rig.engine.send(Command::StartAppAudio {
+        pid: 42,
+        name: "Nix".into(),
+    });
+    let message = rig.wait("refused", |e| match e {
+        Event::Error { message } => Some(message.clone()),
+        _ => None,
+    });
+    assert!(
+        message.contains("Nix") && message.contains("no such process"),
+        "{message}"
+    );
+    rig.wait("still not running", |e| {
+        matches!(e, Event::AppAudio { running: false, .. }).then_some(())
+    });
+
+    rig.engine.send(Command::StartAppAudio {
+        pid: 9,
+        name: "Kurz".into(),
+    });
+    rig.wait("running", |e| {
+        matches!(e, Event::AppAudio { running: true, .. }).then_some(())
+    });
+    let message = rig.wait("ended by itself", |e| match e {
+        Event::Error { message } => Some(message.clone()),
+        _ => None,
+    });
+    assert!(
+        message.contains("Kurz") && message.contains("closed"),
+        "{message}"
+    );
+    rig.wait("not running any more", |e| {
+        matches!(
+            e,
+            Event::AppAudio {
+                running: false,
+                app: None
+            }
+        )
+        .then_some(())
+    });
+    assert!(rig.wire.calls().iter().any(|c| c == "capture 7"));
+}
+
+/// The receiving side: a music track takes a slot with its own volume and mute, and
+/// says „streamt“ through the levels while it carries sound.
+#[test]
+fn a_remote_music_track_has_its_own_mute_and_flags_the_level() {
+    let rig = rig(transparent());
+    rig.join();
+    rig.wait_until("output open", || {
+        rig.hardware.speaker.lock().unwrap().is_some()
+    });
+    rig.engine.send(Command::ApplySettings {
+        settings: Settings {
+            auto_level: false,
+            ..transparent()
+        },
+    });
+    let mut music = rig
+        .wire
+        .receiver()
+        .speaker_started("u1", transport::TrackKind::Music);
+    let mut voice = rig.wire.receiver().speaker_started("u1", VOICE);
+    std::thread::sleep(Duration::from_millis(100));
+    let mut out = vec![0f32; BLOCK];
+    let render = |out: &mut Vec<f32>| {
+        out.fill(0.0);
+        rig.hardware
+            .speaker
+            .lock()
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .render(out);
+    };
+    render(&mut out);
+    for _ in 0..3 {
+        music.frame(&[8_000; BLOCK]);
+        voice.frame(&[-8_000; BLOCK]);
+    }
+    render(&mut out);
+    assert!(
+        out.iter().all(|s| s.abs() < 0.01),
+        "voice and music cancel: {}",
+        out[0]
+    );
+    let level = rig.wait("u1 streams", |e| match e {
+        Event::Levels { peers, .. } => peers
+            .iter()
+            .find(|p| p.identity == "u1" && p.music)
+            .cloned(),
+        _ => None,
+    });
+    assert!(level.speaking, "the voice carried sound too");
+    assert!(!level.sound);
+
+    rig.engine.send(Command::SetPeerMuted {
+        identity: "u1".into(),
+        track: TrackKind::Music,
+        muted: true,
+    });
+    std::thread::sleep(Duration::from_millis(50));
+    for _ in 0..3 {
+        music.frame(&[8_000; BLOCK]);
+        voice.frame(&[-8_000; BLOCK]);
+    }
+    render(&mut out);
+    assert!(
+        out.iter().all(|s| (*s - -0.244).abs() < 0.01),
+        "the voice alone, the muted music track not: {}",
+        out[0]
+    );
+}
+
+/// Without an OS capture the engine says so, and starting is an error, not a crash.
+#[test]
+fn without_a_capture_the_feature_is_reported_unavailable() {
+    let wire = Arc::new(Wire::default());
+    let hardware = Arc::new(Hardware::default());
+    let (tx, events) = mpsc::channel();
+    let engine = spawn(
+        Box::new(FakeTransport(wire.clone())),
+        Box::new(FakeIo(hardware.clone())),
+        Box::new(NoCapture),
+        settings(),
+        EngineConfig::default(),
+        move |event| {
+            let _ = tx.send(event);
+        },
+    );
+    let rig = Rig {
+        engine,
+        events,
+        wire,
+        hardware,
+    };
+    rig.engine.send(Command::ListApps);
+    rig.wait("unavailable", |e| {
+        matches!(e, Event::Apps { available: false, apps } if apps.is_empty()).then_some(())
+    });
+    rig.engine.send(Command::StartAppAudio {
+        pid: 1,
+        name: "x".into(),
+    });
+    rig.wait("error", |e| {
+        matches!(e, Event::Error { message } if message.contains("not available")).then_some(())
+    });
 }

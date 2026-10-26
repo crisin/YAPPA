@@ -4602,6 +4602,7 @@ dependencies = [
  "tracing",
  "windows",
  "windows-core",
+ "windows-version",
 ]
 
 [[package]]

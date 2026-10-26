@@ -68,7 +68,7 @@ describe('Session', () => {
       type: 'levels',
       inputDb: -30,
       gateOpen: true,
-      peers: [{ identity: 'anna', levelDb: -20, speaking: true, sound: false }],
+      peers: [{ identity: 'anna', levelDb: -20, speaking: true, sound: false, music: false }],
     });
     expect(session.peerLevels.anna.speaking).toBe(true);
 

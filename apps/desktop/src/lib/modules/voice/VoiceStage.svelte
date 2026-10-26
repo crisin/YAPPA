@@ -1,7 +1,7 @@
 <script lang="ts">
   // Zone C of the voice module: the way in when nobody is logged in, the people of my
   // channel when I am in one, and a short hint in between.
-  import { Music } from '@lucide/svelte';
+  import { Music, Radio } from '@lucide/svelte';
   import { getApp } from '../../app.svelte';
   import LoginCard from '../../LoginCard.svelte';
   import Participants from '../../Participants.svelte';
@@ -9,6 +9,9 @@
   const { session, gang, shell } = getApp();
   const soundboardOpen = $derived(
     shell.inspector.open && shell.inspector.content?.kind === 'soundboard',
+  );
+  const appAudioOpen = $derived(
+    shell.inspector.open && shell.inspector.content?.kind === 'appaudio',
   );
   const inRoom = $derived(session.inRoom && session.connection !== 'connecting');
   const title = $derived(gang.channelName(session.room) ?? session.room ?? 'Raum');
@@ -28,6 +31,19 @@
       <Music size={14} aria-hidden="true" />
       Soundboard{session.playing.length > 0 ? ' · spielt' : ''}
     </button>
+    {#if session.appsAvailable}
+      <button
+        class="small"
+        aria-pressed={appAudioOpen}
+        onclick={() =>
+          appAudioOpen
+            ? shell.closeInspector()
+            : shell.openInspector({ kind: 'appaudio', id: 'appaudio' })}
+      >
+        <Radio size={14} aria-hidden="true" />
+        App-Audio{session.appAudio.running ? ' · streamt' : ''}
+      </button>
+    {/if}
   </div>
   <Participants {session} />
 {:else if gang.status === 'in'}
@@ -54,8 +70,12 @@
   .head {
     display: flex;
     align-items: baseline;
-    justify-content: space-between;
     gap: var(--space-3);
+  }
+
+  .head h1 {
+    flex: 1;
+    min-width: 0;
   }
 
   .head button {

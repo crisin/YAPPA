@@ -11,6 +11,7 @@
 //!   encodes on it.
 //! - **device callbacks** ([`device`], [`mixer`]) — real-time: rings and atomics only.
 
+pub mod appaudio;
 pub mod chain;
 pub mod device;
 pub mod engine;
@@ -20,5 +21,6 @@ mod resample;
 pub mod soundboard;
 pub mod stats;
 
+pub use appaudio::{AppCapture, CaptureHandle, CaptureSink, NoCapture};
 pub use device::{AudioIo, CpalIo};
 pub use engine::{spawn, EngineConfig, EngineHandle};

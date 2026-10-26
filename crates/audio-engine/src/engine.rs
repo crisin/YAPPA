@@ -3,6 +3,7 @@
 //! Everything here may block, allocate and log — the real-time work happens in the device
 //! callbacks, which this thread only talks to through rings and atomics.
 
+use crate::appaudio::{self, AppCapture, AppStream, CaptureHandle, SharedGain};
 use crate::chain::{Chain, ChainConfig, STAGES};
 use crate::device::{AudioIo, DeviceList, OpenDevice};
 use crate::mixer::{mixer, MixerControl, MixerRt, MonitorFeed};
@@ -28,13 +29,12 @@ use transport::{
     VoiceOut, BLOCK,
 };
 
-/// The protocol's track kinds as the transport names them; `None` for a track that does
-/// not exist yet (music, phase 3).
-fn track_kind(kind: TrackKind) -> Option<transport::TrackKind> {
+/// The protocol's track kinds as the transport names them.
+fn track_kind(kind: TrackKind) -> transport::TrackKind {
     match kind {
-        TrackKind::Voice => Some(transport::TrackKind::Voice),
-        TrackKind::Soundboard => Some(transport::TrackKind::Soundboard),
-        TrackKind::Music => None,
+        TrackKind::Voice => transport::TrackKind::Voice,
+        TrackKind::Soundboard => transport::TrackKind::Soundboard,
+        TrackKind::Music => transport::TrackKind::Music,
     }
 }
 
@@ -71,6 +71,13 @@ enum Msg {
     Command(Command),
     Transport(TransportEvent),
     Sound(SoundEvent),
+    /// The app audio capture ended by itself (ADR-011), with the reason. The generation
+    /// names the stream it came from: an old stream's end, still in the inbox when the
+    /// next one started, must not stop the new one (realtime review 2026-10-27).
+    AppEnded {
+        generation: u64,
+        reason: String,
+    },
     Shutdown,
 }
 
@@ -101,10 +108,12 @@ impl Drop for EngineHandle {
     }
 }
 
-/// Starts the engine. `on_event` is called from the control thread.
+/// Starts the engine. `on_event` is called from the control thread. `capture` is the OS's
+/// app audio capture (ADR-011) — [`crate::NoCapture`] where there is none.
 pub fn spawn(
     mut transport: Box<dyn Transport>,
     io: Box<dyn AudioIo>,
+    app_capture: Box<dyn AppCapture>,
     settings: Settings,
     config: EngineConfig,
     on_event: impl Fn(Event) + Send + 'static,
@@ -151,12 +160,18 @@ pub fn spawn(
         )
     };
 
+    let app_gain = appaudio::shared_gain(settings.app_audio_gain_db);
     let settings = Arc::new(Mutex::new(settings));
     let (mixer_back, mixer_returned) = mpsc::channel();
     let mut engine = Engine {
         transport,
         sound,
         playing: Vec::new(),
+        app_capture,
+        app: None,
+        app_gain,
+        app_generation: 0,
+        ended_tx: tx.clone(),
         io,
         on_event: Box::new(on_event),
         pending_errors: RefCell::new(BTreeMap::new()),
@@ -185,6 +200,7 @@ pub fn spawn(
         participants: BTreeMap::new(),
         last_loud: HashMap::new(),
         last_sound: HashMap::new(),
+        last_music: HashMap::new(),
         net_previous: None,
         net: None,
     };
@@ -210,6 +226,7 @@ enum ErrorSource {
     Microphone,
     Output,
     Room,
+    AppAudio,
 }
 
 struct Engine {
@@ -217,6 +234,15 @@ struct Engine {
     /// The soundboard thread (ADR-010) and which of its files play right now.
     sound: SoundThread,
     playing: Vec<String>,
+    /// App audio (ADR-011): the OS capture, the running stream (its handle and the
+    /// application's name as the UI gave it), and the gain the stream reads.
+    app_capture: Box<dyn AppCapture>,
+    app: Option<(Box<dyn CaptureHandle>, String)>,
+    app_gain: SharedGain,
+    /// Counts started streams; an end report carries the number of its stream.
+    app_generation: u64,
+    /// Where a stream reports its own end (a clone of the control thread's inbox).
+    ended_tx: mpsc::Sender<Msg>,
     io: Box<dyn AudioIo>,
     on_event: Box<dyn Fn(Event) + Send>,
     /// Errors that still stand, by source — for a UI that attaches after they happened
@@ -264,6 +290,8 @@ struct Engine {
     last_loud: HashMap<String, Instant>,
     /// When a soundboard track last carried something — the „spielt einen Sound“ flag.
     last_sound: HashMap<String, Instant>,
+    /// When a music track last carried something — the „streamt“ flag (ADR-011).
+    last_music: HashMap<String, Instant>,
     net_previous: Option<(Instant, NetStats)>,
     net: Option<NetworkStats>,
 }
@@ -292,6 +320,7 @@ impl Engine {
                 Ok(Msg::Command(command)) => self.command(command),
                 Ok(Msg::Transport(event)) => self.transport_event(event),
                 Ok(Msg::Sound(event)) => self.sound_event(event),
+                Ok(Msg::AppEnded { generation, reason }) => self.app_ended(generation, reason),
                 Ok(Msg::Shutdown) | Err(RecvTimeoutError::Disconnected) => break,
                 Err(RecvTimeoutError::Timeout) => {}
             }
@@ -316,6 +345,7 @@ impl Engine {
 
     fn shutdown(&mut self) {
         tracing::info!("engine stopping");
+        self.app = None;
         self.transport.leave();
         self.pump.stop.store(true, Relaxed);
         self.capture = None;
@@ -379,27 +409,23 @@ impl Engine {
                 identity,
                 track,
                 gain_db,
-            } => match track_kind(track) {
-                Some(kind) => {
-                    let gain_db = gain_db.clamp(*PEER_GAIN_DB.start(), *PEER_GAIN_DB.end());
-                    tracing::info!(%identity, ?kind, gain_db, "peer volume");
-                    self.mixer
-                        .set_peer(&identity, kind, |mix| mix.gain = db_to_gain(gain_db));
-                }
-                None => tracing::debug!(?track, "no such track yet"),
-            },
+            } => {
+                let kind = track_kind(track);
+                let gain_db = gain_db.clamp(*PEER_GAIN_DB.start(), *PEER_GAIN_DB.end());
+                tracing::info!(%identity, ?kind, gain_db, "peer volume");
+                self.mixer
+                    .set_peer(&identity, kind, |mix| mix.gain = db_to_gain(gain_db));
+            }
             Command::SetPeerMuted {
                 identity,
                 track,
                 muted,
-            } => match track_kind(track) {
-                Some(kind) => {
-                    tracing::info!(%identity, ?kind, muted, "peer mute");
-                    self.mixer
-                        .set_peer(&identity, kind, |mix| mix.muted = muted);
-                }
-                None => tracing::debug!(?track, "no such track yet"),
-            },
+            } => {
+                let kind = track_kind(track);
+                tracing::info!(%identity, ?kind, muted, "peer mute");
+                self.mixer
+                    .set_peer(&identity, kind, |mix| mix.muted = muted);
+            }
             Command::PlaySound { path, gain_db } => {
                 let gain_db = gain_db.clamp(*SOUND_GAIN_DB.start(), *SOUND_GAIN_DB.end());
                 tracing::info!(%path, gain_db, "sound requested");
@@ -409,6 +435,14 @@ impl Engine {
             Command::SetSoundGain { path, gain_db } => {
                 let gain_db = gain_db.clamp(*SOUND_GAIN_DB.start(), *SOUND_GAIN_DB.end());
                 self.sound.send(SoundCommand::ClipGain(path, gain_db));
+            }
+            Command::ListApps => self.emit_apps(),
+            Command::StartAppAudio { pid, name } => self.start_app_audio(pid, name),
+            Command::StopAppAudio => {
+                if self.app.take().is_some() {
+                    tracing::info!("app audio stopped");
+                }
+                self.emit_app_audio();
             }
             Command::ApplySettings { settings } => self.apply_settings(settings),
             Command::Join { url, token } => {
@@ -447,6 +481,8 @@ impl Engine {
                 self.emit(Event::Sounds {
                     playing: self.playing.clone(),
                 });
+                self.emit_apps();
+                self.emit_app_audio();
                 if let Some((room, identity)) = self.room.clone() {
                     self.emit(Event::Joined { room, identity });
                 }
@@ -509,6 +545,10 @@ impl Engine {
         if old.soundboard_gain_db != new.soundboard_gain_db {
             self.sound.send(SoundCommand::Gain(new.soundboard_gain_db));
         }
+        if old.app_audio_gain_db != new.app_audio_gain_db {
+            self.app_gain
+                .store(new.app_audio_gain_db.to_bits(), Relaxed);
+        }
         let chain = ChainConfig::from(&new);
         if chain != ChainConfig::from(&old) {
             let _ = self.chain_tx.send(chain);
@@ -565,6 +605,74 @@ impl Engine {
         }
     }
 
+    // ── app audio (ADR-011) ─────────────────────────────────────────────────────────────
+
+    /// The applications with a sound session, as [`Event::Apps`]; the OS refusing is an
+    /// error and an empty list.
+    fn emit_apps(&mut self) {
+        let available = self.app_capture.available();
+        let apps = if available {
+            match self.app_capture.list() {
+                Ok(apps) => apps,
+                Err(e) => {
+                    self.error(ErrorSource::AppAudio, format!("app audio: {e}"));
+                    Vec::new()
+                }
+            }
+        } else {
+            Vec::new()
+        };
+        self.emit(Event::Apps { available, apps });
+    }
+
+    fn emit_app_audio(&self) {
+        self.emit(Event::AppAudio {
+            running: self.app.is_some(),
+            app: self.app.as_ref().map(|(_, name)| name.clone()),
+        });
+    }
+
+    /// Starts streaming one application: a new [`AppStream`] on the transport's music
+    /// track, driven by the OS capture. A running stream is replaced.
+    fn start_app_audio(&mut self, pid: u32, name: String) {
+        self.app = None;
+        self.app_generation += 1;
+        let generation = self.app_generation;
+        let events = self.ended_tx.clone();
+        let stream = AppStream::new(
+            self.transport.music_out(),
+            self.app_gain.clone(),
+            move |reason| {
+                let _ = events.send(Msg::AppEnded { generation, reason });
+            },
+        );
+        match self.app_capture.start(pid, Box::new(stream)) {
+            Ok(handle) => {
+                tracing::info!(pid, %name, "app audio started");
+                self.resolved(ErrorSource::AppAudio);
+                self.app = Some((handle, name));
+            }
+            Err(e) => self.error(ErrorSource::AppAudio, format!("app audio {name}: {e}")),
+        }
+        self.emit_app_audio();
+    }
+
+    /// The capture stopped by itself: the application closed, or the OS took the stream.
+    /// Only for the stream that is running — a late report of an earlier one is history.
+    fn app_ended(&mut self, generation: u64, reason: String) {
+        if generation != self.app_generation {
+            return;
+        }
+        let Some((_, name)) = self.app.take() else {
+            return;
+        };
+        tracing::warn!(%name, %reason, "app audio ended by itself");
+        self.emit(Event::Error {
+            message: format!("app audio {name}: {reason}"),
+        });
+        self.emit_app_audio();
+    }
+
     // ── transport ───────────────────────────────────────────────────────────────────────
 
     fn transport_event(&mut self, event: TransportEvent) {
@@ -603,6 +711,7 @@ impl Engine {
                 self.participants.remove(&identity);
                 self.last_loud.remove(&identity);
                 self.last_sound.remove(&identity);
+                self.last_music.remove(&identity);
                 self.emit_participants();
             }
             TransportEvent::ParticipantMuted { identity, muted } => {
@@ -662,6 +771,7 @@ impl Engine {
         self.net_previous = None;
         self.last_loud.clear();
         self.last_sound.clear();
+        self.last_music.clear();
         if !self.participants.is_empty() {
             self.participants.clear();
             self.emit_participants();
@@ -912,19 +1022,10 @@ impl Engine {
             return;
         }
         let input = f32::from_bits(self.pump.input_level.load(Relaxed));
-        // The soundboard tracks (ADR-010) only say whether something plays; a person with
-        // a soundboard track and no voice track still gets a line.
-        let mut sounding: HashMap<String, bool> = HashMap::new();
-        for (identity, level) in self.mixer.sound_levels() {
-            if gain_to_db(level) > SPEAKING_DB {
-                self.last_sound.insert(identity.clone(), now);
-            }
-            let on = self
-                .last_sound
-                .get(&identity)
-                .is_some_and(|at| now - *at < SPEAKING_HOLD);
-            sounding.insert(identity, on);
-        }
+        // The soundboard (ADR-010) and music tracks (ADR-011) only say whether something
+        // plays; a person with one of them and no voice track still gets a line.
+        let mut sounding = flags(self.mixer.sound_levels(), &mut self.last_sound, now);
+        let mut streaming = flags(self.mixer.music_levels(), &mut self.last_music, now);
         let mut peers: Vec<PeerLevel> = self
             .mixer
             .levels()
@@ -939,19 +1040,32 @@ impl Engine {
                     .get(&identity)
                     .is_some_and(|at| now - *at < SPEAKING_HOLD);
                 let sound = sounding.remove(&identity).unwrap_or(false);
+                let music = streaming.remove(&identity).unwrap_or(false);
                 PeerLevel {
                     identity,
                     level_db,
                     speaking,
                     sound,
+                    music,
                 }
             })
             .collect();
-        peers.extend(sounding.into_iter().map(|(identity, sound)| PeerLevel {
+        for (identity, sound) in sounding {
+            let music = streaming.remove(&identity).unwrap_or(false);
+            peers.push(PeerLevel {
+                identity,
+                level_db: gain_to_db(0.0),
+                speaking: false,
+                sound,
+                music,
+            });
+        }
+        peers.extend(streaming.into_iter().map(|(identity, music)| PeerLevel {
             identity,
             level_db: gain_to_db(0.0),
             speaking: false,
-            sound,
+            sound: false,
+            music,
         }));
         peers.sort_by(|a, b| a.identity.cmp(&b.identity));
         self.emit(Event::Levels {
@@ -1103,6 +1217,27 @@ impl Engine {
         }
         self.emit(Event::Stats { stats });
     }
+}
+
+/// "Carries something right now" per identity, with the same short hold as `speaking`:
+/// a level above the threshold refreshes `last`, and the flag stays on for the hold.
+fn flags(
+    levels: Vec<(String, f32)>,
+    last: &mut HashMap<String, Instant>,
+    now: Instant,
+) -> HashMap<String, bool> {
+    levels
+        .into_iter()
+        .map(|(identity, level)| {
+            if gain_to_db(level) > SPEAKING_DB {
+                last.insert(identity.clone(), now);
+            }
+            let on = last
+                .get(&identity)
+                .is_some_and(|at| now - *at < SPEAKING_HOLD);
+            (identity, on)
+        })
+        .collect()
 }
 
 /// The wanted device first, then the default — or only the default.

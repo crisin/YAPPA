@@ -1,6 +1,6 @@
 [package]
 name = "platform"
-description = "OS integration behind small traits (CLAUDE.md rule 3): global hotkeys for push-to-talk, later app-audio capture. A missing or failing implementation degrades the feature, never the call."
+description = "OS integration behind small traits (CLAUDE.md rule 3): global hotkeys for push-to-talk, device hot-plug, app-audio capture. A missing or failing implementation degrades the feature, never the call."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -13,16 +13,25 @@ publish.workspace = true
 rdev = "0.5"
 tracing.workspace = true
 
-# Device hot-plug (A2): `IMMNotificationClient` on the MMDevice enumerator. Same version
-# cpal already uses, so no second copy. MIT OR Apache-2.0.
+# Device hot-plug (A2): `IMMNotificationClient` on the MMDevice enumerator; app audio
+# (ADR-011): WASAPI process loopback (`ActivateAudioInterfaceAsync` with a PROPVARIANT
+# blob), audio sessions, process names. Same version cpal already uses, so no second copy.
+# MIT OR Apache-2.0.
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = [
   "Win32_Foundation",
   "Win32_Media_Audio",
+  "Win32_Security",
   "Win32_System_Com",
+  "Win32_System_Com_StructuredStorage",
+  "Win32_System_Threading",
+  "Win32_System_Variant",
 ] }
 # The `implement` macro refers to this crate by name.
 windows-core = "0.62"
+# Process loopback exists from Windows 10 build 20348 on: the build number decides whether
+# app audio is offered at all. MIT OR Apache-2.0.
+windows-version = "0.1"
 
 [lints]
 workspace = true

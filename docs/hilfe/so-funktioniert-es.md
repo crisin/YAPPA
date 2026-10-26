@@ -41,6 +41,11 @@ aus deinem Sound-Ordner über einen eigenen Kanal von dir – ohne Rauschunterdr
 Gate, nur mit Limiter –, und jeder kann deine Sounds für sich leiser drehen, ohne deine
 Stimme anzufassen. Du hörst sie selbst mit.
 
+**App-Audio** ist der dritte Weg: der Ton eines Programms (Spiel, Player, Browser-Tab),
+den Windows direkt beim Programm abgreift, geht in Stereo über einen eigenen Kanal von dir
+in den Channel – nur mit Limiter, ohne Sprachverarbeitung. Die anderen drehen ihn für sich
+leiser; du hörst das Programm weiter wie bisher.
+
 Alles zusammen soll 70 bis 120 Millisekunden dauern (**Latenz**). Gemessen ist bisher der
 digitale Teil mit 50 bis 60 ms; der Rest sind Mikrofon- und Ausgabepuffer.
 

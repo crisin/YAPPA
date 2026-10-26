@@ -1,6 +1,7 @@
 // A stand-in engine for the browser and for tests: it answers every command the way the
 // real one would, with two invented people in the room. No audio, no network.
 import type { Engine } from './engine';
+import type { AppSource } from './types/AppSource';
 import type { Command } from './types/Command';
 import type { Event } from './types/Event';
 import type { Invite } from './types/Invite';
@@ -38,6 +39,11 @@ export const MOCK_SOUNDS: Sound[] = [
 ];
 /** How long a mock sound "plays" before it reports its end. */
 export const MOCK_SOUND_MS = 800;
+/** The browser's applications with a sound session (ADR-011): a game and a browser. */
+export const MOCK_APPS: AppSource[] = [
+  { pid: 4242, name: 'eldenring', active: true },
+  { pid: 1337, name: 'firefox', active: false },
+];
 
 /** Same text format as `Invite::encode` in api-types. */
 export function encodeInvite(invite: Invite): string {
@@ -80,6 +86,18 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
   const sounds: Sound[] = structuredClone(MOCK_SOUNDS);
   let playing: string[] = [];
   const soundsEvent = (): Event => ({ type: 'sounds', playing: [...playing] });
+  /** App audio (ADR-011): the browser "can" capture; which application streams. */
+  let streaming: string | null = null;
+  const appsEvent = (): Event => ({
+    type: 'apps',
+    available: true,
+    apps: structuredClone(MOCK_APPS),
+  });
+  const appAudioEvent = (): Event => ({
+    type: 'appAudio',
+    running: streaming !== null,
+    app: streaming,
+  });
   let ticks = 0;
   let timer: ReturnType<typeof setInterval> | undefined;
 
@@ -179,13 +197,16 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
                   levelDb: -30 + 12 * wave,
                   speaking: wave > 0,
                   sound: false,
+                  music: false,
                 }
-              : // The second person clicks their soundboard for a second out of every three.
+              : // The second person clicks their soundboard for a second out of every
+                // three; the third streams a game for two seconds out of every four.
                 {
                   identity: person.identity,
                   levelDb: -120,
                   speaking: false,
                   sound: i === 1 && ticks % 30 < 10,
+                  music: i === 2 && ticks % 40 < 20,
                 },
           ),
     });
@@ -293,12 +314,30 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
           emit(soundsEvent());
         }
         break;
+      case 'listApps':
+        emit(appsEvent());
+        break;
+      case 'startAppAudio':
+        if (!MOCK_APPS.some((a) => a.pid === command.pid)) {
+          emit({ type: 'error', message: `app audio ${command.name}: no such process` });
+          emit(appAudioEvent());
+          break;
+        }
+        streaming = command.name;
+        emit(appAudioEvent());
+        break;
+      case 'stopAppAudio':
+        streaming = null;
+        emit(appAudioEvent());
+        break;
       case 'resync':
         emit(devices());
         emit(deviceState());
         emit(muteState());
         emit({ type: 'monitorState', on: monitor });
         emit(soundsEvent());
+        emit(appsEvent());
+        emit(appAudioEvent());
         break;
       default:
         break;
@@ -332,7 +371,10 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
       });
     },
     recentLogs() {
+      // Like the real engine's resync: devices, and what app audio there is (ADR-011).
       emit(devices());
+      emit(appsEvent());
+      emit(appAudioEvent());
       return Promise.resolve([]);
     },
     decodeInvite(text) {

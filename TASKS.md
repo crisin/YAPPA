@@ -106,13 +106,13 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
       *Problem while gaming:* a meme needs a key, not a mouse trip. *Planes:* client +
       presence room for the sync; no control plane. *Not built:* server storage, a shared
       library owned by the admin.
-- [ ] App audio (user, 2026-10-26, next after the soundboard): stream a game's or player's
-      sound into the channel — `AppCapture` behind a trait (WASAPI process loopback on
-      Windows, macOS gets what comes along), the `music` track of the planning doc, a stage
-      tile. *Problem while gaming:* sharing a clip or a stream means a second app today.
-      *Planes:* engine (capture + own track) and transport (third track kind, already in
-      `TrackKind`); no control plane. *Not built:* video, system-wide loopback, per-app
-      volume for the listeners beyond the per-track one.
+- [ ] App audio round 2 (ADR-011): a stereo receive mix (the sender already publishes
+      stereo; the mixer and the playout are mono), the application's name for the others
+      (a presence attribute, ADR-005), macOS capture (ScreenCaptureKit), a start/stop
+      hotkey, publishing the `music` track only while streaming if the first evening shows
+      the idle track costing bandwidth. *Problem while gaming:* music in mono is half the
+      fun. *Planes:* engine (stereo mixer), presence room for the name; no control plane.
+      *Not built:* video, system-wide loopback.
 - [ ] Phase 3 · Extensions: lobby radio, effects, S4/CLAP, text chat (`chat` topic), hub
       module
 - [ ] Mobile: sketch in `docs/01-vision-v1.md` section 10; ADR (way A or B) before the first
@@ -136,6 +136,38 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] App audio (ADR-011, 2026-10-27): the sound of one application into the channel as
+      the third track. `audio_engine::appaudio::AppCapture` is the seam (list, start,
+      a sink called from the capture thread), the shell adapts `platform::appaudio` to it
+      like it picks the transport; Windows captures a process tree with WASAPI process
+      loopback (`ActivateAudioInterfaceAsync` on `VAD\Process_Loopback`, 48 kHz stereo
+      float asked for, 44.1 kHz 16-bit as the fallback, the process handle polled so a
+      closed application ends the stream with a reason; needs Windows 10 build 20348 /
+      Windows 11, older builds and macOS hide the button), the session list from
+      `IAudioSessionManager2` on every active output. The capture thread is the pump:
+      `AppStream` resamples per channel, applies `Settings.app_audio_gain_db` (an atomic,
+      so the slider reaches the running stream) and a limiter per channel, and sends
+      interleaved stereo through the new `transport::StereoOut` to the `music` track
+      (`MUSIC_PUBLISH`: 192 kbit/s stereo, no RED, no DTX, published per session like the
+      soundboard). No local slot: the sender hears the application directly. Receivers:
+      slot per (identity, music), per-person volume and mute, no leveler, downmixed to
+      mono by the SDK; `PeerLevel.music` → „streamt“ on the card, in the inspector and
+      as a marker in the channel list; `SLOTS` 48 → 72. Protocol additive: `ListApps`,
+      `StartAppAudio`, `StopAppAudio`, `Event::Apps`, `Event::AppAudio`, `AppSource`.
+      UI: inspector „App-Audio“ next to the soundboard (list, start, Stopp, Neu einlesen,
+      my volume), person inspector with app audio volume and mute, palette commands,
+      browser mock with two apps and a streaming third person. Found on the way: the
+      `windows` crate drops a `PROPVARIANT` with `PropVariantClear`, which freed our
+      stack blob and corrupted the heap on every activation — `ManuallyDrop` fixes it;
+      `platform --example loopback_probe` lists and captures for a quick check. Tests:
+      stream (blocks, sides, resampling, surround, format change, limiter), mixer (music
+      slot), engine integration (fake capture: list, start, gain, stop, refused pid, an
+      application that closes; remote music mute and flag; no capture), platform (real
+      session list, real capture of the own process, refused pid), protocol shapes, UI
+      (hidden where unavailable, list/start/stop, gain, „streamt“, per-person). Verified
+      by hand: a PowerShell playing `tada.wav` captured with peak 0.15. Not verified: a
+      real call over the server with two clients (the user's review step), the idle
+      track's bandwidth, Windows 10.
 - [x] Soundboard round 2 (2026-10-26): per-sound volume (−30..=12 dB, `Sound.gain_db` from
       a `soundboard.json` next to the files, `PlaySound.gain_db` and `SetSoundGain` for a
       change while the clip runs — `Voice.gain` in the sound thread), „Löschen“ to the

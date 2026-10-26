@@ -11,8 +11,9 @@
 //! parameters are `pub(crate)` in the SDK, so a bitrate change also needs a republish.
 
 use crate::{
-    interleave_dual_mono, AudioReceiver, EventFn, LinkState, NetStats, PublishOptions, TrackKind,
-    Transport, TransportEvent, VoiceOut, BLOCK, SAMPLE_RATE, SOUNDBOARD_PUBLISH,
+    interleave_dual_mono, AudioReceiver, EventFn, LinkState, NetStats, PublishOptions, StereoOut,
+    TrackKind, Transport, TransportEvent, VoiceOut, BLOCK, MUSIC_PUBLISH, SAMPLE_RATE,
+    SOUNDBOARD_PUBLISH,
 };
 use futures_util::StreamExt;
 use livekit::options::{AudioEncoding, TrackPublishOptions};
@@ -49,6 +50,8 @@ pub struct LiveKitTransport {
     voice: Arc<Voice>,
     /// The soundboard's source (ADR-010): mono, published once per session.
     sound: Arc<Sound>,
+    /// The app audio's source (ADR-011): stereo, published once per session.
+    music: Arc<Music>,
     hooks: Option<Hooks>,
     session: Option<mpsc::UnboundedSender<Control>>,
     /// The session's task, to wait for a clean goodbye at shutdown.
@@ -95,12 +98,13 @@ impl LiveKitTransport {
         // The sources outlive sessions: every (re)publish makes a new track from one of
         // them. Two of them, because a source's channel count is fixed at creation and the
         // pump thread must not wait for a lock to find the current one.
-        let (mono, stereo, sound_source) = {
+        let (mono, stereo, sound_source, music_source) = {
             let _in_runtime = runtime.enter();
             (
                 NativeAudioSource::new(AudioSourceOptions::default(), SAMPLE_RATE, 1, 0),
                 NativeAudioSource::new(AudioSourceOptions::default(), SAMPLE_RATE, 2, 0),
                 NativeAudioSource::new(AudioSourceOptions::default(), SAMPLE_RATE, 1, 0),
+                NativeAudioSource::new(AudioSourceOptions::default(), SAMPLE_RATE, 2, 0),
             )
         };
         let voice = Arc::new(Voice {
@@ -117,10 +121,17 @@ impl LiveKitTransport {
             live_session: AtomicU64::new(0),
             errors: AtomicU64::new(0),
         });
+        let music = Arc::new(Music {
+            source: music_source,
+            runtime: runtime.handle().clone(),
+            live_session: AtomicU64::new(0),
+            errors: AtomicU64::new(0),
+        });
         Ok(Self {
             runtime,
             voice,
             sound,
+            music,
             hooks: None,
             session: None,
             task: None,
@@ -158,6 +169,7 @@ impl Transport for LiveKitTransport {
             muted: self.muted,
             voice: self.voice.clone(),
             sound: self.sound.clone(),
+            music: self.music.clone(),
             hooks,
         };
         self.task = Some(self.runtime.spawn(session.run(control_rx)));
@@ -192,6 +204,10 @@ impl Transport for LiveKitTransport {
 
     fn sound_out(&self) -> Arc<dyn VoiceOut> {
         self.sound.clone()
+    }
+
+    fn music_out(&self) -> Arc<dyn StereoOut> {
+        self.music.clone()
     }
 }
 
@@ -305,6 +321,39 @@ impl VoiceOut for Sound {
     }
 }
 
+/// The app audio's end of the wire (ADR-011): one stereo source, blocks only while an
+/// application streams.
+struct Music {
+    source: NativeAudioSource,
+    runtime: tokio::runtime::Handle,
+    /// Like [`Voice::live_session`]: the session whose `music` track is published.
+    live_session: AtomicU64,
+    errors: AtomicU64,
+}
+
+impl StereoOut for Music {
+    fn send(&self, frame: &[i16]) {
+        if self.live_session.load(Relaxed) == 0 {
+            return;
+        }
+        let Ok(frame) = <&[i16; 2 * BLOCK]>::try_from(frame) else {
+            return;
+        };
+        let frame = AudioFrame {
+            data: Cow::Borrowed(&frame[..]),
+            sample_rate: SAMPLE_RATE,
+            num_channels: 2,
+            samples_per_channel: BLOCK as u32,
+        };
+        if let Err(e) = self.runtime.block_on(self.source.capture_frame(&frame)) {
+            let n = self.errors.fetch_add(1, Relaxed);
+            if n.is_multiple_of(1000) {
+                tracing::warn!(error = %e, failures = n + 1, "handing an app audio block to LiveKit failed");
+            }
+        }
+    }
+}
+
 struct Session {
     url: String,
     token: String,
@@ -312,6 +361,7 @@ struct Session {
     muted: bool,
     voice: Arc<Voice>,
     sound: Arc<Sound>,
+    music: Arc<Music>,
     hooks: Hooks,
 }
 
@@ -328,16 +378,16 @@ impl Session {
         hooks.emit(TransportEvent::State(LinkState::Disconnected));
     }
 
-    /// Stops our voice and soundboard, unless a newer session has taken over in the meantime.
+    /// Stops our voice, soundboard and app audio, unless a newer session has taken over in
+    /// the meantime.
     fn silence(&self) {
-        let _ = self
-            .voice
-            .live_session
-            .compare_exchange(self.hooks.session, 0, Relaxed, Relaxed);
-        let _ = self
-            .sound
-            .live_session
-            .compare_exchange(self.hooks.session, 0, Relaxed, Relaxed);
+        for live in [
+            &self.voice.live_session,
+            &self.sound.live_session,
+            &self.music.live_session,
+        ] {
+            let _ = live.compare_exchange(self.hooks.session, 0, Relaxed, Relaxed);
+        }
     }
 
     /// `Ok` = left on request, `Err` = could not join or lost the session.
@@ -393,6 +443,11 @@ impl Session {
         match self.publish_sound(&room).await {
             Ok(()) => self.sound.live_session.store(hooks.session, Relaxed),
             Err(e) => tracing::warn!(error = %e, "no soundboard track this session"),
+        }
+        // The music track (ADR-011) the same way: without it, the app audio stays at home.
+        match self.publish_music(&room).await {
+            Ok(()) => self.music.live_session.store(hooks.session, Relaxed),
+            Err(e) => tracing::warn!(error = %e, "no music track this session"),
         }
         hooks.emit(TransportEvent::State(LinkState::Connected));
 
@@ -599,6 +654,37 @@ impl Session {
     }
 }
 
+impl Session {
+    /// Publishes the `music` track (ADR-011) with its fixed options: stereo, 192 kbit/s,
+    /// no RED, no DTX. Source `Unknown` like the soundboard — the name tells the tracks
+    /// apart.
+    async fn publish_music(&self, room: &Room) -> Result<(), String> {
+        let track = LocalAudioTrack::create_audio_track(
+            TrackKind::Music.name(),
+            RtcAudioSource::Native(self.music.source.clone()),
+        );
+        let publish = TrackPublishOptions {
+            audio_encoding: Some(AudioEncoding {
+                max_bitrate: u64::from(MUSIC_PUBLISH.bitrate_bps),
+            }),
+            red: MUSIC_PUBLISH.red,
+            dtx: MUSIC_PUBLISH.dtx,
+            source: TrackSource::Unknown,
+            ..Default::default()
+        };
+        room.local_participant()
+            .publish_track(LocalTrack::Audio(track), publish)
+            .await
+            .map_err(|e| format!("could not publish the music track: {e}"))?;
+        tracing::info!(
+            bitrate_bps = MUSIC_PUBLISH.bitrate_bps,
+            channels = MUSIC_PUBLISH.channels(),
+            "music track published"
+        );
+        Ok(())
+    }
+}
+
 fn joined(participant: &RemoteParticipant) -> TransportEvent {
     let identity = participant.identity().to_string();
     let name = match participant.name() {
@@ -618,7 +704,9 @@ fn mute_change(participant: &Participant, muted: bool, room: &Room) -> Option<Tr
     Some(TransportEvent::ParticipantMuted { identity, muted })
 }
 
-/// Decoded frames of one remote track, until the task is aborted.
+/// Decoded frames of one remote track, until the task is aborted. Every kind arrives as
+/// mono — a stereo `music` track is mixed down by the SDK: the engine's receive mix is
+/// mono (ADR-011 names a stereo playout as the follow-up).
 async fn receive(
     track: RemoteAudioTrack,
     identity: String,

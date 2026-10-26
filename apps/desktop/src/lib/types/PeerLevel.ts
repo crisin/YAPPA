@@ -5,4 +5,9 @@ export type PeerLevel = { identity: string, levelDb: number, speaking: boolean,
  * Their soundboard track (ADR-010) carries a sound right now (with the same short
  * hold as `speaking`) — „spielt einen Sound“ next to the name.
  */
-sound: boolean, };
+sound: boolean, 
+/**
+ * Their `music` track (ADR-011) carries app audio right now (same hold) — „streamt“
+ * next to the name.
+ */
+music: boolean, };
