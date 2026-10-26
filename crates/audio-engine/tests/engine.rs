@@ -1324,7 +1324,10 @@ fn a_sound_goes_out_on_its_track_and_into_the_own_mix() {
         }
         heard
     });
-    rig.engine.send(Command::PlaySound { path: name.clone() });
+    rig.engine.send(Command::PlaySound {
+        path: name.clone(),
+        gain_db: 0.0,
+    });
     let started = rig.wait("sound playing", |e| match e {
         Event::Sounds { playing } if !playing.is_empty() => Some(playing.clone()),
         _ => None,
@@ -1361,6 +1364,7 @@ fn a_sound_goes_out_on_its_track_and_into_the_own_mix() {
 
     rig.engine.send(Command::PlaySound {
         path: dir.join("missing.mp3").display().to_string(),
+        gain_db: 0.0,
     });
     let message = rig.wait("error", |e| match e {
         Event::Error { message } => Some(message.clone()),

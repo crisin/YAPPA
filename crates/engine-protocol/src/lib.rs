@@ -116,12 +116,21 @@ pub enum Command {
     /// Soundboard (ADR-010): play a sound file. It goes out on the own `soundboard` track
     /// (the others can turn it down per person) and into the own playout mix. Several at
     /// once overlap; a limiter keeps the sum below clipping. The engine answers with
-    /// [`Event::Sounds`] when the clip starts and when it ends.
+    /// [`Event::Sounds`] when the clip starts and when it ends. `gain_db` is this sound's
+    /// own volume (−30..=12, before the soundboard gain) — files come in all loudnesses.
     PlaySound {
         path: String,
+        #[serde(default)]
+        gain_db: f32,
     },
     /// Stops every playing sound at once.
     StopSounds,
+    /// Changes one sound's own volume while it plays (and for the clicks after); the UI
+    /// sends it while the slider moves so the ear can follow.
+    SetSoundGain {
+        path: String,
+        gain_db: f32,
+    },
 }
 
 /// Engine -> UI.
@@ -200,7 +209,7 @@ pub enum Event {
 
 /// One sound in the soundboard folder, as the shell lists it for the UI (the folder is the
 /// library — drop a file in, and it is a button).
-#[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct Sound {
@@ -208,6 +217,9 @@ pub struct Sound {
     pub name: String,
     /// Full path, what [`Command::PlaySound`] takes.
     pub path: String,
+    /// This sound's own volume, dB (−30..=12), kept by the shell next to the folder.
+    #[serde(default)]
+    pub gain_db: f32,
 }
 
 /// One side of the sound hardware as it stands right now (A2).
@@ -293,6 +305,10 @@ pub struct PeerLevel {
     pub identity: String,
     pub level_db: f32,
     pub speaking: bool,
+    /// Their soundboard track (ADR-010) carries a sound right now (with the same short
+    /// hold as `speaking`) — „spielt einen Sound“ next to the name.
+    #[serde(default)]
+    pub sound: bool,
 }
 
 #[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq)]
@@ -762,11 +778,36 @@ mod tests {
     fn the_soundboard_commands_and_event_keep_the_tag_shape() {
         assert_eq!(
             serde_json::to_value(Command::PlaySound {
-                path: "C:/sounds/airhorn.mp3".into()
+                path: "C:/sounds/airhorn.mp3".into(),
+                gain_db: -6.0,
             })
             .unwrap(),
-            serde_json::json!({ "type": "playSound", "path": "C:/sounds/airhorn.mp3" })
+            serde_json::json!({ "type": "playSound", "path": "C:/sounds/airhorn.mp3", "gainDb": -6.0 })
         );
+        // A `playSound` from the first soundboard (no gain) still parses, at 0 dB.
+        let old: Command =
+            serde_json::from_value(serde_json::json!({ "type": "playSound", "path": "a.wav" }))
+                .unwrap();
+        assert_eq!(
+            old,
+            Command::PlaySound {
+                path: "a.wav".into(),
+                gain_db: 0.0
+            }
+        );
+        assert_eq!(
+            serde_json::to_value(Command::SetSoundGain {
+                path: "a.wav".into(),
+                gain_db: 3.0
+            })
+            .unwrap(),
+            serde_json::json!({ "type": "setSoundGain", "path": "a.wav", "gainDb": 3.0 })
+        );
+        let level: PeerLevel = serde_json::from_value(
+            serde_json::json!({ "identity": "u1", "levelDb": -20.0, "speaking": true }),
+        )
+        .unwrap();
+        assert!(!level.sound, "a level without the flag means no sound");
         assert_eq!(
             serde_json::to_value(Command::StopSounds).unwrap(),
             serde_json::json!({ "type": "stopSounds" })
@@ -803,6 +844,7 @@ mod tests {
                 identity: "u2".into(),
                 level_db: -40.0,
                 speaking: false,
+                sound: true,
             }],
         };
         let back: Event = serde_json::from_str(&serde_json::to_string(&ev).unwrap()).unwrap();

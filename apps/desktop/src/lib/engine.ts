@@ -35,6 +35,10 @@ export interface Engine {
   addSound(name: string, bytes: Uint8Array): Promise<Sound>;
   /** Shows the sound folder in the file manager — drop files there by hand. */
   openSoundFolder(): Promise<void>;
+  /** Remembers a sound's own volume (−30..12 dB) next to the folder. */
+  setSoundGain(path: string, gainDb: number): Promise<void>;
+  /** Moves a sound to the recycle bin; rejects with a German reason. */
+  removeSound(path: string): Promise<void>;
 }
 
 /** Bytes as base64, the way `soundboard_add` wants them (chunked: a spread of a million
@@ -59,6 +63,8 @@ const tauriEngine: Engine = {
   sounds: () => invoke<Sound[]>('soundboard_list'),
   addSound: (name, bytes) => invoke<Sound>('soundboard_add', { name, base64: toBase64(bytes) }),
   openSoundFolder: () => invoke<void>('soundboard_open_folder'),
+  setSoundGain: (path, gainDb) => invoke<void>('soundboard_set_gain', { path, gainDb }),
+  removeSound: (path) => invoke<void>('soundboard_remove', { path }),
 };
 
 export const engine: Engine = isTauri() ? tauriEngine : createMockEngine(sceneFromUrl());

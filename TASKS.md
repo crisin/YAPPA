@@ -100,15 +100,21 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 - [ ] Bumps when the files are touched anyway: LiveKit server v1.13.10, `livekit` 0.9.6
 - [ ] Phase 2 · Quality: second media server with failover (presence room needs a home,
       ADR-005 revisit), Prometheus/Grafana, load, AEC, four weeks without an outage
-- [ ] Soundboard round 2 (after the POC, ADR-010): hotkeys per sound (same hook as PTT, a
-      key table in the app settings), library sync between clients (byte streams on the
-      presence room, hash-addressed), „spielt gerade“ on the tiles (the track's level into
-      `Levels`), per-sound volume, drift compensation on the local slot if the first evening
-      shows gaps. *Problem while gaming:* a meme needs a key, not a mouse trip. *Planes:*
-      client + presence room for the sync; no control plane. *Not built:* server storage,
-      a shared library owned by the admin.
-- [ ] Phase 3 · Extensions: app audio (`AppCapture`, music track, stage tile), lobby radio,
-      effects, S4/CLAP, text chat (`chat` topic), hub module
+- [ ] Soundboard round 3 (ADR-010): hotkeys per sound (same hook as PTT, a key table in
+      the app settings), library sync between clients (byte streams on the presence room,
+      hash-addressed), drift compensation on the local slot if an evening shows gaps.
+      *Problem while gaming:* a meme needs a key, not a mouse trip. *Planes:* client +
+      presence room for the sync; no control plane. *Not built:* server storage, a shared
+      library owned by the admin.
+- [ ] App audio (user, 2026-10-26, next after the soundboard): stream a game's or player's
+      sound into the channel — `AppCapture` behind a trait (WASAPI process loopback on
+      Windows, macOS gets what comes along), the `music` track of the planning doc, a stage
+      tile. *Problem while gaming:* sharing a clip or a stream means a second app today.
+      *Planes:* engine (capture + own track) and transport (third track kind, already in
+      `TrackKind`); no control plane. *Not built:* video, system-wide loopback, per-app
+      volume for the listeners beyond the per-track one.
+- [ ] Phase 3 · Extensions: lobby radio, effects, S4/CLAP, text chat (`chat` topic), hub
+      module
 - [ ] Mobile: sketch in `docs/01-vision-v1.md` section 10; ADR (way A or B) before the first
       task
 - [ ] Session-Radio (Phase 3, idea 2026-10-23, vision section 11): the lobby radio plays
@@ -130,6 +136,17 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] Soundboard round 2 (2026-10-26): per-sound volume (−30..=12 dB, `Sound.gain_db` from
+      a `soundboard.json` next to the files, `PlaySound.gain_db` and `SetSoundGain` for a
+      change while the clip runs — `Voice.gain` in the sound thread), „Löschen“ to the
+      recycle bin (`trash` crate, folder-only paths), the engine re-decodes a file replaced
+      under the same name (size + mtime stamp in the cache), and the other side flags a
+      playing soundboard track: `Mixer::sound_levels` → `PeerLevel.sound` with the
+      `speaking` hold, shown on the stage card, in the person inspector and as a note in the
+      channel list (mine from `Event::Sounds`). Protocol additive, no version bump. Tests:
+      sound thread (own gain live, replaced file), shell sidecar (write/forget/refuse
+      outside the folder/damaged file), protocol shapes, UI (edit mode live + remembered,
+      delete, „spielt einen Sound“ on card, sidebar and inspector).
 - [x] Tray icon and autostart (2026-10-25): the cat sits in the notification area (Tauri
       `tray-icon`); left click shows the window, the menu has „Fenster zeigen“, „Stumm“ and
       „Taub“ (check marks follow the engine's `MuteState`) and „Beenden“ — the only thing

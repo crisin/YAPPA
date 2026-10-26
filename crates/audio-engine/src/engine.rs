@@ -50,6 +50,8 @@ const SPEAKING_DB: f32 = -45.0;
 const SPEAKING_HOLD: Duration = Duration::from_millis(250);
 /// Per-person volume range offered to the UI.
 const PEER_GAIN_DB: std::ops::RangeInclusive<f32> = -60.0..=12.0;
+/// A sound's own volume (ADR-010), same range as the soundboard gain in .
+const SOUND_GAIN_DB: std::ops::RangeInclusive<f32> = -30.0..=12.0;
 
 #[derive(Debug, Clone, Copy)]
 pub struct EngineConfig {
@@ -182,6 +184,7 @@ pub fn spawn(
         room: None,
         participants: BTreeMap::new(),
         last_loud: HashMap::new(),
+        last_sound: HashMap::new(),
         net_previous: None,
         net: None,
     };
@@ -259,6 +262,8 @@ struct Engine {
     room: Option<(String, String)>,
     participants: BTreeMap<String, Participant>,
     last_loud: HashMap<String, Instant>,
+    /// When a soundboard track last carried something — the „spielt einen Sound“ flag.
+    last_sound: HashMap<String, Instant>,
     net_previous: Option<(Instant, NetStats)>,
     net: Option<NetworkStats>,
 }
@@ -395,11 +400,16 @@ impl Engine {
                 }
                 None => tracing::debug!(?track, "no such track yet"),
             },
-            Command::PlaySound { path } => {
-                tracing::info!(%path, "sound requested");
-                self.sound.send(SoundCommand::Play(path));
+            Command::PlaySound { path, gain_db } => {
+                let gain_db = gain_db.clamp(*SOUND_GAIN_DB.start(), *SOUND_GAIN_DB.end());
+                tracing::info!(%path, gain_db, "sound requested");
+                self.sound.send(SoundCommand::Play(path, gain_db));
             }
             Command::StopSounds => self.sound.send(SoundCommand::Stop),
+            Command::SetSoundGain { path, gain_db } => {
+                let gain_db = gain_db.clamp(*SOUND_GAIN_DB.start(), *SOUND_GAIN_DB.end());
+                self.sound.send(SoundCommand::ClipGain(path, gain_db));
+            }
             Command::ApplySettings { settings } => self.apply_settings(settings),
             Command::Join { url, token } => {
                 tracing::info!(%url, "join requested");
@@ -592,6 +602,7 @@ impl Engine {
             TransportEvent::ParticipantLeft { identity } => {
                 self.participants.remove(&identity);
                 self.last_loud.remove(&identity);
+                self.last_sound.remove(&identity);
                 self.emit_participants();
             }
             TransportEvent::ParticipantMuted { identity, muted } => {
@@ -650,6 +661,7 @@ impl Engine {
         self.net = None;
         self.net_previous = None;
         self.last_loud.clear();
+        self.last_sound.clear();
         if !self.participants.is_empty() {
             self.participants.clear();
             self.emit_participants();
@@ -900,6 +912,19 @@ impl Engine {
             return;
         }
         let input = f32::from_bits(self.pump.input_level.load(Relaxed));
+        // The soundboard tracks (ADR-010) only say whether something plays; a person with
+        // a soundboard track and no voice track still gets a line.
+        let mut sounding: HashMap<String, bool> = HashMap::new();
+        for (identity, level) in self.mixer.sound_levels() {
+            if gain_to_db(level) > SPEAKING_DB {
+                self.last_sound.insert(identity.clone(), now);
+            }
+            let on = self
+                .last_sound
+                .get(&identity)
+                .is_some_and(|at| now - *at < SPEAKING_HOLD);
+            sounding.insert(identity, on);
+        }
         let mut peers: Vec<PeerLevel> = self
             .mixer
             .levels()
@@ -913,13 +938,21 @@ impl Engine {
                     .last_loud
                     .get(&identity)
                     .is_some_and(|at| now - *at < SPEAKING_HOLD);
+                let sound = sounding.remove(&identity).unwrap_or(false);
                 PeerLevel {
                     identity,
                     level_db,
                     speaking,
+                    sound,
                 }
             })
             .collect();
+        peers.extend(sounding.into_iter().map(|(identity, sound)| PeerLevel {
+            identity,
+            level_db: gain_to_db(0.0),
+            speaking: false,
+            sound,
+        }));
         peers.sort_by(|a, b| a.identity.cmp(&b.identity));
         self.emit(Event::Levels {
             input_db: gain_to_db(input),

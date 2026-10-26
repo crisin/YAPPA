@@ -68,7 +68,7 @@ describe('Session', () => {
       type: 'levels',
       inputDb: -30,
       gateOpen: true,
-      peers: [{ identity: 'anna', levelDb: -20, speaking: true }],
+      peers: [{ identity: 'anna', levelDb: -20, speaking: true, sound: false }],
     });
     expect(session.peerLevels.anna.speaking).toBe(true);
 
@@ -177,7 +177,13 @@ describe('Session', () => {
     await vi.advanceTimersByTimeAsync(1100);
     expect(session.stats?.network?.rttMs).toBe(18);
     expect(session.inputs).toHaveLength(2);
-    expect(Object.keys(session.peerLevels)).toEqual(['anna']);
+    // Everybody in the room has a line: Anna talks in waves, Ben clicks his soundboard.
+    expect(Object.keys(session.peerLevels)).toEqual(['anna', 'ben']);
+    expect(session.peerPlaysSound('anna')).toBe(false);
+    // Ben's clicks last a second out of every three: on from the start, off at 1.1 s.
+    expect(session.peerPlaysSound('ben')).toBe(false);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(session.peerPlaysSound('ben')).toBe(true);
     stop();
     vi.useRealTimers();
   });

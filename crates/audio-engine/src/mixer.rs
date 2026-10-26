@@ -521,6 +521,21 @@ impl MixerControl {
             .collect()
     }
 
+    /// Current level of everyone's soundboard track (ADR-010), as (identity, RMS 0..1) —
+    /// only to say who plays a sound right now.
+    pub fn sound_levels(&self) -> Vec<(String, f32)> {
+        let routing = self.routing.lock().unwrap();
+        routing
+            .active
+            .iter()
+            .filter(|((_, kind), _)| *kind == TrackKind::Soundboard)
+            .map(|((identity, _), &index)| {
+                let level = f32::from_bits(self.shared.slots[index].level.load(Relaxed));
+                (identity.clone(), level)
+            })
+            .collect()
+    }
+
     /// Times a speaker's ring ran dry while playing.
     pub fn underruns(&self) -> u32 {
         self.shared.underruns.load(Relaxed)

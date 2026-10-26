@@ -324,10 +324,13 @@ und du hörst sie mit. Der Sound läuft über einen eigenen Kanal von dir, den j
 leiser drehen oder stummschalten kann – deine Stimme bleibt davon unberührt.
 
 Die Sounds liegen als Dateien in einem Ordner auf deinem PC (WAV, MP3, OGG, FLAC, M4A);
-„Ordner öffnen“ zeigt ihn, „Sound hinzufügen“ kopiert eine Datei hinein. Mehrere Klicks
-überlagern sich, ein Limiter hält die Summe unter dem Maximum. Die Datei wird nicht an die
-anderen verteilt, nur der Ton – wer denselben Sound will, braucht die Datei selbst. Tasten
-fürs Soundboard gibt es noch nicht.
+„Ordner öffnen“ zeigt ihn, „Sound hinzufügen“ kopiert eine Datei hinein. „Bearbeiten“ gibt
+jedem Sound eine eigene Lautstärke (die Dateien kommen in allen Lautstärken; der Regler
+wirkt auch, während der Sound läuft) und ein „Löschen“, das die Datei in den Papierkorb
+legt. Mehrere Klicks überlagern sich, ein Limiter hält die Summe unter dem Maximum. Spielt
+jemand einen Sound, steht „spielt einen Sound“ bei der Person und eine Note in der
+Channel-Liste. Die Datei wird nicht an die anderen verteilt, nur der Ton – wer denselben
+Sound will, braucht die Datei selbst. Tasten fürs Soundboard gibt es noch nicht.
 
 Mehr dazu: [Soundboard (Wikipedia)](https://de.wikipedia.org/wiki/Soundboard_(Software))
 

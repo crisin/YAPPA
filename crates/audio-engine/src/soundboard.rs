@@ -14,7 +14,7 @@
 
 use crate::mixer::SoundFeed;
 use dsp::{db_to_gain, Limiter, Resampler};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
@@ -46,16 +46,36 @@ const RELEASE_MS: f32 = 80.0;
 
 /// What the engine tells the sound thread.
 pub enum SoundCommand {
-    /// Play this file (decoded on first use, cached after). A click while the same file is
-    /// still being decoded is one click.
-    Play(String),
+    /// Play this file at its own volume in dB (decoded on first use, cached after). A click
+    /// while the same file is still being decoded is one click.
+    Play(String, f32),
     /// Stop everything at once.
     Stop,
     /// The soundboard volume, dB.
     Gain(f32),
+    /// One file's own volume, dB — for the clips of it playing right now.
+    ClipGain(String, f32),
     Shutdown,
-    /// A helper thread finished decoding.
-    Decoded(String, Result<Vec<f32>, String>),
+    /// A helper thread finished decoding; the stamp is the file as it was read.
+    Decoded(String, Stamp, Result<Vec<f32>, String>),
+}
+
+/// A file as the cache knows it: changed on disk means decode again — „Sound hinzufügen“
+/// may overwrite a file with a better take of the same name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Stamp {
+    len: u64,
+    modified: Option<std::time::SystemTime>,
+}
+
+impl Stamp {
+    fn of(path: &Path) -> Option<Stamp> {
+        let meta = std::fs::metadata(path).ok()?;
+        Some(Stamp {
+            len: meta.len(),
+            modified: meta.modified().ok(),
+        })
+    }
 }
 
 /// What the sound thread tells the engine.
@@ -113,6 +133,8 @@ struct Voice {
     path: String,
     clip: Arc<Vec<f32>>,
     at: usize,
+    /// This clip's own volume, as a factor.
+    gain: f32,
 }
 
 struct Player {
@@ -123,10 +145,10 @@ struct Player {
     decoded: mpsc::Sender<SoundCommand>,
     on_event: Box<dyn Fn(SoundEvent) + Send>,
     voices: Vec<Voice>,
-    cache: HashMap<String, Arc<Vec<f32>>>,
+    cache: HashMap<String, (Stamp, Arc<Vec<f32>>)>,
     cached_samples: usize,
-    /// Files being decoded right now.
-    decoding: HashSet<String>,
+    /// Files being decoded right now, with the volume the click wanted.
+    decoding: HashMap<String, f32>,
     limiter: Limiter,
     /// When the next block is due; `None` while nothing plays.
     next: Option<Instant>,
@@ -149,7 +171,7 @@ impl Player {
             voices: Vec::new(),
             cache: HashMap::new(),
             cached_samples: 0,
-            decoding: HashSet::new(),
+            decoding: HashMap::new(),
             limiter: Limiter::new(SAMPLE_RATE as f32, CEILING_DB, RELEASE_MS),
             next: None,
         }
@@ -197,10 +219,19 @@ impl Player {
     /// `false` = shut down.
     fn handle(&mut self, command: SoundCommand) -> bool {
         match command {
-            SoundCommand::Play(path) => {
-                if let Some(clip) = self.cache.get(&path).cloned() {
-                    self.start(path, clip);
-                } else if self.decoding.insert(path.clone()) {
+            SoundCommand::Play(path, gain_db) => {
+                let stamp = Stamp::of(Path::new(&path));
+                let cached = self
+                    .cache
+                    .get(&path)
+                    .filter(|(known, _)| Some(*known) == stamp)
+                    .map(|(_, clip)| clip.clone());
+                if let Some(clip) = cached {
+                    self.start(path, clip, gain_db);
+                } else if let std::collections::hash_map::Entry::Vacant(slot) =
+                    self.decoding.entry(path.clone())
+                {
+                    slot.insert(gain_db);
                     let decoded = self.decoded.clone();
                     let file = path.clone();
                     let _ = std::thread::Builder::new()
@@ -210,24 +241,31 @@ impl Player {
                             // later click on it: it is reported like any other failure.
                             let result = std::panic::catch_unwind(|| decode(Path::new(&file)))
                                 .unwrap_or_else(|_| Err("the decoder crashed on this file".into()));
-                            let _ = decoded.send(SoundCommand::Decoded(file, result));
+                            let stamp = stamp.unwrap_or(Stamp {
+                                len: 0,
+                                modified: None,
+                            });
+                            let _ = decoded.send(SoundCommand::Decoded(file, stamp, result));
                         });
                 }
             }
-            SoundCommand::Decoded(path, result) => {
+            SoundCommand::Decoded(path, stamp, result) => {
                 // Stop while decoding withdraws the click: cache the clip, do not play it.
                 let wanted = self.decoding.remove(&path);
                 match result {
                     Ok(samples) => {
                         let clip = Arc::new(samples);
+                        if let Some((_, old)) = self.cache.remove(&path) {
+                            self.cached_samples -= old.len();
+                        }
                         if self.cached_samples + clip.len() > CACHE_SAMPLES {
                             self.cache.clear();
                             self.cached_samples = 0;
                         }
                         self.cached_samples += clip.len();
-                        self.cache.insert(path.clone(), clip.clone());
-                        if wanted {
-                            self.start(path, clip);
+                        self.cache.insert(path.clone(), (stamp, clip.clone()));
+                        if let Some(gain_db) = wanted {
+                            self.start(path, clip, gain_db);
                         }
                     }
                     Err(reason) => {
@@ -244,20 +282,34 @@ impl Player {
                 }
             }
             SoundCommand::Gain(db) => self.gain = db_to_gain(db),
+            SoundCommand::ClipGain(path, db) => {
+                let gain = db_to_gain(db);
+                for voice in self.voices.iter_mut().filter(|v| v.path == path) {
+                    voice.gain = gain;
+                }
+                if let Some(pending) = self.decoding.get_mut(&path) {
+                    *pending = db;
+                }
+            }
             SoundCommand::Shutdown => return false,
         }
         true
     }
 
-    fn start(&mut self, path: String, clip: Arc<Vec<f32>>) {
+    fn start(&mut self, path: String, clip: Arc<Vec<f32>>, gain_db: f32) {
         if clip.is_empty() {
             return;
         }
-        tracing::info!(%path, seconds = clip.len() as f32 / SAMPLE_RATE as f32, "sound starts");
+        tracing::info!(%path, gain_db, seconds = clip.len() as f32 / SAMPLE_RATE as f32, "sound starts");
         if self.voices.len() >= MAX_VOICES {
             self.voices.remove(0);
         }
-        self.voices.push(Voice { path, clip, at: 0 });
+        self.voices.push(Voice {
+            path,
+            clip,
+            at: 0,
+            gain: db_to_gain(gain_db),
+        });
         if self.next.is_none() {
             self.next = Some(Instant::now());
         }
@@ -274,7 +326,7 @@ impl Player {
         for voice in &mut self.voices {
             let end = (voice.at + BLOCK).min(voice.clip.len());
             for (o, s) in block.iter_mut().zip(&voice.clip[voice.at..end]) {
-                *o += *s;
+                *o += *s * voice.gain;
             }
             voice.at = end;
         }
@@ -511,9 +563,9 @@ mod tests {
             }
             heard
         });
-        player.send(SoundCommand::Play(name.clone()));
+        player.send(SoundCommand::Play(name.clone(), 0.0));
         std::thread::sleep(Duration::from_millis(50));
-        player.send(SoundCommand::Play(name.clone()));
+        player.send(SoundCommand::Play(name.clone(), 0.0));
         let mut seen = Vec::new();
         let deadline = Instant::now() + Duration::from_secs(5);
         while Instant::now() < deadline {
@@ -557,14 +609,14 @@ mod tests {
         });
         let missing = temp("marker.txt", b"").with_file_name("none.wav");
         let missing = missing.display().to_string();
-        player.send(SoundCommand::Play(missing.clone()));
+        player.send(SoundCommand::Play(missing.clone(), 0.0));
         match events.recv_timeout(Duration::from_secs(5)).unwrap() {
             SoundEvent::Failed { path, .. } => assert_eq!(path, missing),
             SoundEvent::Playing(_) => panic!("nothing to play"),
         }
         let long = vec![10_000i16; 48_000];
         let path = temp("second.wav", &wav(48_000, 1, &long));
-        player.send(SoundCommand::Play(path.display().to_string()));
+        player.send(SoundCommand::Play(path.display().to_string(), 0.0));
         assert!(matches!(
             events.recv_timeout(Duration::from_secs(5)).unwrap(),
             SoundEvent::Playing(p) if p.len() == 1
@@ -580,5 +632,55 @@ mod tests {
         // −6 dB on the way out.
         let sample = sent.0.lock().unwrap()[2][100];
         assert!((sample - 5_000).abs() < 60, "{sample}");
+    }
+
+    /// A clip's own volume applies on top of the soundboard gain, follows a change while
+    /// it plays, and a file replaced on disk under the same name is decoded again.
+    #[test]
+    fn a_clip_has_its_own_volume_and_a_replaced_file_is_read_again() {
+        let (control, _rt) = crate::mixer::mixer();
+        let feed = control.sound_feed().unwrap();
+        let sent = Arc::new(Sent::default());
+        let (events_tx, events) = mpsc::channel();
+        let player = spawn(sent.clone(), feed, 0.0, move |e| {
+            let _ = events_tx.send(e);
+        });
+        let path = temp("own.wav", &wav(48_000, 1, &vec![10_000i16; 48_000]));
+        let name = path.display().to_string();
+        player.send(SoundCommand::Play(name.clone(), -6.0));
+        assert!(matches!(
+            events.recv_timeout(Duration::from_secs(5)).unwrap(),
+            SoundEvent::Playing(p) if p.len() == 1
+        ));
+        std::thread::sleep(Duration::from_millis(60));
+        player.send(SoundCommand::ClipGain(name.clone(), -12.0));
+        std::thread::sleep(Duration::from_millis(60));
+        player.send(SoundCommand::Stop);
+        assert!(matches!(
+            events.recv_timeout(Duration::from_secs(5)).unwrap(),
+            SoundEvent::Playing(p) if p.is_empty()
+        ));
+        {
+            let blocks = sent.0.lock().unwrap();
+            let early = blocks[2][100];
+            assert!((early - 5_000).abs() < 60, "−6 dB: {early}");
+            // The very last block is the silence the loop sends once the voices are gone.
+            let late = blocks[blocks.len() - 2][100];
+            assert!((late - 2_500).abs() < 60, "−12 dB after the change: {late}");
+        }
+        sent.0.lock().unwrap().clear();
+
+        // Same name, other content (and a later mtime): the second click plays the new file.
+        std::thread::sleep(Duration::from_millis(20));
+        std::fs::write(&path, wav(48_000, 1, &vec![-10_000i16; 48_000])).unwrap();
+        player.send(SoundCommand::Play(name.clone(), 0.0));
+        assert!(matches!(
+            events.recv_timeout(Duration::from_secs(5)).unwrap(),
+            SoundEvent::Playing(p) if p.len() == 1
+        ));
+        std::thread::sleep(Duration::from_millis(60));
+        player.send(SoundCommand::Stop);
+        let sample = sent.0.lock().unwrap()[2][100];
+        assert!((sample - -10_000).abs() < 60, "the new file: {sample}");
     }
 }

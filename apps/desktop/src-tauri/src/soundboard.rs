@@ -1,11 +1,62 @@
 //! The soundboard's library (ADR-010): a folder. Every sound file in it is a button in the
 //! UI; „Sound hinzufügen“ copies a file in, „Ordner öffnen“ shows it in the file manager
-//! so one can drop files there by hand. The engine plays by path; nothing here is audio.
+//! so one can drop files there by hand, „Löschen“ moves a file to the recycle bin. Each
+//! sound's own volume lives in `soundboard.json` next to the files, keyed by file name, so
+//! it travels with the folder. The engine plays by path; nothing here is audio.
 
 use crate::App;
 use base64::Engine as _;
 use engine_protocol::Sound;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+
+/// The sidecar with everything the folder itself cannot hold.
+const SIDECAR: &str = "soundboard.json";
+/// A sound's own volume, dB — the same range as the soundboard gain.
+const GAIN_DB: std::ops::RangeInclusive<f32> = -30.0..=12.0;
+
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+struct Sidecar {
+    /// File name → own volume in dB; absent = 0 dB.
+    #[serde(default)]
+    gains: BTreeMap<String, f32>,
+}
+
+fn read_sidecar(dir: &Path) -> Sidecar {
+    match std::fs::read(dir.join(SIDECAR)) {
+        Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_else(|e| {
+            tracing::warn!(error = %e, "soundboard.json is damaged, starting over");
+            Sidecar::default()
+        }),
+        Err(_) => Sidecar::default(),
+    }
+}
+
+fn write_sidecar(dir: &Path, sidecar: &Sidecar) -> std::io::Result<()> {
+    let json = serde_json::to_vec_pretty(sidecar).map_err(std::io::Error::other)?;
+    std::fs::write(dir.join(SIDECAR), json)
+}
+
+fn file_name(path: &Path) -> String {
+    path.file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
+fn stem(path: &Path) -> String {
+    path.file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
+/// A path the UI hands back must be a file of this folder — the UI only ever sees paths
+/// from [`list`], but the IPC boundary is not the place to trust that.
+fn in_folder(dir: &Path, path: &str) -> Result<PathBuf, String> {
+    let path = Path::new(path);
+    let ok = path.parent() == Some(dir) && path.is_file() && is_sound(path);
+    ok.then(|| path.to_path_buf())
+        .ok_or_else(|| "Dieser Sound liegt nicht im Soundboard-Ordner.".into())
+}
 
 /// What the engine's decoder reads (symphonia: WAV, FLAC, Ogg Vorbis, MP3, AAC/M4A).
 const EXTENSIONS: [&str; 7] = ["wav", "flac", "ogg", "oga", "mp3", "m4a", "aac"];
@@ -29,22 +80,50 @@ fn is_sound(path: &Path) -> bool {
         .is_some_and(|e| EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
 }
 
-/// The sounds in a folder, by name.
+/// The sounds in a folder, by name, with their own volume from the sidecar.
 pub fn list(dir: &Path) -> std::io::Result<Vec<Sound>> {
+    let sidecar = read_sidecar(dir);
     let mut sounds: Vec<Sound> = std::fs::read_dir(dir)?
         .filter_map(Result::ok)
         .map(|entry| entry.path())
         .filter(|path| path.is_file() && is_sound(path))
         .map(|path| Sound {
-            name: path
-                .file_stem()
-                .map(|s| s.to_string_lossy().into_owned())
-                .unwrap_or_default(),
+            name: stem(&path),
+            gain_db: sidecar.gains.get(&file_name(&path)).copied().unwrap_or(0.0),
             path: path.display().to_string(),
         })
         .collect();
     sounds.sort_by_key(|s| s.name.to_lowercase());
     Ok(sounds)
+}
+
+/// Remembers one sound's own volume in the sidecar.
+pub fn set_gain(dir: &Path, path: &str, gain_db: f32) -> Result<(), String> {
+    if !GAIN_DB.contains(&gain_db) || gain_db.is_nan() {
+        return Err(format!("Lautstärke {gain_db} dB außerhalb von −30..12."));
+    }
+    let path = in_folder(dir, path)?;
+    let mut sidecar = read_sidecar(dir);
+    if gain_db == 0.0 {
+        sidecar.gains.remove(&file_name(&path));
+    } else {
+        sidecar.gains.insert(file_name(&path), gain_db);
+    }
+    write_sidecar(dir, &sidecar).map_err(|e| e.to_string())
+}
+
+/// Moves a sound to the recycle bin (a wrong click is not the end of a meme) and forgets
+/// its volume.
+pub fn remove(dir: &Path, path: &str) -> Result<(), String> {
+    let path = in_folder(dir, path)?;
+    trash::delete(&path)
+        .map_err(|e| format!("Konnte die Datei nicht in den Papierkorb legen: {e}"))?;
+    let mut sidecar = read_sidecar(dir);
+    if sidecar.gains.remove(&file_name(&path)).is_some() {
+        write_sidecar(dir, &sidecar).map_err(|e| e.to_string())?;
+    }
+    tracing::info!(path = %path.display(), "sound removed");
+    Ok(())
 }
 
 /// A file name as it may land in the folder: the base name only, no path, no control
@@ -62,6 +141,20 @@ pub fn safe_name(name: &str) -> Option<String> {
 #[tauri::command]
 pub fn soundboard_list(app: tauri::State<'_, App>) -> Result<Vec<Sound>, String> {
     list(&app.sound_dir).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn soundboard_set_gain(
+    app: tauri::State<'_, App>,
+    path: String,
+    gain_db: f32,
+) -> Result<(), String> {
+    set_gain(&app.sound_dir, &path, gain_db)
+}
+
+#[tauri::command]
+pub fn soundboard_remove(app: tauri::State<'_, App>, path: String) -> Result<(), String> {
+    remove(&app.sound_dir, &path)
 }
 
 #[tauri::command]
@@ -99,10 +192,12 @@ pub fn soundboard_add(
     std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
     tracing::info!(path = %path.display(), "sound added");
     Ok(Sound {
-        name: Path::new(&name)
-            .file_stem()
-            .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or(name),
+        name: stem(&path),
+        gain_db: read_sidecar(&app.sound_dir)
+            .gains
+            .get(&name)
+            .copied()
+            .unwrap_or(0.0),
         path: path.display().to_string(),
     })
 }
@@ -133,5 +228,36 @@ mod tests {
         }
         let names: Vec<String> = list(&dir).unwrap().into_iter().map(|s| s.name).collect();
         assert_eq!(names, vec!["airhorn", "Zonk"]);
+    }
+
+    #[test]
+    fn a_sounds_volume_lives_in_the_sidecar_and_only_folder_files_are_touched() {
+        let dir = std::env::temp_dir().join(format!("yappa-sb-gain-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let zonk = dir.join("Zonk.wav");
+        std::fs::write(&zonk, b"x").unwrap();
+        let zonk = zonk.display().to_string();
+        set_gain(&dir, &zonk, -6.0).unwrap();
+        assert_eq!(list(&dir).unwrap()[0].gain_db, -6.0);
+        let json = std::fs::read_to_string(dir.join(SIDECAR)).unwrap();
+        assert!(json.contains("\"Zonk.wav\": -6.0"), "{json}");
+        // 0 dB is the default and is not written down.
+        set_gain(&dir, &zonk, 0.0).unwrap();
+        assert!(!std::fs::read_to_string(dir.join(SIDECAR))
+            .unwrap()
+            .contains("Zonk"));
+        assert!(set_gain(&dir, &zonk, 40.0).is_err());
+        // A path outside the folder, or one that is not a sound, is refused — not touched.
+        let elsewhere = dir.join("..").join("elsewhere.wav");
+        std::fs::write(&elsewhere, b"x").unwrap();
+        assert!(set_gain(&dir, &elsewhere.display().to_string(), -3.0).is_err());
+        assert!(remove(&dir, &elsewhere.display().to_string()).is_err());
+        assert!(elsewhere.is_file());
+        std::fs::remove_file(&elsewhere).unwrap();
+        let sidecar = dir.join(SIDECAR).display().to_string();
+        assert!(remove(&dir, &sidecar).is_err());
+        // A damaged sidecar is not fatal: the sounds still list, at 0 dB.
+        std::fs::write(dir.join(SIDECAR), b"{ nope").unwrap();
+        assert_eq!(list(&dir).unwrap()[0].gain_db, 0.0);
     }
 }
