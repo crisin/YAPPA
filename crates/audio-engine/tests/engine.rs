@@ -8,7 +8,7 @@ use engine_protocol::{
     VoiceCodec,
 };
 use rtrb::Producer;
-use std::sync::atomic::Ordering::Relaxed;
+use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -1310,20 +1310,28 @@ fn a_sound_goes_out_on_its_track_and_into_the_own_mix() {
     std::fs::write(&path, wav(48_000, 1, &samples)).unwrap();
     let name = path.display().to_string();
 
-    // The output callback, stood in by a thread: drains the own mix in real time while the
-    // sound plays and counts what it heard.
+    // The output callback, stood in by a thread: drains the own mix in real time until the
+    // sound is over (plus a tail — a slow CI runner decodes late) and counts what it heard.
     let speaker = rig.hardware.speaker.clone();
-    let callback = std::thread::spawn(move || {
-        let mut out = vec![0f32; BLOCK];
-        let mut heard = 0;
-        for _ in 0..60 {
-            out.fill(0.0);
-            speaker.lock().unwrap().as_mut().unwrap().render(&mut out);
-            heard += out.iter().filter(|s| **s > 0.3).count();
-            std::thread::sleep(Duration::from_millis(10));
-        }
-        heard
-    });
+    let over = Arc::new(AtomicBool::new(false));
+    let callback = {
+        let over = over.clone();
+        std::thread::spawn(move || {
+            let mut out = vec![0f32; BLOCK];
+            let mut heard = 0;
+            let mut tail = 20;
+            while tail > 0 {
+                if over.load(Relaxed) {
+                    tail -= 1;
+                }
+                out.fill(0.0);
+                speaker.lock().unwrap().as_mut().unwrap().render(&mut out);
+                heard += out.iter().filter(|s| **s > 0.3).count();
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            heard
+        })
+    };
     rig.engine.send(Command::PlaySound {
         path: name.clone(),
         gain_db: 0.0,
@@ -1336,6 +1344,7 @@ fn a_sound_goes_out_on_its_track_and_into_the_own_mix() {
     rig.wait("sound ended", |e| {
         matches!(e, Event::Sounds { playing } if playing.is_empty()).then_some(())
     });
+    over.store(true, Relaxed);
     let blocks = rig.wire.sound_sent.lock().unwrap();
     assert!(
         (19..=21).contains(&blocks.len()),

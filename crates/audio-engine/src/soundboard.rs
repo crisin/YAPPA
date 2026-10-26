@@ -536,8 +536,11 @@ mod tests {
         }
     }
 
-    /// Two clicks of a 100 ms clip 50 ms apart: both go out, overlapping, limited; the
-    /// playing set is reported at every change, and the thread goes quiet at the end.
+    /// Two clicks of a 100 ms clip, the second as soon as the first plays: both go out,
+    /// overlapping, limited; the playing set is reported at every change, and the thread
+    /// goes quiet at the end. (The second click waits for the first `Playing` on purpose:
+    /// a click while the file is still being decoded counts as the same click, and a slow
+    /// CI runner decodes slower than 50 ms.)
     #[test]
     fn clips_play_overlapping_out_both_ways_and_the_state_is_reported() {
         let (control, mut rt) = crate::mixer::mixer();
@@ -550,43 +553,60 @@ mod tests {
         let loud = vec![i16::MAX - 100; 4800];
         let path = temp("loud.wav", &wav(48_000, 1, &loud));
         let name = path.display().to_string();
-        // The output callback, stood in by a thread: drains the local ring in real time for
-        // half a second and counts what it heard.
-        let callback = std::thread::spawn(move || {
-            let mut out = vec![0f32; BLOCK];
-            let mut heard = 0;
-            for _ in 0..50 {
-                out.fill(0.0);
-                rt.render(&mut out);
-                heard += out.iter().filter(|s| s.abs() > 0.5).count();
-                std::thread::sleep(Duration::from_millis(10));
-            }
-            heard
-        });
-        player.send(SoundCommand::Play(name.clone(), 0.0));
-        std::thread::sleep(Duration::from_millis(50));
-        player.send(SoundCommand::Play(name.clone(), 0.0));
-        let mut seen = Vec::new();
-        let deadline = Instant::now() + Duration::from_secs(5);
-        while Instant::now() < deadline {
-            match events.recv_timeout(Duration::from_millis(500)) {
-                Ok(SoundEvent::Playing(p)) => {
-                    let done = p.is_empty() && !seen.is_empty();
-                    seen.push(p);
-                    if done {
-                        break;
+        // The output callback, stood in by a thread: drains the local ring in real time
+        // until the sounds are over (plus a tail) and counts what it heard.
+        let over = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let callback = {
+            let over = over.clone();
+            std::thread::spawn(move || {
+                let mut out = vec![0f32; BLOCK];
+                let mut heard = 0;
+                let mut tail = 20;
+                while tail > 0 {
+                    if over.load(std::sync::atomic::Ordering::Relaxed) {
+                        tail -= 1;
                     }
+                    out.fill(0.0);
+                    rt.render(&mut out);
+                    heard += out.iter().filter(|s| s.abs() > 0.5).count();
+                    std::thread::sleep(Duration::from_millis(10));
                 }
-                Ok(SoundEvent::Failed { reason, .. }) => panic!("{reason}"),
-                Err(_) => break,
+                heard
+            })
+        };
+        let next = |events: &mpsc::Receiver<SoundEvent>| match events
+            .recv_timeout(Duration::from_secs(10))
+            .expect("an event in time")
+        {
+            SoundEvent::Playing(p) => p,
+            SoundEvent::Failed { reason, .. } => panic!("{reason}"),
+        };
+        player.send(SoundCommand::Play(name.clone(), 0.0));
+        let started = Instant::now();
+        let first = next(&events);
+        assert_eq!(first, vec![name.clone()]);
+        player.send(SoundCommand::Play(name.clone(), 0.0));
+        let mut seen = vec![first];
+        loop {
+            let p = next(&events);
+            let done = p.is_empty();
+            seen.push(p);
+            if done {
+                break;
             }
         }
-        assert_eq!(seen.first().unwrap(), &vec![name.clone()]);
+        let lasted = started.elapsed();
+        over.store(true, std::sync::atomic::Ordering::Relaxed);
         assert!(seen.iter().any(|p| p.len() == 2), "overlapped: {seen:?}");
         assert_eq!(seen.last().unwrap(), &Vec::<String>::new());
         let blocks = sent.0.lock().unwrap();
-        // 100 ms + 50 ms offset = 15 blocks, give or take one for the pacing.
-        assert!((14..=16).contains(&blocks.len()), "{} blocks", blocks.len());
+        // 10 blocks of the first clip plus the offset of the second (a few blocks at most
+        // on a busy machine) — never fewer than one clip, never two clips back to back.
+        assert!(
+            (10..20).contains(&blocks.len()),
+            "{} blocks in {lasted:?}",
+            blocks.len()
+        );
         let peak = blocks.iter().flatten().map(|s| s.abs()).max().unwrap();
         let ceiling = (dsp::db_to_gain(CEILING_DB) * f32::from(i16::MAX)) as i16;
         assert!(peak <= ceiling + 1, "limited: {peak} > {ceiling}");
@@ -594,7 +614,7 @@ mod tests {
         drop(blocks);
         // The same blocks reached the local mix.
         let heard = callback.join().unwrap();
-        assert!(heard > 10 * BLOCK, "heard {heard} loud samples");
+        assert!(heard > 8 * BLOCK, "heard {heard} loud samples");
         drop(player);
     }
 
