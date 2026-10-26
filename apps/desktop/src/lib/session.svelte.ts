@@ -268,10 +268,39 @@ export class Session {
     this.sounds = await this.#engine.sounds();
   }
 
-  /** Plays a sound for everybody in the channel, and for me; the engine answers with
-   * `sounds`. */
+  /** Plays a sound for everybody in the channel, and for me, at its own volume; the engine
+   * answers with `sounds`. */
   playSound(path: string) {
-    return this.#engine.send({ type: 'playSound', path });
+    const gainDb = this.sounds.find((s) => s.path === path)?.gainDb ?? 0;
+    return this.#engine.send({ type: 'playSound', path, gainDb });
+  }
+
+  /** A sound's own volume: the engine follows at once (also while it plays), the folder
+   * remembers it on `persist` (the slider's release — not every pixel of the move). */
+  setSoundGain(path: string, gainDb: number, persist = false) {
+    const sound = this.sounds.find((s) => s.path === path);
+    if (sound) sound.gainDb = gainDb;
+    this.#engine.send({ type: 'setSoundGain', path, gainDb });
+    if (!persist) return Promise.resolve();
+    return this.#engine.setSoundGain(path, gainDb).catch((reason) => {
+      this.soundProblem = String((reason as { message?: string })?.message ?? reason);
+    });
+  }
+
+  /** Moves a sound to the recycle bin and reads the folder again. */
+  async removeSound(path: string) {
+    this.soundProblem = null;
+    try {
+      await this.#engine.removeSound(path);
+      await this.loadSounds();
+    } catch (reason) {
+      this.soundProblem = String((reason as { message?: string })?.message ?? reason);
+    }
+  }
+
+  /** Their soundboard track carries a sound right now (ADR-010). */
+  peerPlaysSound(identity: string): boolean {
+    return this.peerLevels[identity]?.sound ?? false;
   }
 
   stopSounds() {

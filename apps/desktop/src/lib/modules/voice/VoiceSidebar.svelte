@@ -3,6 +3,7 @@
   // channel, so everybody sees who is where without going anywhere. One click (or Enter)
   // joins; a click on a person opens them in the inspector. States are words, not only
   // colours. Without a login (a pasted developer invite) there is only the one room.
+  import { Music } from '@lucide/svelte';
   import { getApp } from '../../app.svelte';
   import type { PresenceEntry } from '../../api';
 
@@ -18,6 +19,12 @@
     if (person.userId === gang.me?.id)
       return session.inRoom && !session.muted && session.inputDb > SPEAKING_DB;
     return session.peerLevels[person.userId]?.speaking ?? false;
+  }
+
+  /** A sound plays on their soundboard track — or on mine (ADR-010). */
+  function playsSound(person: PresenceEntry): boolean {
+    if (person.userId === gang.me?.id) return session.inRoom && session.playing.length > 0;
+    return session.peerPlaysSound(person.userId);
   }
 
   function stateText(person: PresenceEntry): string {
@@ -85,6 +92,11 @@
                       {person.displayName}
                     </button>
                   {/if}
+                  {#if playsSound(person)}
+                    <span class="sound" role="img" aria-label="spielt einen Sound">
+                      <Music size={12} aria-hidden="true" />
+                    </span>
+                  {/if}
                   {#if state}<span class="state">{state}</span>{/if}
                 </li>
               {/each}
@@ -108,6 +120,11 @@
         {#each session.participants as person (person.identity)}
           <li>
             <button class="who" onclick={() => openPerson(person.identity)}>{person.name}</button>
+            {#if session.peerPlaysSound(person.identity)}
+              <span class="sound" role="img" aria-label="spielt einen Sound">
+                <Music size={12} aria-hidden="true" />
+              </span>
+            {/if}
             {#if person.muted}<span class="state">stumm</span>{/if}
           </li>
         {/each}
@@ -205,6 +222,11 @@
     color: var(--color-text-muted);
     font-size: var(--font-size-sm);
     font-weight: normal;
+  }
+
+  .sound {
+    display: inline-flex;
+    color: var(--color-accent);
   }
 
   .empty {

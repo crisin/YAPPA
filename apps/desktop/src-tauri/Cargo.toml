@@ -42,6 +42,8 @@ tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["json"] }
 # The shell is where engine and media plane meet: it picks the LiveKit implementation.
 transport = { workspace = true, features = ["livekit"] }
+# „Löschen“ in the soundboard moves the file to the recycle bin, never hard-deletes.
+trash = "5.2"
 
 [lints]
 workspace = true

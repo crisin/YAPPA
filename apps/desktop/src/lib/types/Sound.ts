@@ -12,4 +12,8 @@ name: string,
 /**
  * Full path, what [`Command::PlaySound`] takes.
  */
-path: string, };
+path: string, 
+/**
+ * This sound's own volume, dB (−30..=12), kept by the shell next to the folder.
+ */
+gainDb: number, };

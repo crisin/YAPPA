@@ -17,11 +17,13 @@
 {#if person}
   <h2>{person.name}</h2>
   <p class="state">
-    {person.muted
-      ? 'hat sich stummgeschaltet'
-      : session.peerLevels[person.identity]?.speaking
-        ? 'spricht'
-        : 'still'}
+    {session.peerPlaysSound(person.identity)
+      ? 'spielt einen Sound'
+      : person.muted
+        ? 'hat sich stummgeschaltet'
+        : session.peerLevels[person.identity]?.speaking
+          ? 'spricht'
+          : 'still'}
   </p>
   <Meter
     db={session.peerLevels[person.identity]?.levelDb ?? -120}

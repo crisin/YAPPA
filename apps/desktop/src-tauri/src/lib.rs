@@ -468,6 +468,8 @@ pub fn run() {
             soundboard::soundboard_folder,
             soundboard::soundboard_open_folder,
             soundboard::soundboard_add,
+            soundboard::soundboard_set_gain,
+            soundboard::soundboard_remove,
             pending_invite_link
         ])
         .build(tauri::generate_context!())

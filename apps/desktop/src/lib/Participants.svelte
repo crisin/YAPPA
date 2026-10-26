@@ -1,5 +1,7 @@
 <script lang="ts">
-  // The others in the room: who speaks, how loud they arrive, and how loud we want them.
+  // The others in the room: who speaks, who plays a sound, how loud they arrive, and how
+  // loud we want them.
+  import { Music } from '@lucide/svelte';
   import Meter from './Meter.svelte';
   import type { Session } from './session.svelte';
 
@@ -18,7 +20,9 @@
         <div class="who">
           <span class="name">{person.name}</span>
           <span class="state">
-            {#if person.muted}
+            {#if level?.sound}
+              <span class="sound"><Music size={12} aria-hidden="true" /> spielt einen Sound</span>
+            {:else if person.muted}
               stumm
             {:else if !person.hasVoice}
               ohne Ton
@@ -103,6 +107,13 @@
     color: var(--color-text-muted);
     font-size: var(--font-size-sm);
     white-space: nowrap;
+  }
+
+  .sound {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    color: var(--color-accent);
   }
 
   .mix {

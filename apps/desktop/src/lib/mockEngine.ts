@@ -32,9 +32,9 @@ export const INVITE_PREFIX = 'yappa1.';
 
 /** The browser's soundboard folder: three classics, so the inspector has something to show. */
 export const MOCK_SOUNDS: Sound[] = [
-  { name: 'Airhorn', path: 'C:/yappa/soundboard/Airhorn.mp3' },
-  { name: 'Tusch', path: 'C:/yappa/soundboard/Tusch.wav' },
-  { name: 'Zonk', path: 'C:/yappa/soundboard/Zonk.ogg' },
+  { name: 'Airhorn', path: 'C:/yappa/soundboard/Airhorn.mp3', gainDb: 0 },
+  { name: 'Tusch', path: 'C:/yappa/soundboard/Tusch.wav', gainDb: -6 },
+  { name: 'Zonk', path: 'C:/yappa/soundboard/Zonk.ogg', gainDb: 0 },
 ];
 /** How long a mock sound "plays" before it reports its end. */
 export const MOCK_SOUND_MS = 800;
@@ -170,10 +170,24 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
       type: 'levels',
       inputDb: -38 + 10 * wave,
       gateOpen: !micMuted(),
-      peers:
-        connected && people.length > 0
-          ? [{ identity: people[0].identity, levelDb: -30 + 12 * wave, speaking: wave > 0 }]
-          : [],
+      peers: !connected
+        ? []
+        : people.map((person, i) =>
+            i === 0
+              ? {
+                  identity: person.identity,
+                  levelDb: -30 + 12 * wave,
+                  speaking: wave > 0,
+                  sound: false,
+                }
+              : // The second person clicks their soundboard for a second out of every three.
+                {
+                  identity: person.identity,
+                  levelDb: -120,
+                  speaking: false,
+                  sound: i === 1 && ticks % 30 < 10,
+                },
+          ),
     });
     const level = (db: number, active = true) => ({ levelDb: db, active });
     emit({
@@ -343,6 +357,7 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
       const sound: Sound = {
         name: base.replace(/\.[^.]+$/, ''),
         path: `C:/yappa/soundboard/${base}`,
+        gainDb: 0,
       };
       const at = sounds.findIndex((s) => s.path === sound.path);
       if (at >= 0) sounds[at] = sound;
@@ -351,5 +366,17 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
       return Promise.resolve(structuredClone(sound));
     },
     openSoundFolder: () => Promise.resolve(),
+    setSoundGain(path, gainDb) {
+      const sound = sounds.find((s) => s.path === path);
+      if (!sound) return Promise.reject('Dieser Sound liegt nicht im Soundboard-Ordner.');
+      sound.gainDb = gainDb;
+      return Promise.resolve();
+    },
+    removeSound(path) {
+      const at = sounds.findIndex((s) => s.path === path);
+      if (at < 0) return Promise.reject('Dieser Sound liegt nicht im Soundboard-Ordner.');
+      sounds.splice(at, 1);
+      return Promise.resolve();
+    },
   };
 }

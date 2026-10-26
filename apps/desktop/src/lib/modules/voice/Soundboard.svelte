@@ -2,8 +2,9 @@
   // Inspector „Soundboard“ (ADR-010): the sound folder as buttons. A click plays the sound
   // for everybody in the channel on my own soundboard track — and for me, so I hear what
   // they get. The folder is the library: „Sound hinzufügen“ copies a file in, „Ordner
-  // öffnen“ shows it. No hotkeys yet (that is the follow-up).
-  import { FolderOpen, Plus, Square } from '@lucide/svelte';
+  // öffnen“ shows it. „Bearbeiten“ turns the pads into rows with a volume of their own and
+  // „Löschen“ (recycle bin, never a hard delete). No hotkeys yet (that is the follow-up).
+  import { Check, FolderOpen, Pencil, Plus, Square, Trash2 } from '@lucide/svelte';
   import { onMount } from 'svelte';
   import { getApp } from '../../app.svelte';
   import Info from '../../Info.svelte';
@@ -11,6 +12,7 @@
   const { session } = getApp();
 
   let query = $state('');
+  let editing = $state(false);
   let picker = $state<HTMLInputElement | null>(null);
   const gain = $derived(session.settings?.soundboardGainDb ?? 0);
   const shown = $derived(
@@ -47,6 +49,20 @@
       <Square size={14} aria-hidden="true" />
       Stopp
     </button>
+    <button
+      class="small"
+      aria-pressed={editing}
+      disabled={session.sounds.length === 0}
+      onclick={() => (editing = !editing)}
+    >
+      {#if editing}
+        <Check size={14} aria-hidden="true" />
+        Fertig
+      {:else}
+        <Pencil size={14} aria-hidden="true" />
+        Bearbeiten
+      {/if}
+    </button>
   </div>
 
   {#if session.sounds.length === 0}
@@ -55,6 +71,36 @@
     </p>
   {:else if shown.length === 0}
     <p class="empty">Kein Sound heißt so.</p>
+  {:else if editing}
+    <p class="hint">
+      Lautstärke je Sound (wirkt auch während er läuft). „Löschen“ legt die Datei in den Papierkorb.
+    </p>
+    <ul class="edit" aria-label="Sounds bearbeiten">
+      {#each shown as sound (sound.path)}
+        <li>
+          <span class="name" title={sound.path}>{sound.name}</span>
+          <input
+            type="range"
+            min="-30"
+            max="12"
+            step="1"
+            value={sound.gainDb}
+            aria-label="Lautstärke {sound.name}"
+            oninput={(e) => session.setSoundGain(sound.path, Number(e.currentTarget.value))}
+            onchange={(e) => session.setSoundGain(sound.path, Number(e.currentTarget.value), true)}
+          />
+          <span class="db">{sound.gainDb > 0 ? '+' : ''}{sound.gainDb} dB</span>
+          <button
+            class="small icon"
+            aria-label="{sound.name} löschen"
+            title="In den Papierkorb"
+            onclick={() => session.removeSound(sound.path)}
+          >
+            <Trash2 size={14} aria-hidden="true" />
+          </button>
+        </li>
+      {/each}
+    </ul>
   {:else}
     <ul class="grid" aria-label="Sounds">
       {#each shown as sound (sound.path)}
@@ -175,6 +221,45 @@
   .pad.playing {
     border-color: var(--color-accent);
     box-shadow: 0 0 0 2px var(--color-accent);
+  }
+
+  .edit {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .edit li {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .edit .name {
+    flex: 0 0 7em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--font-size-sm);
+  }
+
+  .edit input {
+    flex: 1;
+    min-width: 0;
+    accent-color: var(--color-accent);
+  }
+
+  .edit .db {
+    width: 4em;
+    text-align: right;
+  }
+
+  .icon {
+    display: inline-flex;
+    padding: var(--space-1);
   }
 
   label {
