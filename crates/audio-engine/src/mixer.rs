@@ -16,7 +16,10 @@
 //! feeds its mix through a [`SoundFeed`] while a sound plays, and the callback adds it like
 //! the monitor — the clicker hears what goes out. The others' soundboards arrive as tracks
 //! of their own and take speaker slots keyed by (identity, [`TrackKind`]): a per-person
-//! volume and mute each, no leveler (sound effects are not speech).
+//! volume and mute each, no leveler (sound effects are not speech). The others' app audio
+//! (ADR-011) arrives as `music` tracks and takes speaker slots the same way — a volume and
+//! a mute per person, no leveler (a game is not speech either). The own app audio has no
+//! local slot: the sender hears the application directly, a copy would double it.
 //!
 //! Per slot a [`DriftController`] with a [`Varispeed`] (A6) holds the ring at its cushion:
 //! the speaker's clock and our output device drift apart by a few hundred ppm, so the ring
@@ -30,10 +33,10 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering::Relaxed};
 use std::sync::{Arc, Mutex};
 use transport::{FrameSink, TrackKind, BLOCK};
 
-/// Tracks mixed at once: a full channel is 19 others, each with a voice and a soundboard
-/// track (ADR-010), plus room for a resubscribe in flight. An idle slot costs the callback
-/// one ring length check.
-pub const SLOTS: usize = 48;
+/// Tracks mixed at once: a full channel is 19 others, each with a voice, a soundboard
+/// (ADR-010) and a music track (ADR-011), plus room for a resubscribe in flight. An idle
+/// slot costs the callback one ring length check.
+pub const SLOTS: usize = 72;
 /// Audio that must be queued before a speaker starts (again): at least 20 ms, and always
 /// one network frame more than the device asks for in one go — a cushion that is smaller
 /// than the callback runs dry on every callback.
@@ -612,6 +615,21 @@ impl MixerControl {
     pub fn sound_dropped_blocks(&self) -> u32 {
         self.shared.sound.dropped_blocks.load(Relaxed)
     }
+
+    /// Current level of everyone's `music` track (ADR-011), as (identity, RMS 0..1) — only
+    /// to say who streams app audio right now.
+    pub fn music_levels(&self) -> Vec<(String, f32)> {
+        let routing = self.routing.lock().unwrap();
+        routing
+            .active
+            .iter()
+            .filter(|((_, kind), _)| *kind == TrackKind::Music)
+            .map(|((identity, _), &index)| {
+                let level = f32::from_bits(self.shared.slots[index].level.load(Relaxed));
+                (identity.clone(), level)
+            })
+            .collect()
+    }
 }
 
 /// The sound thread's end of the soundboard slot (ADR-010): one block of the own sound mix
@@ -1136,6 +1154,45 @@ mod tests {
             "its own volume: {}",
             out[100]
         );
+    }
+
+    /// A music track (ADR-011) takes a slot like a soundboard track: own volume and mute,
+    /// no leveler, not in the voice levels but in the music levels.
+    #[test]
+    fn a_music_track_sits_next_to_the_voice_unlevelled_with_its_own_level_list() {
+        let (control, mut rt) = mixer();
+        let mut voice = control.speaker("anna", VOICE).unwrap();
+        let mut music = control.speaker("anna", TrackKind::Music).unwrap();
+        render(&mut rt, BLOCK);
+        let quiet = (f32::from(i16::MAX) * dsp::db_to_gain(-32.0)) as i16;
+        for _ in 0..600 {
+            voice.frame(&[quiet; BLOCK]);
+            music.frame(&[quiet; BLOCK]);
+            render(&mut rt, BLOCK);
+        }
+        assert_eq!(
+            control.leveler_gains().len(),
+            1,
+            "only the voice is levelled"
+        );
+        assert_eq!(control.levels().len(), 1, "voice levels: voice only");
+        assert!(control.sound_levels().is_empty());
+        let levels = control.music_levels();
+        assert_eq!(levels.len(), 1);
+        assert_eq!(levels[0].0, "anna");
+        assert!((levels[0].1 - dsp::db_to_gain(-32.0)).abs() < 1e-3);
+        control.set_peer("anna", VOICE, |m| m.muted = true);
+        control.set_peer("anna", TrackKind::Music, |m| m.gain = 2.0);
+        voice.frame(&[quiet; BLOCK]);
+        music.frame(&[quiet; BLOCK]);
+        let out = render(&mut rt, BLOCK);
+        assert!(
+            (out[100] - 2.0 * dsp::db_to_gain(-32.0)).abs() < 4e-3,
+            "the music track at its own volume, unlevelled: {}",
+            out[100]
+        );
+        drop(music);
+        assert!(control.music_levels().is_empty());
     }
 
     #[test]

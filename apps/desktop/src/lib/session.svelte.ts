@@ -1,6 +1,7 @@
 // Everything the UI knows about the engine, in one reactive object: events go in through
 // `apply`, the views read the fields, user actions become commands.
 import type { Engine } from './engine';
+import type { AppSource } from './types/AppSource';
 import type { AudioDevice } from './types/AudioDevice';
 import type { ConnectionState } from './types/ConnectionState';
 import type { DeviceSlot } from './types/DeviceSlot';
@@ -65,6 +66,16 @@ export class Session {
   /** The same for their soundboard track (ADR-010). */
   peerSoundGainDb = $state<Record<string, number>>({});
   peerSoundMuted = $state<Record<string, boolean>>({});
+  /** And for their app audio, the `music` track (ADR-011). */
+  peerMusicGainDb = $state<Record<string, number>>({});
+  peerMusicMuted = $state<Record<string, boolean>>({});
+  /**
+   * App audio (ADR-011): whether this OS can capture an application at all (false hides
+   * the feature), the applications with a sound session as last listed, and my stream.
+   */
+  appsAvailable = $state(false);
+  apps = $state<AppSource[]>([]);
+  appAudio = $state<{ running: boolean; app: string | null }>({ running: false, app: null });
   /** The soundboard (ADR-010): the library, what plays, and why a file was refused. */
   sounds = $state<Sound[]>([]);
   playing = $state<string[]>([]);
@@ -140,6 +151,13 @@ export class Session {
         break;
       case 'sounds':
         this.playing = event.playing;
+        break;
+      case 'apps':
+        this.appsAvailable = event.available;
+        this.apps = event.apps;
+        break;
+      case 'appAudio':
+        this.appAudio = { running: event.running, app: event.app };
         break;
       case 'log':
         this.log = [...this.log, event.entry].slice(-LOG_LIMIT);
@@ -336,5 +354,37 @@ export class Session {
     const muted = !this.peerSoundMuted[identity];
     this.peerSoundMuted[identity] = muted;
     return this.#engine.send({ type: 'setPeerMuted', identity, track: 'soundboard', muted });
+  }
+
+  // ── app audio (ADR-011) ──────────────────────────────────────────────────────────────
+
+  /** Asks the engine for the applications with a sound session; it answers with `apps`. */
+  listApps() {
+    return this.#engine.send({ type: 'listApps' });
+  }
+
+  /** Streams one application into the channel; the engine answers with `appAudio`. */
+  startAppAudio(app: AppSource) {
+    return this.#engine.send({ type: 'startAppAudio', pid: app.pid, name: app.name });
+  }
+
+  stopAppAudio() {
+    return this.#engine.send({ type: 'stopAppAudio' });
+  }
+
+  /** Their `music` track carries app audio right now (ADR-011). */
+  peerStreams(identity: string): boolean {
+    return this.peerLevels[identity]?.music ?? false;
+  }
+
+  setPeerMusicGain(identity: string, gainDb: number) {
+    this.peerMusicGainDb[identity] = gainDb;
+    return this.#engine.send({ type: 'setPeerVolume', identity, track: 'music', gainDb });
+  }
+
+  togglePeerMusicMute(identity: string) {
+    const muted = !this.peerMusicMuted[identity];
+    this.peerMusicMuted[identity] = muted;
+    return this.#engine.send({ type: 'setPeerMuted', identity, track: 'music', muted });
   }
 }

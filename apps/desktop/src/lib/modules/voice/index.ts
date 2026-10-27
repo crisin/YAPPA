@@ -60,6 +60,27 @@ export function voiceModule(app: AppState): ModuleDef {
             run: () => void session.stopSounds(),
           });
         }
+        if (session.appsAvailable) {
+          actions.push({
+            id: 'voice:app-audio',
+            label: 'App-Audio öffnen',
+            group: 'Aktionen',
+            keywords: ['app', 'audio', 'stream', 'spiel', 'musik'],
+            run: () => {
+              shell.open('voice');
+              shell.openInspector({ kind: 'appaudio', id: 'appaudio' });
+            },
+          });
+        }
+        if (session.appAudio.running) {
+          actions.push({
+            id: 'voice:stop-app-audio',
+            label: 'App-Audio stoppen',
+            group: 'Aktionen',
+            keywords: ['app', 'audio', 'stop'],
+            run: () => void session.stopAppAudio(),
+          });
+        }
       }
       const people: CommandDef[] = session.participants.map((p) => ({
         id: `person:${p.identity}`,

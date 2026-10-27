@@ -3,7 +3,7 @@
   // channel, so everybody sees who is where without going anywhere. One click (or Enter)
   // joins; a click on a person opens them in the inspector. States are words, not only
   // colours. Without a login (a pasted developer invite) there is only the one room.
-  import { Music } from '@lucide/svelte';
+  import { Music, Radio } from '@lucide/svelte';
   import { getApp } from '../../app.svelte';
   import type { PresenceEntry } from '../../api';
 
@@ -25,6 +25,12 @@
   function playsSound(person: PresenceEntry): boolean {
     if (person.userId === gang.me?.id) return session.inRoom && session.playing.length > 0;
     return session.peerPlaysSound(person.userId);
+  }
+
+  /** App audio runs on their `music` track — or on mine (ADR-011). */
+  function streams(person: PresenceEntry): boolean {
+    if (person.userId === gang.me?.id) return session.inRoom && session.appAudio.running;
+    return session.peerStreams(person.userId);
   }
 
   function stateText(person: PresenceEntry): string {
@@ -97,6 +103,11 @@
                       <Music size={12} aria-hidden="true" />
                     </span>
                   {/if}
+                  {#if streams(person)}
+                    <span class="sound" role="img" aria-label="streamt App-Audio">
+                      <Radio size={12} aria-hidden="true" />
+                    </span>
+                  {/if}
                   {#if state}<span class="state">{state}</span>{/if}
                 </li>
               {/each}
@@ -123,6 +134,11 @@
             {#if session.peerPlaysSound(person.identity)}
               <span class="sound" role="img" aria-label="spielt einen Sound">
                 <Music size={12} aria-hidden="true" />
+              </span>
+            {/if}
+            {#if session.peerStreams(person.identity)}
+              <span class="sound" role="img" aria-label="streamt App-Audio">
+                <Radio size={12} aria-hidden="true" />
               </span>
             {/if}
             {#if person.muted}<span class="state">stumm</span>{/if}

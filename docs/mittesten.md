@@ -90,6 +90,8 @@ Die genaue Ursache steht auch in der Diagnose-Datei (Zeile „control plane unre
   yAPPA „kein 48-kHz-Modus", dort umstellen.
 - Kein Text-Chat. Das Soundboard ist ein erster Wurf: Sounds als Dateien im Ordner, noch
   ohne Tasten und ohne Verteilen der Dateien an die anderen.
+- **App-Audio** (der Ton eines Spiels oder Players in den Channel) gibt es nur unter
+  Windows 11; die anderen hören den Stream in Mono.
 - Updates kommen noch von Hand: neuer Installer, drüberinstallieren.
 - Abmelden (**Ich → Konto**) heißt: Für den nächsten Start brauchst du einen neuen Link.
 - Stürzt yAPPA bei jemandem ab, steht er für die anderen noch etwa 20 Sekunden im Channel.

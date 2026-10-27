@@ -43,4 +43,10 @@ autoLevel: boolean,
  * How loud my soundboard sounds go out and play back for me, dB (−30..=12) — the
  * files come in all loudnesses; this is the one knob before the limiter.
  */
-soundboardGainDb: number, };
+soundboardGainDb: number, 
+/**
+ * How loud my app audio (ADR-011) goes out, dB (−30..=12) — a game at full blast
+ * would drown every voice; this is the one knob before the limiter. It does not
+ * change what I hear: the application plays for me as before.
+ */
+appAudioGainDb: number, };

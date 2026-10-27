@@ -4,6 +4,7 @@
 
 pub mod admin;
 pub mod api;
+pub mod appaudio;
 pub mod logging;
 pub mod soundboard;
 pub mod tray;
@@ -32,6 +33,7 @@ pub fn start_engine(
     Ok(audio_engine::spawn(
         Box::new(transport),
         Box::new(CpalIo),
+        Box::new(appaudio::OsCapture),
         settings,
         EngineConfig::default(),
         on_event,

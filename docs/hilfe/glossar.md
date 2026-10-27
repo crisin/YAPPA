@@ -334,6 +334,23 @@ Sound will, braucht die Datei selbst. Tasten fürs Soundboard gibt es noch nicht
 
 Mehr dazu: [Soundboard (Wikipedia)](https://de.wikipedia.org/wiki/Soundboard_(Software))
 
+## App-Audio
+
+Streamt den Ton eines Programms – eines Spiels, eines Players, eines Browser-Tabs – in
+deinen Channel, über einen eigenen Kanal von dir, den jeder für sich leiser drehen oder
+stummschalten kann. Du hörst das Programm weiter wie bisher; deine Stimme bleibt unberührt.
+
+Der Knopf „App-Audio“ neben dem Raumtitel zeigt die Programme, die gerade Ton spielen
+(oder zuletzt gespielt haben); ein Klick streamt eines davon, „Stopp“ beendet es, ein
+Regler setzt die Lautstärke, ein Limiter hält den Stream unter dem Maximum. Windows nimmt
+den Ton direkt beim Programm ab (Process Loopback, ab Windows 11) – nur dieses Programm,
+nicht alles, was der PC spielt. Bei den anderen steht „streamt“ an deiner Person, in der
+Channel-Liste ein Sendesymbol; sie hören den Stream in Mono und mit ihrem eigenen Regler
+unter „App-Audio von … für mich“. Der Stream geht mit 192 kbit/s in Stereo raus – ein
+knapper Upload merkt das. Auf macOS gibt es den Knopf noch nicht.
+
+Mehr dazu: [Audio-Loopback (Wikipedia, englisch)](https://en.wikipedia.org/wiki/Loopback#Audio)
+
 ## Update-Kanal
 
 Welche Versionen deine App von selbst bekommt: „Stabil“ hat die Gang schon einen Abend

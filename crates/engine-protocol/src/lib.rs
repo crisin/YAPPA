@@ -131,6 +131,19 @@ pub enum Command {
         path: String,
         gain_db: f32,
     },
+    /// App audio (ADR-011): ask for the running applications that play sound right now
+    /// (or could). The engine answers with [`Event::Apps`].
+    ListApps,
+    /// App audio (ADR-011): stream one application's sound into the channel on the own
+    /// `music` track (the others can turn it down per person) and into the own playout mix.
+    /// `pid` is the process as [`Event::Apps`] listed it, `name` what the UI shows for it.
+    /// The engine answers with [`Event::AppAudio`]; a failure is an [`Event::Error`].
+    StartAppAudio {
+        pid: u32,
+        name: String,
+    },
+    /// Stops the stream; the `music` track goes quiet.
+    StopAppAudio,
 }
 
 /// Engine -> UI.
@@ -205,6 +218,31 @@ pub enum Event {
     Sounds {
         playing: Vec<String>,
     },
+    /// The applications with a sound session (ADR-011), as answer to
+    /// [`Command::ListApps`]. `available` is false where this OS cannot capture one
+    /// application's sound (macOS today) — the UI then hides the feature.
+    Apps {
+        available: bool,
+        apps: Vec<AppSource>,
+    },
+    /// Whether my app audio streams right now, and which application (its name as given
+    /// to [`Command::StartAppAudio`]). Sent on every change and on `Resync`.
+    AppAudio {
+        running: bool,
+        app: Option<String>,
+    },
+}
+
+/// One running application that has (or had) a sound session (ADR-011).
+#[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AppSource {
+    pub pid: u32,
+    /// The program's name (the executable without its extension, e.g. `chrome`).
+    pub name: String,
+    /// It plays sound right now (an active session) — listed first.
+    pub active: bool,
 }
 
 /// One sound in the soundboard folder, as the shell lists it for the UI (the folder is the
@@ -309,6 +347,10 @@ pub struct PeerLevel {
     /// hold as `speaking`) — „spielt einen Sound“ next to the name.
     #[serde(default)]
     pub sound: bool,
+    /// Their `music` track (ADR-011) carries app audio right now (same hold) — „streamt“
+    /// next to the name.
+    #[serde(default)]
+    pub music: bool,
 }
 
 #[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq)]
@@ -624,6 +666,11 @@ pub struct Settings {
     /// files come in all loudnesses; this is the one knob before the limiter.
     #[serde(default)]
     pub soundboard_gain_db: f32,
+    /// How loud my app audio (ADR-011) goes out, dB (−30..=12) — a game at full blast
+    /// would drown every voice; this is the one knob before the limiter. It does not
+    /// change what I hear: the application plays for me as before.
+    #[serde(default)]
+    pub app_audio_gain_db: f32,
 }
 
 fn yes() -> bool {
@@ -656,6 +703,7 @@ impl Default for Settings {
             output_gain_db: 0.0,
             auto_level: true,
             soundboard_gain_db: 0.0,
+            app_audio_gain_db: 0.0,
         }
     }
 }
@@ -697,6 +745,12 @@ impl Settings {
             return Err(format!(
                 "soundboard gain {} dB out of -30..=12",
                 self.soundboard_gain_db
+            ));
+        }
+        if !(-30.0..=12.0).contains(&self.app_audio_gain_db) {
+            return Err(format!(
+                "app audio gain {} dB out of -30..=12",
+                self.app_audio_gain_db
             ));
         }
         if self.input_channel > 31 {
@@ -836,6 +890,72 @@ mod tests {
     }
 
     #[test]
+    fn the_app_audio_commands_and_events_keep_the_tag_shape() {
+        assert_eq!(
+            serde_json::to_value(Command::ListApps).unwrap(),
+            serde_json::json!({ "type": "listApps" })
+        );
+        assert_eq!(
+            serde_json::to_value(Command::StartAppAudio {
+                pid: 4242,
+                name: "chrome".into(),
+            })
+            .unwrap(),
+            serde_json::json!({ "type": "startAppAudio", "pid": 4242, "name": "chrome" })
+        );
+        assert_eq!(
+            serde_json::to_value(Command::StopAppAudio).unwrap(),
+            serde_json::json!({ "type": "stopAppAudio" })
+        );
+        let ev = Event::Apps {
+            available: true,
+            apps: vec![AppSource {
+                pid: 4242,
+                name: "chrome".into(),
+                active: true,
+            }],
+        };
+        let json = serde_json::to_value(&ev).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "type": "apps", "available": true,
+                "apps": [{ "pid": 4242, "name": "chrome", "active": true }]
+            })
+        );
+        let back: Event = serde_json::from_value(json).unwrap();
+        assert_eq!(ev, back);
+        let ev = Event::AppAudio {
+            running: true,
+            app: Some("chrome".into()),
+        };
+        let json = serde_json::to_value(&ev).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({ "type": "appAudio", "running": true, "app": "chrome" })
+        );
+        let back: Event = serde_json::from_value(json).unwrap();
+        assert_eq!(ev, back);
+        // A level from a client without the flag means no app audio.
+        let level: PeerLevel = serde_json::from_value(
+            serde_json::json!({ "identity": "u1", "levelDb": -20.0, "speaking": true, "sound": false }),
+        )
+        .unwrap();
+        assert!(!level.music);
+        // A settings file from before app audio still loads, at 0 dB; the range holds.
+        let mut json = serde_json::to_value(Settings::default()).unwrap();
+        json.as_object_mut().unwrap().remove("appAudioGainDb");
+        let old: Settings = serde_json::from_value(json).unwrap();
+        assert_eq!(old.app_audio_gain_db, 0.0);
+        assert!(Settings {
+            app_audio_gain_db: -40.0,
+            ..Settings::default()
+        }
+        .validate()
+        .is_err());
+    }
+
+    #[test]
     fn events_round_trip() {
         let ev = Event::Levels {
             input_db: -23.5,
@@ -845,6 +965,7 @@ mod tests {
                 level_db: -40.0,
                 speaking: false,
                 sound: true,
+                music: false,
             }],
         };
         let back: Event = serde_json::from_str(&serde_json::to_string(&ev).unwrap()).unwrap();

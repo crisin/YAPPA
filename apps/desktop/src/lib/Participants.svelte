@@ -1,7 +1,7 @@
 <script lang="ts">
-  // The others in the room: who speaks, who plays a sound, how loud they arrive, and how
-  // loud we want them.
-  import { Music } from '@lucide/svelte';
+  // The others in the room: who speaks, who plays a sound, who streams an application, how
+  // loud they arrive, and how loud we want them.
+  import { Music, Radio } from '@lucide/svelte';
   import Meter from './Meter.svelte';
   import type { Session } from './session.svelte';
 
@@ -22,6 +22,8 @@
           <span class="state">
             {#if level?.sound}
               <span class="sound"><Music size={12} aria-hidden="true" /> spielt einen Sound</span>
+            {:else if level?.music}
+              <span class="sound"><Radio size={12} aria-hidden="true" /> streamt</span>
             {:else if person.muted}
               stumm
             {:else if !person.hasVoice}

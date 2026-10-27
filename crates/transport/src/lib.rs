@@ -3,7 +3,9 @@
 //! The engine hands over its voice as 10 ms blocks of 48 kHz mono PCM and gets every remote
 //! speaker back the same way; everything else is plain events. A second outgoing stream of
 //! the same shape carries the soundboard (ADR-010): its own track per participant, so every
-//! listener can turn it down on its own. Nothing in this module knows
+//! listener can turn it down on its own. A third one carries app audio (ADR-011) — the
+//! sound of one application, stereo, as the `music` track of the planning doc. Every
+//! remote track arrives as mono: the receive mix is mono. Nothing in this module knows
 //! LiveKit — the implementation lives in [`livekit`] behind the cargo feature of the same
 //! name, so another SFU (or a fake in tests) only has to implement [`Transport`].
 //!
@@ -147,6 +149,9 @@ pub enum TrackKind {
     Voice,
     /// The soundboard (ADR-010): files played by that person, mixed on their side.
     Soundboard,
+    /// App audio (ADR-011): the sound of one application on that person's PC — the
+    /// planning doc's `music` track.
+    Music,
 }
 
 impl TrackKind {
@@ -155,6 +160,7 @@ impl TrackKind {
         match self {
             TrackKind::Voice => "voice",
             TrackKind::Soundboard => "soundboard",
+            TrackKind::Music => "music",
         }
     }
 
@@ -163,6 +169,8 @@ impl TrackKind {
     pub fn from_name(name: &str) -> TrackKind {
         if name == TrackKind::Soundboard.name() {
             TrackKind::Soundboard
+        } else if name == TrackKind::Music.name() {
+            TrackKind::Music
         } else {
             TrackKind::Voice
         }
@@ -177,6 +185,18 @@ pub const SOUNDBOARD_PUBLISH: PublishOptions = PublishOptions {
     stereo: false,
     red: false,
     dtx: true,
+};
+
+/// How the `music` track is published (planning doc, "Quellen und Tracks"; ADR-011): real
+/// stereo (the engine delivers interleaved pairs, not the dual mono of a stereo voice
+/// profile), 192 kbit/s — music is not speech and Opus needs the room — no RED (two
+/// copies of 192 kbit/s would not fit a packet anyway) and no DTX: a game's quiet moment
+/// is not silence to be cut, and a steady stream keeps the listeners' jitter buffers calm.
+pub const MUSIC_PUBLISH: PublishOptions = PublishOptions {
+    bitrate_bps: 192_000,
+    stereo: true,
+    red: false,
+    dtx: false,
 };
 
 /// Where the transport delivers remote audio. Implemented by the engine.
@@ -195,6 +215,13 @@ pub trait FrameSink: Send {
 pub trait VoiceOut: Send + Sync {
     /// One [`BLOCK`] of 48 kHz mono. Silently does nothing while not connected.
     fn send(&self, block: &[i16]);
+}
+
+/// Where the engine delivers its app audio (ADR-011): the same 10 ms rhythm, in stereo.
+pub trait StereoOut: Send + Sync {
+    /// One block of 48 kHz stereo, interleaved left/right — `2 *` [`BLOCK`] samples.
+    /// Silently does nothing while not connected or while the slice has another length.
+    fn send(&self, frame: &[i16]);
 }
 
 pub type EventFn = Box<dyn Fn(TransportEvent) + Send + Sync>;
@@ -217,6 +244,9 @@ pub trait Transport: Send {
     /// Where the engine delivers its soundboard mix (ADR-010): the `soundboard` track,
     /// published next to the voice for the whole session. Blocks only while a sound plays.
     fn sound_out(&self) -> Arc<dyn VoiceOut>;
+    /// Where the engine delivers its app audio (ADR-011): the `music` track, published
+    /// next to the voice for the whole session. Blocks only while an application streams.
+    fn music_out(&self) -> Arc<dyn StereoOut>;
 }
 
 #[cfg(test)]
@@ -238,13 +268,15 @@ mod tests {
 
     #[test]
     fn track_kinds_round_trip_through_their_names_and_unknown_is_voice() {
-        for kind in [TrackKind::Voice, TrackKind::Soundboard] {
+        for kind in [TrackKind::Voice, TrackKind::Soundboard, TrackKind::Music] {
             assert_eq!(TrackKind::from_name(kind.name()), kind);
         }
         assert_eq!(TrackKind::from_name(""), TrackKind::Voice);
         assert_eq!(TrackKind::from_name("microphone"), TrackKind::Voice);
         assert_eq!(SOUNDBOARD_PUBLISH.channels(), 1);
         const _: () = assert!(SOUNDBOARD_PUBLISH.dtx && !SOUNDBOARD_PUBLISH.red);
+        assert_eq!(MUSIC_PUBLISH.channels(), 2);
+        const _: () = assert!(!MUSIC_PUBLISH.dtx && !MUSIC_PUBLISH.red);
     }
 
     #[test]

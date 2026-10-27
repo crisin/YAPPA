@@ -12,6 +12,8 @@
   const localMuted = $derived(id ? (session.peerMuted[id] ?? false) : false);
   const soundGain = $derived(id ? (session.peerSoundGainDb[id] ?? 0) : 0);
   const soundMuted = $derived(id ? (session.peerSoundMuted[id] ?? false) : false);
+  const musicGain = $derived(id ? (session.peerMusicGainDb[id] ?? 0) : 0);
+  const musicMuted = $derived(id ? (session.peerMusicMuted[id] ?? false) : false);
 </script>
 
 {#if person}
@@ -19,11 +21,13 @@
   <p class="state">
     {session.peerPlaysSound(person.identity)
       ? 'spielt einen Sound'
-      : person.muted
-        ? 'hat sich stummgeschaltet'
-        : session.peerLevels[person.identity]?.speaking
-          ? 'spricht'
-          : 'still'}
+      : session.peerStreams(person.identity)
+        ? 'streamt App-Audio'
+        : person.muted
+          ? 'hat sich stummgeschaltet'
+          : session.peerLevels[person.identity]?.speaking
+            ? 'spricht'
+            : 'still'}
   </p>
   <Meter
     db={session.peerLevels[person.identity]?.levelDb ?? -120}
@@ -61,6 +65,22 @@
   </div>
   <button aria-pressed={soundMuted} onclick={() => session.togglePeerSoundMute(person.identity)}>
     {soundMuted ? 'Soundboard für mich stumm' : 'Soundboard für mich stummschalten'}
+  </button>
+  <label for="inspector-music-gain">App-Audio von {person.name} für mich</label>
+  <div class="row">
+    <input
+      id="inspector-music-gain"
+      type="range"
+      min="-30"
+      max="12"
+      step="1"
+      value={musicGain}
+      oninput={(e) => session.setPeerMusicGain(person.identity, Number(e.currentTarget.value))}
+    />
+    <span class="db">{musicGain > 0 ? '+' : ''}{musicGain} dB</span>
+  </div>
+  <button aria-pressed={musicMuted} onclick={() => session.togglePeerMusicMute(person.identity)}>
+    {musicMuted ? 'App-Audio für mich stumm' : 'App-Audio für mich stummschalten'}
   </button>
   <p class="hint">Nur du hörst die Änderung.</p>
 {:else}
