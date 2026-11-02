@@ -113,8 +113,20 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
       the idle track costing bandwidth. *Problem while gaming:* music in mono is half the
       fun. *Planes:* engine (stereo mixer), presence room for the name; no control plane.
       *Not built:* video, system-wide loopback.
-- [ ] Phase 3 · Extensions: lobby radio, effects, S4/CLAP, text chat (`chat` topic), hub
-      module
+- [ ] Plugins round 1 (ADR-012, after S4): `crates/plugin-host` = the host side of
+      `crates/spike-s4` as a crate behind the chain's `Effect` seam; a plugin path and id in
+      the settings; load, ports and latency on the engine's command thread, the processor
+      handed to the pump; test with a real third-party CLAP effect (Surge XT Effects,
+      Airwindows). *Problem while gaming:* the one voice effect somebody really wants is
+      never the one we built. *Planes:* engine only. *Not built:* VST3 (license), plugin
+      GUIs (own spike), out-of-process host (phase 3 — a plugin crash is a yAPPA crash in
+      round 1).
+- [ ] Effects round 2 (ADR-012): a hotkey that toggles the effect (same hook as PTT),
+      a better pitch shifter if the flutter annoys (PSOLA or phase vocoder, budget 1 ms),
+      a rack instead of the slot if someone wants two at once. *Problem while gaming:* the
+      robot voice should come with a key, not a mouse trip into Profi. *Planes:* engine +
+      client (key table). *Not built:* receive-side effects per person.
+- [ ] Phase 3 · Extensions: lobby radio, text chat (`chat` topic), hub module
 - [ ] Mobile: sketch in `docs/01-vision-v1.md` section 10; ADR (way A or B) before the first
       task
 - [ ] Session-Radio (Phase 3, idea 2026-10-23, vision section 11): the lobby radio plays
@@ -136,6 +148,24 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] Effects POC + spike S4 (ADR-012, 2026-11-02): the send chain has an effect slot
+      between compressor and limiter (`STAGES` = 8, `Effect` enum in `chain.rs`: a kind
+      change rebuilds on the pump, a parameter change reaches the running instance), four
+      own effects in `dsp` — `PitchShifter` (two-head delay line, ±12 semitones, 15 ms
+      latency, 15 µs per block), `Robot` (ring mod 60 Hz + comb, 2.7 µs), `Reverb`
+      (Freeverb mono at 48 kHz, 6 µs), `Radio` (telephone band + drive, 1.5 µs) — all
+      allocation-free, NaN- and denormal-safe, under the limiter. Protocol additive:
+      `Settings.effect { kind, semitones, amount }` with defaults, validated; stage
+      `effect` in `StageLevels`. UI: stage „Effekt“ in the Profi signal chain (select +
+      one slider), browser mock, glossary „Stimmeffekt“. Spike S4 (`crates/spike-s4`,
+      `docs/spikes/s4-clap.md`): `clack-host` 0.2 loads an own CLAP test plugin from the
+      compiled DLL on Windows, ports/latency queried, 3 000 blocks through it at ≈ 0.1 µs
+      host cost, −6 dB as promised; a VST3 file is refused cleanly. Found on the way: the
+      browser mock's invite expired on 2026-10-30 (fixed clock + 7 days) and broke an admin
+      test — expiry now counts from today. Tests: dsp (14 new), chain (3 new), protocol
+      (old file loads with the slot off, ranges, NaN), engine integration (stage list), UI
+      (effect stage), spike (4). Not verified: by ear over a real call, macOS, a
+      third-party CLAP plugin (none installed).
 - [x] App audio (ADR-011, 2026-10-27): the sound of one application into the channel as
       the third track. `audio_engine::appaudio::AppCapture` is the seam (list, start,
       a sink called from the capture thread), the shell adapts `platform::appaudio` to it

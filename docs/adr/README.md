@@ -18,6 +18,7 @@ the planning doc gets an ADR when it switches to "Entschieden".
 | 009 | [Audio first — resampling, device return, loudness levelling, drift; D1 waits](009-audio-priorities-after-interview.md) | accepted (2026-10-23) |
 | 010 | [Soundboard as a second track per participant, played from its own thread](010-soundboard-second-track.md) | accepted (2026-10-25) |
 | 011 | [App audio as the third track per participant, captured behind an `AppCapture` seam](011-app-audio-music-track.md) | proposed (2026-10-27) |
+| 012 | [One effect slot in the send chain — own effects first, CLAP plugins later through the same slot](012-effect-slot-own-effects-clap-later.md) | proposed (2026-11-02) |
 
 Decided in ADR-000 already: project name yAPPA. ADR-001 overrides ADR-000 where it says so
 (control plane, UI framework, scripts, work tracking). ADR-004 to 007 come from the
