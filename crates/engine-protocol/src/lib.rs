@@ -279,7 +279,7 @@ pub struct DeviceSlot {
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct StageLevel {
-    /// `input`, `highpass`, `denoiser`, `gate`, `eq`, `compressor`, `limiter`.
+    /// `input`, `highpass`, `denoiser`, `gate`, `eq`, `compressor`, `effect`, `limiter`.
     pub id: String,
     /// Level after this stage, dBFS.
     pub level_db: f32,
@@ -628,6 +628,45 @@ pub struct CompressorSettings {
     pub makeup_db: f32,
 }
 
+/// A voice effect in the send chain (ADR-012): one slot between the compressor and the
+/// limiter, so the limiter still catches what the effect adds. `Off` costs nothing.
+#[derive(Serialize, Deserialize, TS, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum VoiceEffect {
+    #[default]
+    Off,
+    /// Higher or lower by [`EffectSettings::semitones`].
+    Pitch,
+    /// Ring modulator plus comb: the monotone tin-can voice.
+    Robot,
+    /// A medium hall (Freeverb).
+    Hall,
+    /// Telephone band plus drive: the walkie-talkie.
+    Radio,
+}
+
+#[derive(Serialize, Deserialize, TS, Debug, Clone, Copy, PartialEq)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct EffectSettings {
+    pub kind: VoiceEffect,
+    /// `Pitch`: semitones, −12..=12; negative is deeper.
+    pub semitones: f32,
+    /// `Robot`, `Hall`, `Radio`: how strong, 0..=1.
+    pub amount: f32,
+}
+
+impl Default for EffectSettings {
+    fn default() -> Self {
+        Self {
+            kind: VoiceEffect::Off,
+            semitones: -4.0,
+            amount: 0.5,
+        }
+    }
+}
+
 /// Everything about audio and sending the user can set (ADR-007: no UI preferences here —
 /// those are the app settings). Simple and pro view both read and write this.
 #[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq)]
@@ -671,6 +710,9 @@ pub struct Settings {
     /// change what I hear: the application plays for me as before.
     #[serde(default)]
     pub app_audio_gain_db: f32,
+    /// The voice effect (ADR-012) — one slot in the send chain before the limiter.
+    #[serde(default)]
+    pub effect: EffectSettings,
 }
 
 fn yes() -> bool {
@@ -704,6 +746,7 @@ impl Default for Settings {
             auto_level: true,
             soundboard_gain_db: 0.0,
             app_audio_gain_db: 0.0,
+            effect: EffectSettings::default(),
         }
     }
 }
@@ -761,6 +804,15 @@ impl Settings {
         }
         if self.eq.len() > 5 {
             return Err(format!("{} EQ bands, at most 5", self.eq.len()));
+        }
+        if !(-12.0..=12.0).contains(&self.effect.semitones) {
+            return Err(format!(
+                "effect semitones {} out of -12..=12",
+                self.effect.semitones
+            ));
+        }
+        if !(0.0..=1.0).contains(&self.effect.amount) {
+            return Err(format!("effect amount {} out of 0..=1", self.effect.amount));
         }
         Ok(())
     }
@@ -1049,6 +1101,40 @@ mod tests {
             ..Settings::default()
         };
         assert!(s.validate().is_err());
+    }
+
+    /// A settings file from before the effect slot (ADR-012) loads with the slot off; a
+    /// slider dragged past its range is refused instead of reaching the chain.
+    #[test]
+    fn the_effect_is_off_for_old_files_and_validated_for_new_ones() {
+        let mut json = serde_json::to_value(Settings::default()).unwrap();
+        json.as_object_mut().unwrap().remove("effect");
+        let s: Settings = serde_json::from_value(json).unwrap();
+        assert_eq!(s.effect, EffectSettings::default());
+        assert_eq!(s.effect.kind, VoiceEffect::Off);
+        assert!(s.validate().is_ok());
+        assert_eq!(
+            serde_json::to_value(s.effect).unwrap(),
+            serde_json::json!({ "kind": "off", "semitones": -4.0, "amount": 0.5 })
+        );
+        let too_high = Settings {
+            effect: EffectSettings {
+                kind: VoiceEffect::Pitch,
+                semitones: 13.0,
+                amount: 0.5,
+            },
+            ..Settings::default()
+        };
+        assert!(too_high.validate().is_err());
+        let nan = Settings {
+            effect: EffectSettings {
+                kind: VoiceEffect::Hall,
+                semitones: 0.0,
+                amount: f32::NAN,
+            },
+            ..Settings::default()
+        };
+        assert!(nan.validate().is_err(), "NaN is out of every range");
     }
 
     #[test]

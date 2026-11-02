@@ -464,8 +464,8 @@ describe('Settings: Einfach und Profi', () => {
     const { container } = await start();
     await openMe('Signalkette');
     const stages = screen.getByRole('list', { name: 'Stufen der Signalkette' });
-    expect(within(stages).getAllByRole('button')).toHaveLength(7);
-    expect(within(stages).getAllByRole('meter')).toHaveLength(7);
+    expect(within(stages).getAllByRole('button')).toHaveLength(8);
+    expect(within(stages).getAllByRole('meter')).toHaveLength(8);
     expect(await screen.findByText('Rechenzeit je 10-ms-Block')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('10 ms')).toBeInTheDocument(), { timeout: 3000 });
 
@@ -481,6 +481,30 @@ describe('Settings: Einfach und Profi', () => {
     await fireEvent.click(screen.getByRole('button', { name: 'Band hinzufügen' }));
     await waitFor(() => expect(eq).toHaveTextContent('1 Band'));
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('switches the voice effect and shows its state on the stage (ADR-012)', async () => {
+    await start();
+    await openMe('Signalkette');
+    const stages = screen.getByRole('list', { name: 'Stufen der Signalkette' });
+    const effect = within(stages).getByRole('button', { name: /^Effekt/ });
+    expect(effect).toHaveTextContent('aus');
+    await fireEvent.click(effect);
+    expect(effect).toHaveAttribute('aria-expanded', 'true');
+    const kind = screen.getByRole('combobox', { name: 'Effekt' });
+    await fireEvent.change(kind, { target: { value: 'pitch' } });
+    await waitFor(() => expect(effect).toHaveTextContent('−4 Halbtöne'));
+    await fireEvent.change(screen.getByRole('slider', { name: /Tonhöhe/ }), {
+      target: { value: '5' },
+    });
+    await waitFor(() => expect(effect).toHaveTextContent('+5 Halbtöne'));
+    await fireEvent.change(kind, { target: { value: 'radio' } });
+    await waitFor(() => expect(effect).toHaveTextContent('Funk'));
+    expect(screen.getByRole('slider', { name: /Stärke: 50 %/ })).toBeInTheDocument();
+    await waitFor(() => expect(within(effect).getByRole('meter')).toHaveAttribute('aria-valuenow'));
+    await fireEvent.change(kind, { target: { value: 'off' } });
+    await waitFor(() => expect(effect).toHaveTextContent('aus'));
+    expect(screen.queryByRole('slider', { name: /Stärke/ })).not.toBeInTheDocument();
   });
 
   it('hears myself while the Signalkette is open and stops the moment it closes (A5)', async () => {

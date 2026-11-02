@@ -351,6 +351,21 @@ knapper Upload merkt das. Auf macOS gibt es den Knopf noch nicht.
 
 Mehr dazu: [Audio-Loopback (Wikipedia, englisch)](https://en.wikipedia.org/wiki/Loopback#Audio)
 
+## Stimmeffekt
+
+Eine Stufe in der Signalkette (Profi) zwischen Kompressor und Limiter, die deine Stimme
+absichtlich verändert: höher oder tiefer, Roboter, Halle oder Funkgerät. Die anderen hören
+dich so; mit „Mich selbst hören“ hörst du es selbst. Aus ist der Normalfall und kostet nichts.
+
+„Höher oder tiefer“ verschiebt die Tonhöhe um bis zu zwölf Halbtöne (eine Oktave) und
+verzögert die Stimme dabei um etwa 15 ms; bei großen Sprüngen flattert sie hörbar – das ist
+der Preis des einfachen Verfahrens, das ohne Rechenaufwand auskommt. „Roboter“ nimmt der
+Stimme ihre eigene Tonhöhe und legt eine metallische darüber, „Halle“ mischt den Nachhall
+eines mittleren Raums dazu, „Funkgerät“ presst die Stimme ins Telefonband und übersteuert sie
+leicht. Der Limiter dahinter fängt, was ein Effekt zu laut macht.
+
+Mehr dazu: [Pitch-Shifting (Wikipedia)](https://de.wikipedia.org/wiki/Pitch_Shifting)
+
 ## Update-Kanal
 
 Welche Versionen deine App von selbst bekommt: „Stabil“ hat die Gang schon einen Abend

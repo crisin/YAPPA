@@ -2,7 +2,10 @@
 //! (planning doc: DSP under 5 ms per block). `cargo xtask bench`.
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use dsp::{Biquad, BiquadKind, Leveler, LevelerParams, Limiter, Resampler, Varispeed};
+use dsp::{
+    Biquad, BiquadKind, Leveler, LevelerParams, Limiter, PitchShifter, Radio, Resampler, Reverb,
+    Robot, Varispeed,
+};
 use std::hint::black_box;
 
 const SR: f32 = 48_000.0;
@@ -98,5 +101,30 @@ fn varispeed(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, eq_chain, limiter, leveler, resampler, varispeed);
+/// The four voice effects of the send chain's effect slot (ADR-012), each at full strength;
+/// the slot costs one of these per block while on, nothing while off.
+fn effects(c: &mut Criterion) {
+    let voice: Vec<f32> = (0..BLOCK)
+        .map(|i| ((i as f32) * 0.03).sin() * 0.5)
+        .collect();
+    let mut block = voice.clone();
+    let mut pitch = PitchShifter::new(SR, -5.0);
+    c.bench_function("effect pitch -5 st, one 10 ms block", |b| {
+        b.iter(|| pitch.process(black_box(&mut block)))
+    });
+    let mut robot = Robot::new(SR, 1.0);
+    c.bench_function("effect robot, one 10 ms block", |b| {
+        b.iter(|| robot.process(black_box(&mut block)))
+    });
+    let mut hall = Reverb::new(SR, 1.0);
+    c.bench_function("effect hall, one 10 ms block", |b| {
+        b.iter(|| hall.process(black_box(&mut block)))
+    });
+    let mut radio = Radio::new(SR, 1.0);
+    c.bench_function("effect radio, one 10 ms block", |b| {
+        b.iter(|| radio.process(black_box(&mut block)))
+    });
+}
+
+criterion_group!(benches, eq_chain, limiter, leveler, resampler, varispeed, effects);
 criterion_main!(benches);

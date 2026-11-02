@@ -31,6 +31,9 @@ ignore = [
   { id = "RUSTSEC-2026-0367", reason = "zip 4 in tauri-plugin-updater; only signature-verified bundles are extracted (ADR-006)" },
   { id = "RUSTSEC-2026-0368", reason = "zip 4 in tauri-plugin-updater; only signature-verified bundles are extracted (ADR-006)" },
   { id = "RUSTSEC-2026-0369", reason = "zip 4 in tauri-plugin-updater; only signature-verified bundles are extracted (ADR-006)" },
+  # Same crate, same argument (2026-11-03): a symlink entry with a huge declared size aborts
+  # the process in `extract` - again an attacker-controlled archive.
+  { id = "RUSTSEC-2026-0429", reason = "zip 4 in tauri-plugin-updater; only signature-verified bundles are extracted (ADR-006)" },
 ]
 
 [licenses]

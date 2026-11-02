@@ -220,6 +220,10 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
         { id: 'gate', ...level(micMuted() ? -120 : -41 + 10 * wave, !micMuted()) },
         { id: 'eq', ...level(micMuted() ? -120 : -40 + 10 * wave) },
         { id: 'compressor', ...level(micMuted() ? -120 : -36 + 6 * wave) },
+        {
+          id: 'effect',
+          ...level(micMuted() ? -120 : -36 + 6 * wave, settings.effect.kind !== 'off'),
+        },
         { id: 'limiter', ...level(micMuted() ? -120 : -36 + 6 * wave) },
       ],
     });
