@@ -16,7 +16,12 @@
     return [...byGroup];
   });
 
+  /** A command moved the keyboard (into a module, the inspector): the closing dialog must
+   * not pull it back to where the palette was opened from. */
+  let navigated = false;
+
   function run(command: CommandDef) {
+    navigated = true;
     shell.closePalette();
     command.run();
   }
@@ -28,7 +33,14 @@
 >
   <Dialog.Portal>
     <Dialog.Overlay class="palette-overlay" />
-    <Dialog.Content class="palette" aria-describedby={undefined}>
+    <Dialog.Content
+      class="palette"
+      aria-describedby={undefined}
+      onCloseAutoFocus={(event) => {
+        if (navigated) event.preventDefault();
+        navigated = false;
+      }}
+    >
       <Dialog.Title class="visually-hidden">Befehlspalette</Dialog.Title>
       <Command.Root label="Befehle" loop>
         <Command.Input

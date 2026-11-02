@@ -79,6 +79,17 @@ describe('Shell navigation', () => {
     expect(s.active).toBe('voice');
   });
 
+  it('tells a jump from a step back, for the keyboard', () => {
+    const s = shell();
+    expect(s.navigation).toBe('open');
+    s.open('me');
+    expect(s.navigation).toBe('open');
+    s.back();
+    expect(s.navigation).toBe('back');
+    s.open('me');
+    expect(s.navigation).toBe('open');
+  });
+
   it('remembers per module whether the inspector was open', () => {
     const s = shell();
     s.openInspector({ kind: 'person', id: 'ben' });

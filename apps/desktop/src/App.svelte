@@ -40,7 +40,8 @@
       const failure = reason as { code?: string; message?: string } | undefined;
       if (failure?.code !== 'unreachable') return;
       // The message says why (name, IPv6-only server, TLS …) — keep it, add the reassurance.
-      const why = failure.message?.replace(/\.?$/, '.') ?? 'Server nicht erreichbar.';
+      const message = failure.message ?? 'Server nicht erreichbar';
+      const why = /[.!?]$/.test(message) ? message : `${message}.`;
       shell.showBanner({
         id: 'offline',
         priority: BANNER.offline,
@@ -103,6 +104,21 @@
   // After a login the server is known: its config (minimum version) can be read.
   $effect(() => {
     if (gang.status === 'in') untrack(() => void loadConfig());
+  });
+
+  // Volume and mute per person survive a restart (review 2026-10-23): the app settings
+  // follow every change, and whoever is in the room gets their remembered mix back.
+  $effect(() => {
+    const mixes = session.mixes;
+    untrack(() => app.rememberMixes(mixes));
+  });
+
+  $effect(() => {
+    const identities = session.participants.map((p) => p.identity);
+    const loaded = app.appSettings !== null;
+    untrack(() => {
+      if (loaded) app.restoreMixes(identities);
+    });
   });
 
   // A glossary link ("Mehr im Glossar") asks for the help; it lives in „Ich“.

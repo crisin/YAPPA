@@ -1,6 +1,7 @@
 <script lang="ts">
   // Zone G: details and tools for a selection. Optional, never needed for a flow; closed by
-  // default and remembered per module by the shell.
+  // default and remembered per module by the shell. `#details` is where the shell puts the
+  // keyboard when it opens.
   import { X } from '@lucide/svelte';
   import { getApp } from '../app.svelte';
 
@@ -9,7 +10,7 @@
 </script>
 
 {#if shell.inspector.open && Content}
-  <aside class="inspector" aria-label="Details">
+  <aside class="inspector" id="details" aria-label="Details" tabindex="-1">
     <button class="close" aria-label="Details schließen" onclick={() => shell.closeInspector()}>
       <X size={16} aria-hidden="true" />
     </button>

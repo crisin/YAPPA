@@ -7,11 +7,13 @@ use crate::profile::{Profile, APP_SETTINGS_FILE, ENGINE_SETTINGS_FILE};
 use engine_protocol::{QualityProfile, Settings, VoiceCodec, SETTINGS_VERSION};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::BTreeMap;
 use ts_rs::TS;
 
-/// 1: first split (ADR-007). 2: `on_close` and `autostart` — both take their defaults in a
-/// version-1 file, the number only says the file has been rewritten by this build.
-pub const APP_SETTINGS_VERSION: u32 = 2;
+/// 1: first split (ADR-007). 2: `on_close` and `autostart`. 3: `people` (volume and mute
+/// per person). Every added field takes its default in an older file, the number only says
+/// the file has been rewritten by this build.
+pub const APP_SETTINGS_VERSION: u32 = 3;
 
 /// Which settings view „Ich“ shows. A property of the settings, not of the modules.
 #[derive(Serialize, Deserialize, TS, Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -99,6 +101,39 @@ pub enum OnClose {
     Quit,
 }
 
+/// One of a person's tracks as I hear it: volume in dB (0 = as sent) and whether I muted it
+/// for me.
+#[derive(Serialize, Deserialize, TS, Debug, Clone, Copy, PartialEq, Default)]
+#[serde(rename_all = "camelCase", default)]
+#[ts(export)]
+pub struct TrackMix {
+    pub gain_db: f32,
+    pub muted: bool,
+}
+
+impl TrackMix {
+    pub fn is_default(&self) -> bool {
+        self.gain_db == 0.0 && !self.muted
+    }
+}
+
+/// How one person sounds for me: their voice, their soundboard (ADR-010) and their app
+/// audio (ADR-011). Only I hear the difference; the engine is told again at the next start.
+#[derive(Serialize, Deserialize, TS, Debug, Clone, Copy, PartialEq, Default)]
+#[serde(rename_all = "camelCase", default)]
+#[ts(export)]
+pub struct PersonMix {
+    pub voice: TrackMix,
+    pub soundboard: TrackMix,
+    pub music: TrackMix,
+}
+
+impl PersonMix {
+    pub fn is_default(&self) -> bool {
+        self.voice.is_default() && self.soundboard.is_default() && self.music.is_default()
+    }
+}
+
 /// Everything about the app that is not audio. Unknown fields are ignored and missing ones
 /// take their defaults, so older and newer files both load.
 #[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq)]
@@ -123,6 +158,9 @@ pub struct AppSettings {
     pub on_close: OnClose,
     /// Start with the login to the OS (minimized into the notification area).
     pub autostart: bool,
+    /// Volume and mute per person, by their identity (the user id) — what the tiles and the
+    /// inspector set, so it survives a restart. People at their defaults are not written.
+    pub people: BTreeMap<String, PersonMix>,
 }
 
 impl Default for AppSettings {
@@ -139,6 +177,7 @@ impl Default for AppSettings {
             listening: Listening::Unknown,
             on_close: OnClose::Tray,
             autostart: false,
+            people: BTreeMap::new(),
         }
     }
 }
@@ -461,6 +500,45 @@ mod tests {
         let (broken, migrated) = migrate_app(Some(json!({ "version": 2, "view": 7 })));
         assert_eq!(broken, AppSettings::default());
         assert!(!migrated);
+    }
+
+    /// A file as version 2 wrote it (0.2.0 with the tray): no `people`.
+    #[test]
+    fn a_version_two_app_file_has_nobody_remembered_and_people_round_trip() {
+        let v2 = json!({ "version": 2, "view": "pro", "onClose": "quit", "autostart": true });
+        let (app, migrated) = migrate_app(Some(v2));
+        assert!(migrated);
+        assert_eq!(app.version, APP_SETTINGS_VERSION);
+        assert!(app.people.is_empty());
+        assert_eq!(
+            (app.view, app.on_close, app.autostart),
+            (SettingsView::Pro, OnClose::Quit, true)
+        );
+
+        let mut app = AppSettings::default();
+        app.people.insert(
+            "ben".into(),
+            PersonMix {
+                voice: TrackMix {
+                    gain_db: -6.0,
+                    muted: true,
+                },
+                ..PersonMix::default()
+            },
+        );
+        let value = serde_json::to_value(&app).unwrap();
+        assert_eq!(value["people"]["ben"]["voice"]["gainDb"], json!(-6.0));
+        assert_eq!(value["people"]["ben"]["soundboard"]["muted"], json!(false));
+        let (again, migrated) = migrate_app(Some(value));
+        assert!(!migrated);
+        assert_eq!(again, app);
+        assert!(!again.people["ben"].is_default());
+        assert!(PersonMix::default().is_default());
+        // A person written by a newer build with a track this one does not know still loads.
+        let partial: PersonMix =
+            serde_json::from_value(json!({ "voice": { "muted": true }, "video": {} })).unwrap();
+        assert!(partial.voice.muted);
+        assert_eq!(partial.voice.gain_db, 0.0);
     }
 
     #[test]

@@ -262,8 +262,17 @@ export function createMockApi(scene: Scene = DEFAULT_SCENE, engine?: Engine): Ap
           code: 'channel_unknown',
           message: 'Diesen Channel gibt es nicht.',
         } satisfies ApiError;
-      await engine?.send({ type: 'join', url: MOCK_WS_URL, token: `mock.${channelId}.${myId}` });
+      // As `voice_join` in the shell: the presence says "in there" as soon as the join is
+      // asked for, and a join that ends disconnected (token refused, server away) clears it
+      // again — so a failed join never leaves me shown in the channel (review 2026-10-23).
+      let failed = false;
+      const stop = await engine?.subscribe((event) => {
+        if (event.type === 'connection' && event.state === 'disconnected') failed = true;
+      });
       setMine({ channelId });
+      await engine?.send({ type: 'join', url: MOCK_WS_URL, token: `mock.${channelId}.${myId}` });
+      stop?.();
+      if (failed) setMine({ channelId: null });
     },
     async leaveChannel() {
       await engine?.send({ type: 'leave' });

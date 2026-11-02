@@ -68,7 +68,7 @@
             aria-label="{channel.name}, {people.length === 1
               ? '1 Person'
               : `${people.length} Leute`}{mine ? ', du bist hier' : ', beitreten'}"
-            disabled={gang.joining !== null}
+            aria-disabled={gang.joining !== null ? 'true' : undefined}
             onclick={() => gang.join(channel.id)}
           >
             <span class="name">{channel.name}</span>
@@ -205,7 +205,9 @@
     text-align: left;
   }
 
-  .channel-name:disabled {
+  /* A join on its way: the buttons stay focusable (a disabled button would drop the
+     keyboard), a second click is simply ignored until it is through. */
+  .channel-name[aria-disabled='true'] {
     cursor: default;
   }
 

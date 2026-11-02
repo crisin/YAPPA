@@ -73,10 +73,6 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
       has presence; kick revokes the session and a member can be removed; healthcheck in
       the compose files; voice grant limited to the microphone source; a Linux CI job that
       builds `crates/control` (+ the Docker image); actions pinned to SHAs
-- [ ] UI edges from the review 2026-10-23: focus follows a module switch and the inspector;
-      channel buttons stay focusable during a join; per-person volume and mute survive a
-      restart; mute state after a webview reload; tests for the `reconnect`/`offline`/
-      `update` scenes, engine-error banners and a failed join
 - [ ] Engine follow-ups (ADR-003, realtime reviews 2026-10-10 and 2026-10-23): drift
       compensation = hold the playout ring at the cushion; resampling for devices that are
       not at 48 kHz; transport events carry a session number; a "nothing arrives" warning
@@ -136,6 +132,22 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] UI edges from the review 2026-10-23 (2026-11-03): the keyboard follows the shell —
+      a module switch lands on the module's current item (my channel, the open section,
+      the checked view), an opened inspector takes the focus and gives it back to its
+      opener on close, `Esc` returns to where the switch came from when that is still on
+      the page (rail, dock), else into the module (`focus.ts`, `Shell.navigation`); the
+      palette no longer pulls the focus back after a command; channel buttons stay
+      focusable during a join (`aria-disabled`, a second click is ignored); volume and
+      mute per person and track live in the app settings (`people`, version 3) — written
+      300 ms after the last change, handed to the engine once per run when the person is
+      in the room (the mixer keeps them per identity after that); the mock engine resends
+      its whole state on `recentLogs` like the real `recent_logs` → `Resync` (which the
+      shell has done since A3), with a test for mute/room after a reload; the mock API
+      sets the presence before the join and clears it when the join ends disconnected,
+      like `voice_join`; scene tests (`App.scenes.test.ts`) for reconnect, offline,
+      update, engine errors and a failed join. Found on the way: the mock's fixed clock
+      from 2026-10-23 let its open invite expire on 2026-10-30 (admin test red since).
 - [x] App audio (ADR-011, 2026-10-27): the sound of one application into the channel as
       the third track. `audio_engine::appaudio::AppCapture` is the seam (list, start,
       a sink called from the capture thread), the shell adapts `platform::appaudio` to it

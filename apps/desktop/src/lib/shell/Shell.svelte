@@ -1,8 +1,11 @@
 <script lang="ts">
   // The frame every module lives in (ADR-004, concept zones A–G): rail | sidebar with the
   // voice dock | topbar, banner, stage and inspector. The shell renders the registry and
-  // never names a module.
+  // never names a module. The keyboard follows the shell's moves (review 2026-10-23): into
+  // the module after a switch, into the inspector when it opens, back when it closes.
+  import { tick, untrack } from 'svelte';
   import { getApp } from '../app.svelte';
+  import { focusInto, refocus } from '../focus';
   import BannerSlot from './BannerSlot.svelte';
   import CommandPalette from './CommandPalette.svelte';
   import Inspector from './Inspector.svelte';
@@ -12,12 +15,72 @@
 
   const { shell } = getApp();
   const module = $derived(shell.activeModule);
+
+  let context = $state<HTMLElement | null>(null);
+  let stage = $state<HTMLElement | null>(null);
+  let body = $state<HTMLElement | null>(null);
+
+  /** What had the keyboard when a module was left, by module — `Esc` returns there if it is
+   * still on the page (the rail, the dock); otherwise the module itself is the landing. */
+  const leftAt = new Map<string, Element | null>();
+  /** What had the keyboard when the inspector opened — it gets it back on close. */
+  let opener: Element | null = null;
+  let current = untrack(() => shell.active);
+  let shown: string | null = null;
+
+  type Landing = 'module' | 'back' | 'inspector' | 'opener';
+
+  function land(where: Landing) {
+    switch (where) {
+      case 'inspector':
+        // The panel itself, so the name „Details“ is read before its controls.
+        refocus(body?.querySelector<HTMLElement>('#details'));
+        break;
+      case 'opener':
+        if (!refocus(opener)) focusInto(context) ?? focusInto(stage);
+        break;
+      case 'back':
+        if (!refocus(leftAt.get(shell.active))) focusInto(context) ?? focusInto(stage);
+        break;
+      case 'module':
+        focusInto(context) ?? focusInto(stage);
+        break;
+    }
+  }
+
+  $effect(() => {
+    const id = shell.active;
+    const how = shell.navigation;
+    const { open, content } = shell.inspector;
+    untrack(() => {
+      let where: Landing | null = null;
+      if (id !== current) {
+        leftAt.set(current, document.activeElement);
+        current = id;
+        where = how === 'back' ? 'back' : 'module';
+      }
+      const key = open && content ? `${content.kind}:${content.id}` : null;
+      if (key !== shown) {
+        if (key) {
+          if (shown === null) opener = document.activeElement;
+          where = 'inspector';
+        } else if (where === null) {
+          where = 'opener';
+        }
+        shown = key;
+      }
+      if (where) {
+        const target = where;
+        void tick().then(() => land(target));
+      }
+    });
+  });
 </script>
 
 <div class="shell">
   <Rail />
   <div class="side">
-    <div class="context">
+    <div class="context" bind:this={context}>
       {#if module}
         {@const Sidebar = module.sidebar}
         <Sidebar />
@@ -28,8 +91,8 @@
   <div class="main">
     <Topbar />
     <BannerSlot />
-    <div class="body">
-      <main class="stage" aria-label={module?.label}>
+    <div class="body" bind:this={body}>
+      <main class="stage" aria-label={module?.label} bind:this={stage}>
         {#if module}
           {@const Stage = module.stage}
           <Stage />
