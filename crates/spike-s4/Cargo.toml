@@ -1,0 +1,28 @@
+[package]
+name = "spike-s4"
+description = "S4 spike (scratch): clack-host loads a CLAP plugin and passes 10 ms blocks through it; cost per block, API shape, what the effect slot needs from a plugin host"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["lib", "cdylib"]
+
+# A different name than the lib: both would otherwise write spike_s4.pdb on Windows.
+[[bin]]
+name = "s4-host"
+path = "src/main.rs"
+
+[dependencies]
+clack-host = { version = "0.2", features = ["clack-plugin"] }
+clack-plugin = "0.2"
+clack-extensions = { version = "0.2", features = ["audio-ports", "params", "latency", "clack-host", "clack-plugin"] }
+dsp.workspace = true
+
+# Loading foreign code is unsafe by nature; this scratch crate is the one place it happens.
+[lints.rust]
+unsafe_code = "allow"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
