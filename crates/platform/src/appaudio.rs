@@ -126,7 +126,8 @@ mod os {
     use std::time::{Duration, Instant};
     use windows::core::{implement, Interface, Ref, Result, HRESULT};
     use windows::Win32::Foundation::{
-        CloseHandle, DuplicateHandle, DUPLICATE_SAME_ACCESS, HANDLE, WAIT_OBJECT_0,
+        CloseHandle, DuplicateHandle, DUPLICATE_SAME_ACCESS, HANDLE, RPC_E_CHANGED_MODE,
+        WAIT_OBJECT_0,
     };
     use windows::Win32::Media::Audio::{
         eRender, ActivateAudioInterfaceAsync, AudioSessionStateActive,
@@ -216,24 +217,33 @@ mod os {
         }
     }
 
-    /// A thread with COM initialised for its lifetime.
-    struct Com;
+    /// A thread with COM initialised for its lifetime. `owned` is false when the thread
+    /// already lives in a single-threaded apartment (the app's UI and command threads,
+    /// set up by the webview): COM is usable there as it is, and is not ours to tear down.
+    struct Com {
+        owned: bool,
+    }
 
     impl Com {
         fn init() -> std::result::Result<Self, String> {
             // SAFETY: plain COM initialisation of this thread; balanced in `Drop`.
             let hr = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
+            if hr == RPC_E_CHANGED_MODE {
+                return Ok(Self { owned: false });
+            }
             if hr.is_err() {
                 return Err(format!("CoInitializeEx: {hr}"));
             }
-            Ok(Self)
+            Ok(Self { owned: true })
         }
     }
 
     impl Drop for Com {
         fn drop(&mut self) {
-            // SAFETY: balances this thread's successful CoInitializeEx.
-            unsafe { CoUninitialize() };
+            if self.owned {
+                // SAFETY: balances this thread's successful CoInitializeEx.
+                unsafe { CoUninitialize() };
+            }
         }
     }
 
@@ -669,6 +679,27 @@ mod tests {
                 assert!(!supported(), "{reason}");
             }
         }
+    }
+
+    /// The app asks for the list from a thread the webview already put into a
+    /// single-threaded apartment; that must not fail with RPC_E_CHANGED_MODE.
+    #[cfg(windows)]
+    #[allow(unsafe_code)]
+    #[test]
+    fn listing_works_on_a_single_threaded_apartment() {
+        use windows::Win32::System::Com::{
+            CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED,
+        };
+        std::thread::spawn(|| {
+            // SAFETY: plain COM initialisation of this fresh thread, balanced below.
+            unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) }.unwrap();
+            let listed = list_apps();
+            // SAFETY: balances the initialisation above, after the list is done.
+            unsafe { CoUninitialize() };
+            listed.expect("the list works on an STA thread");
+        })
+        .join()
+        .unwrap();
     }
 
     /// A process that does not exist is refused, not captured — and where the feature is
