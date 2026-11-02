@@ -3,6 +3,7 @@
 import type { Engine } from './engine';
 import type { AppSource } from './types/AppSource';
 import type { Command } from './types/Command';
+import type { ConnectionState } from './types/ConnectionState';
 import type { Event } from './types/Event';
 import type { Invite } from './types/Invite';
 import type { Participant } from './types/Participant';
@@ -71,7 +72,10 @@ function decodeInvite(text: string): Invite {
 export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
   const handlers = new Set<(event: Event) => void>();
   const settings: Settings = structuredClone(defaults);
-  let connected = false;
+  let state: ConnectionState = 'disconnected';
+  const connected = () => state !== 'disconnected';
+  /** The room and who I am in it, while joined. */
+  let room: { room: string; identity: string } | null = null;
   /** Who is in the room now; the first one talks in waves. */
   let people: Participant[] = [];
   // Microphone and hearing as `audio-engine/src/mute.rs` has them: deafened implies muted,
@@ -102,6 +106,10 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
   let timer: ReturnType<typeof setInterval> | undefined;
 
   const emit = (event: Event) => handlers.forEach((handler) => handler(event));
+  const setState = (next: ConnectionState) => {
+    state = next;
+    emit({ type: 'connection', state });
+  };
   const muteState = (): Event => ({ type: 'muteState', muted: micMuted(), deafened });
   const setMuted = (on: boolean) => {
     muted = on;
@@ -144,7 +152,7 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
   });
 
   const stats = (): Stats => ({
-    network: connected
+    network: connected()
       ? {
           rttMs: 18,
           sendCodec: 'audio/opus',
@@ -173,7 +181,7 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
     pumpBusyMeanMs: 0.01,
     chainLatencyMs: 10,
     speakers:
-      connected && people.length > 0
+      connected() && people.length > 0
         ? [{ identity: people[0].identity, levelerDb: 4.5, driftRatio: 1.00012, playoutFillMs: 24 }]
         : [],
     // Capture 10 ms + chain 10 ms + ring 20 ms + playout 10 ms, as the engine estimates it.
@@ -188,7 +196,7 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
       type: 'levels',
       inputDb: -38 + 10 * wave,
       gateOpen: !micMuted(),
-      peers: !connected
+      peers: !connected()
         ? []
         : people.map((person, i) =>
             i === 0
@@ -229,38 +237,39 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
     });
     if (ticks % 10 === 0) emit({ type: 'stats', stats: stats() });
     // A flaky link: gone for two seconds out of every five.
-    if (scene === 'reconnect' && connected) {
-      if (ticks % 50 === 30) emit({ type: 'connection', state: 'reconnecting' });
-      if (ticks % 50 === 0) emit({ type: 'connection', state: 'connected' });
+    if (scene === 'reconnect' && connected()) {
+      if (ticks % 50 === 30) setState('reconnecting');
+      if (ticks % 50 === 0) setState('connected');
     }
   };
 
   const handle = (command: Command) => {
     switch (command.type) {
       case 'join':
-        emit({ type: 'connection', state: 'connecting' });
+        setState('connecting');
         log(`joining ${command.url}`);
         if (scene === 'offline') {
           emit({ type: 'error', message: 'Der Server antwortet nicht.' });
-          emit({ type: 'connection', state: 'disconnected' });
+          setState('disconnected');
           break;
         }
-        connected = true;
         {
           // `mock.<room>.<me>` comes from the mock API's joinChannel: that room, those
           // people. Any other token is a pasted developer invite: room `gang`.
-          const [kind, room, me] = command.token.split('.');
-          const fromApi = kind === 'mock' && room && me;
-          people = fromApi ? mockPeopleIn(room, me) : structuredClone(others);
-          emit({ type: 'joined', room: fromApi ? room : 'gang', identity: fromApi ? me : 'ich' });
+          const [kind, name, me] = command.token.split('.');
+          const fromApi = kind === 'mock' && name && me;
+          people = fromApi ? mockPeopleIn(name, me) : structuredClone(others);
+          room = fromApi ? { room: name, identity: me } : { room: 'gang', identity: 'ich' };
+          emit({ type: 'joined', ...room });
           emit({ type: 'participants', participants: structuredClone(people) });
         }
-        emit({ type: 'connection', state: 'connected' });
+        setState('connected');
         break;
       case 'leave':
-        connected = false;
+        room = null;
+        people = [];
         emit({ type: 'participants', participants: [] });
-        emit({ type: 'connection', state: 'disconnected' });
+        setState('disconnected');
         log('left');
         break;
       case 'setMuted':
@@ -335,13 +344,18 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
         emit(appAudioEvent());
         break;
       case 'resync':
+        // Everything the UI needs after a reload, in the real engine's order.
+        emit({ type: 'ready', protocolVersion: 0 });
         emit(devices());
         emit(deviceState());
+        emit({ type: 'connection', state });
         emit(muteState());
         emit({ type: 'monitorState', on: monitor });
         emit(soundsEvent());
         emit(appsEvent());
         emit(appAudioEvent());
+        if (room) emit({ type: 'joined', ...room });
+        emit({ type: 'participants', participants: structuredClone(people) });
         break;
       default:
         break;
@@ -375,10 +389,9 @@ export function createMockEngine(scene: Scene = DEFAULT_SCENE): Engine {
       });
     },
     recentLogs() {
-      // Like the real engine's resync: devices, and what app audio there is (ADR-011).
-      emit(devices());
-      emit(appsEvent());
-      emit(appAudioEvent());
+      // Like the real engine (`recent_logs` in the shell): the state is sent again, so a
+      // reloaded UI shows mute, room and devices as they are, not as defaults.
+      handle({ type: 'resync' });
       return Promise.resolve([]);
     },
     decodeInvite(text) {

@@ -100,12 +100,10 @@ const UNREACHABLE: ApiError = {
   message: 'Server nicht erreichbar: keine Verbindung zu „mock.yappa.test“. Server aus?',
 };
 
-/** A fixed clock so snapshots and tests do not drift. */
-const T0 = Date.UTC(2026, 9, 23, 19, 0, 0);
+/** The clock of the fixture: the start of this hour, so nothing drifts within a run — and
+ * the open invite (valid 7 days) does not expire a week after the fixture was written. */
+const T0 = Math.floor(Date.now() / 3_600_000) * 3_600_000;
 const at = (minutes: number) => new Date(T0 + minutes * 60_000).toISOString();
-/** Expiry dates compare against the real clock in the UI, so they count from today — an
- * invite fixed at T0 + 7 days was "abgelaufen" from 2026-10-30 on and the admin test with it. */
-const inDays = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString();
 
 /** The code of a `yappa://invite/<code>?server=…` link, or `null`. */
 function linkCode(link: string): string | null {
@@ -131,7 +129,7 @@ export function createMockApi(scene: Scene = DEFAULT_SCENE, engine?: Engine): Ap
       code: 'gang-7f3k',
       createdBy: 'krille',
       createdAt: at(-120),
-      expiresAt: inDays(7),
+      expiresAt: at(60 * 24 * 7),
       usedBy: null,
     },
   ];
@@ -264,8 +262,17 @@ export function createMockApi(scene: Scene = DEFAULT_SCENE, engine?: Engine): Ap
           code: 'channel_unknown',
           message: 'Diesen Channel gibt es nicht.',
         } satisfies ApiError;
-      await engine?.send({ type: 'join', url: MOCK_WS_URL, token: `mock.${channelId}.${myId}` });
+      // As `voice_join` in the shell: the presence says "in there" as soon as the join is
+      // asked for, and a join that ends disconnected (token refused, server away) clears it
+      // again — so a failed join never leaves me shown in the channel (review 2026-10-23).
+      let failed = false;
+      const stop = await engine?.subscribe((event) => {
+        if (event.type === 'connection' && event.state === 'disconnected') failed = true;
+      });
       setMine({ channelId });
+      await engine?.send({ type: 'join', url: MOCK_WS_URL, token: `mock.${channelId}.${myId}` });
+      stop?.();
+      if (failed) setMine({ channelId: null });
     },
     async leaveChannel() {
       await engine?.send({ type: 'leave' });
@@ -346,7 +353,7 @@ export function createMockApi(scene: Scene = DEFAULT_SCENE, engine?: Engine): Ap
             code: `gang-${String(nextCode++).padStart(4, '0')}`,
             createdBy: myId,
             createdAt: at(0),
-            expiresAt: inDays(7),
+            expiresAt: at(60 * 24 * 7),
             usedBy: null,
           };
           invites.push(invite);

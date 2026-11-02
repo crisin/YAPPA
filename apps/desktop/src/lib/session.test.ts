@@ -168,6 +168,54 @@ describe('Session', () => {
     stop();
   });
 
+  it('takes mute, deafen and the room from the engine at start instead of assuming defaults', async () => {
+    // A key press before the window opened, a reload in the middle of a call.
+    const engine = createMockEngine();
+    await engine.send({ type: 'toggleDeafened' });
+    await engine.send({ type: 'join', url: 'wss://voice.example', token: 'tok' });
+    const session = new Session(engine);
+    const stop = await session.start();
+    expect([session.muted, session.deafened]).toEqual([true, true]);
+    expect(session.connection).toBe('connected');
+    expect(session.room).toBe('gang');
+    expect(session.participants.map((p) => p.name)).toEqual(['Anna', 'Ben']);
+    stop();
+  });
+
+  it('collects the mix per person for the settings and gives it back to the engine', async () => {
+    const { engine, sent } = recording();
+    const session = new Session(engine);
+    expect(session.mixes).toEqual({});
+    await session.setPeerGain('anna', -6);
+    await session.togglePeerSoundMute('anna');
+    await session.setPeerMusicGain('ben', 0);
+    await session.togglePeerMute('ben');
+    await session.togglePeerMute('ben');
+    // Ben is back at the defaults: not worth a line in the file.
+    expect(session.mixes).toEqual({
+      anna: {
+        voice: { gainDb: -6, muted: false },
+        soundboard: { gainDb: 0, muted: true },
+        music: { gainDb: 0, muted: false },
+      },
+    });
+    sent.length = 0;
+    await session.restoreMix('tim', {
+      voice: { gainDb: 3, muted: true },
+      soundboard: { gainDb: 0, muted: false },
+      music: { gainDb: -12, muted: false },
+    });
+    expect(sent).toEqual([
+      { type: 'setPeerVolume', identity: 'tim', track: 'voice', gainDb: 3 },
+      { type: 'setPeerMuted', identity: 'tim', track: 'voice', muted: true },
+      { type: 'setPeerVolume', identity: 'tim', track: 'music', gainDb: -12 },
+    ]);
+    expect(session.peerGainDb.tim).toBe(3);
+    expect(session.peerMuted.tim).toBe(true);
+    expect(session.peerMusicGainDb.tim).toBe(-12);
+    expect(session.peerSoundMuted.tim).toBeUndefined();
+  });
+
   it('receives levels and stats from the running engine', async () => {
     vi.useFakeTimers();
     const session = new Session(createMockEngine());

@@ -4,6 +4,7 @@ import App from './App.svelte';
 import { MOCK_INVITE_LINK, createMockApi } from './lib/mockApi';
 import { createMockEngine, encodeInvite } from './lib/mockEngine';
 import type { Scene } from './lib/scene';
+import type { Command } from './lib/types/Command';
 import { axe } from './test-a11y';
 
 const devInvite = encodeInvite({ url: 'wss://voice.example', token: 'tok' });
@@ -107,6 +108,56 @@ describe('Shell', () => {
     expect(document.documentElement.dataset.theme).toBe('light');
     expect(localStorage.getItem('yappa.theme')).toBe('light');
   });
+
+  it('lands the keyboard in the new module after a switch, and back where it came from on Esc', async () => {
+    await start();
+    const me = within(rail()).getByRole('button', { name: 'Ich' });
+    me.focus();
+    await fireEvent.click(me);
+    // „Ich“ opens on its current view: the checked radio has the keyboard.
+    await waitFor(() =>
+      expect(document.activeElement).toBe(within(meNav()).getByRole('radio', { name: 'Einfach' })),
+    );
+    await fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(document.activeElement).toBe(me));
+    expect(screen.getByRole('navigation', { name: 'Pfad' })).toHaveTextContent('Voice');
+
+    // Nothing to return to (the palette's input is gone with the palette; here: nothing
+    // had the keyboard): the landing is the module itself, on my channel.
+    await joinRaid();
+    (document.activeElement as HTMLElement | null)?.blur();
+    await fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+    const palette = await screen.findByRole('dialog');
+    await fireEvent.click(within(palette).getByRole('option', { name: 'Ich' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(meNav().contains(document.activeElement)).toBe(true));
+    await fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(document.activeElement).toBe(channel(/^Raid-Abend/)));
+  });
+
+  it('puts the keyboard into the inspector when it opens and back on the opener when it closes', async () => {
+    await start();
+    await joinRaid();
+    const raid = screen.getByRole('list', { name: 'Leute in Raid-Abend' });
+    const ben = within(raid).getByRole('button', { name: 'Ben' });
+    ben.focus();
+    await fireEvent.click(ben);
+    const details = screen.getByRole('complementary', { name: 'Details' });
+    await waitFor(() => expect(document.activeElement).toBe(details));
+    await fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('complementary', { name: 'Details' })).not.toBeInTheDocument();
+    await waitFor(() => expect(document.activeElement).toBe(ben));
+
+    // The stage's toggle: opens, lands inside; the close button gives it back.
+    const soundboard = screen.getByRole('button', { name: /^Soundboard/ });
+    soundboard.focus();
+    await fireEvent.click(soundboard);
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('complementary', { name: 'Details' })),
+    );
+    await fireEvent.click(screen.getByRole('button', { name: 'Details schließen' }));
+    await waitFor(() => expect(document.activeElement).toBe(soundboard));
+  });
 });
 
 describe('Voice module: channel tree', () => {
@@ -126,6 +177,27 @@ describe('Voice module: channel tree', () => {
     const afk = screen.getByRole('list', { name: 'Leute in AFK' });
     expect(within(afk).getByText('abwesend')).toBeInTheDocument();
     expect(within(dock()).queryByRole('button', { name: 'Verlassen' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the channel buttons focusable while a join is on its way', async () => {
+    const { api } = await start();
+    let finish!: () => void;
+    const slow = vi
+      .spyOn(api, 'joinChannel')
+      .mockImplementation(() => new Promise<void>((resolve) => (finish = resolve)));
+    const raid = channel(/^Raid-Abend/);
+    raid.focus();
+    await fireEvent.click(raid);
+    expect(raid).toHaveAttribute('aria-disabled', 'true');
+    expect(raid).not.toBeDisabled();
+    expect(document.activeElement).toBe(raid);
+    expect(raid).toHaveTextContent('…');
+    // A second click is ignored until the first join is through.
+    await fireEvent.click(channel(/^Lobby/));
+    expect(slow).toHaveBeenCalledOnce();
+    finish();
+    await waitFor(() => expect(raid).not.toHaveAttribute('aria-disabled'));
+    expect(document.activeElement).toBe(raid);
   });
 
   it('joins a channel with one click and shows its people as tiles', async () => {
@@ -193,6 +265,107 @@ describe('Voice module: channel tree', () => {
     expect(mute).toHaveAttribute('aria-pressed', 'false');
     await fireEvent.click(mute);
     expect(mute).toHaveAttribute('aria-pressed', 'true');
+  });
+});
+
+describe('Volume and mute per person survive a restart', () => {
+  /** The call scene with an engine that records what the UI sends. */
+  async function startRecording(
+    prepare?: (api: ReturnType<typeof createMockApi>) => Promise<void>,
+  ) {
+    const mock = createMockEngine('call');
+    const sent: Command[] = [];
+    const engine = {
+      ...mock,
+      send(command: Command) {
+        sent.push(command);
+        return mock.send(command);
+      },
+    };
+    const api = createMockApi('call', engine);
+    await prepare?.(api);
+    render(App, { props: { api, engine } });
+    await screen.findByRole('heading', { level: 1, name: /^Hallo / });
+    return { api, sent };
+  }
+
+  it('writes the mix into the app settings a moment after the change', async () => {
+    const { api } = await startRecording();
+    await joinRaid();
+    const tiles = within(stage()).getAllByRole('listitem');
+    await fireEvent.input(within(tiles[0]).getByRole('slider', { name: 'Lautstärke Ben' }), {
+      target: { value: '-6' },
+    });
+    await fireEvent.click(within(tiles[2]).getByRole('button', { name: 'Hörbar' }));
+    await waitFor(async () =>
+      expect((await api.appSettings()).people).toEqual({
+        ben: {
+          voice: { gainDb: -6, muted: false },
+          soundboard: { gainDb: 0, muted: false },
+          music: { gainDb: 0, muted: false },
+        },
+        tim: {
+          voice: { gainDb: 0, muted: true },
+          soundboard: { gainDb: 0, muted: false },
+          music: { gainDb: 0, muted: false },
+        },
+      }),
+    );
+    // Back to the defaults: the person leaves the file again.
+    await fireEvent.click(within(tiles[2]).getByRole('button', { name: 'Stumm für mich' }));
+    await waitFor(async () =>
+      expect(Object.keys((await api.appSettings()).people)).toEqual(['ben']),
+    );
+  });
+
+  it('gives people their remembered mix back when they are in the room', async () => {
+    const { sent } = await startRecording(async (api) => {
+      await api.setAppSettings({
+        ...(await api.appSettings()),
+        people: {
+          ben: {
+            voice: { gainDb: -6, muted: false },
+            soundboard: { gainDb: 0, muted: true },
+            music: { gainDb: 0, muted: false },
+          },
+          // Not in the raid: nothing is sent for her until she shows up.
+          jule: {
+            voice: { gainDb: 3, muted: false },
+            soundboard: { gainDb: 0, muted: false },
+            music: { gainDb: 0, muted: false },
+          },
+        },
+      });
+    });
+    await joinRaid();
+    const tiles = within(stage()).getAllByRole('listitem');
+    await waitFor(() =>
+      expect(within(tiles[0]).getByRole('slider', { name: 'Lautstärke Ben' })).toHaveValue('-6'),
+    );
+    expect(sent.filter((c) => c.type === 'setPeerVolume' || c.type === 'setPeerMuted')).toEqual([
+      { type: 'setPeerVolume', identity: 'ben', track: 'voice', gainDb: -6 },
+      { type: 'setPeerMuted', identity: 'ben', track: 'soundboard', muted: true },
+    ]);
+    const raid = screen.getByRole('list', { name: 'Leute in Raid-Abend' });
+    await fireEvent.click(within(raid).getByRole('button', { name: 'Ben' }));
+    const details = screen.getByRole('complementary', { name: 'Details' });
+    expect(
+      within(details).getByRole('button', { name: 'Soundboard für mich stumm' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    // Jule is in the lobby: her mix follows when I get there, and only once.
+    await fireEvent.click(channel(/^Lobby/));
+    await screen.findByRole('heading', { level: 1, name: 'Lobby' });
+    await waitFor(() =>
+      expect(sent).toContainEqual({
+        type: 'setPeerVolume',
+        identity: 'jule',
+        track: 'voice',
+        gainDb: 3,
+      }),
+    );
+    await fireEvent.click(channel(/^Raid-Abend/));
+    await screen.findByRole('heading', { level: 1, name: 'Raid-Abend' });
+    expect(sent.filter((c) => c.type === 'setPeerVolume' && c.identity === 'ben')).toHaveLength(1);
   });
 });
 

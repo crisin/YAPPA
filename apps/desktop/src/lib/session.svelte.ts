@@ -9,9 +9,12 @@ import type { Event } from './types/Event';
 import type { LogEntry } from './types/LogEntry';
 import type { Participant } from './types/Participant';
 import type { PeerLevel } from './types/PeerLevel';
+import type { PersonMix } from './types/PersonMix';
 import type { Settings } from './types/Settings';
 import type { Sound } from './types/Sound';
 import type { StageLevel } from './types/StageLevel';
+import type { TrackKind } from './types/TrackKind';
+import type { TrackMix } from './types/TrackMix';
 import type { TransmitMode } from './types/TransmitMode';
 import type { Stats } from './types/Stats';
 
@@ -25,6 +28,8 @@ export const METER_FLOOR_DB = -60;
 export function meterFill(db: number): number {
   return Math.min(1, Math.max(0, 1 - db / METER_FLOOR_DB));
 }
+
+const isDefaultMix = (track: TrackMix) => track.gainDb === 0 && !track.muted;
 
 const inviteProblems: [RegExp, string][] = [
   [/not a yAPPA invite/, 'Das ist keine yAPPA-Einladung. Sie beginnt mit „yappa1.“'],
@@ -60,7 +65,8 @@ export class Session {
   deafened = $state(false);
   /** „Mich selbst hören“ (A5) as the engine has it (`monitorState`). */
   monitor = $state(false);
-  /** Per person, as set here: volume in dB and local mute. */
+  /** Per person, as set here: volume in dB and local mute. The app settings remember the
+   * whole mix (`mixes`), so it survives a restart. */
   peerGainDb = $state<Record<string, number>>({});
   peerMuted = $state<Record<string, boolean>>({});
   /** The same for their soundboard track (ADR-010). */
@@ -273,6 +279,62 @@ export class Session {
     const muted = !this.peerMuted[identity];
     this.peerMuted[identity] = muted;
     return this.#engine.send({ type: 'setPeerMuted', identity, track: 'voice', muted });
+  }
+
+  /** How a person sounds for me on all three tracks. */
+  mixOf(identity: string): PersonMix {
+    return {
+      voice: { gainDb: this.peerGainDb[identity] ?? 0, muted: this.peerMuted[identity] ?? false },
+      soundboard: {
+        gainDb: this.peerSoundGainDb[identity] ?? 0,
+        muted: this.peerSoundMuted[identity] ?? false,
+      },
+      music: {
+        gainDb: this.peerMusicGainDb[identity] ?? 0,
+        muted: this.peerMusicMuted[identity] ?? false,
+      },
+    };
+  }
+
+  /** Everybody whose mix is not the default — what the app settings keep across a restart. */
+  get mixes(): Record<string, PersonMix> {
+    const identities = new Set([
+      ...Object.keys(this.peerGainDb),
+      ...Object.keys(this.peerMuted),
+      ...Object.keys(this.peerSoundGainDb),
+      ...Object.keys(this.peerSoundMuted),
+      ...Object.keys(this.peerMusicGainDb),
+      ...Object.keys(this.peerMusicMuted),
+    ]);
+    const mixes: Record<string, PersonMix> = {};
+    for (const identity of [...identities].sort()) {
+      const mix = this.mixOf(identity);
+      if (!isDefaultMix(mix.voice) || !isDefaultMix(mix.soundboard) || !isDefaultMix(mix.music))
+        mixes[identity] = mix;
+    }
+    return mixes;
+  }
+
+  /**
+   * A mix the app settings remembered: into the fields the views read, and to the engine
+   * for every track that is not at its default (it keeps a mix per identity for the
+   * person's next visit, so once per run is enough).
+   */
+  async restoreMix(identity: string, mix: PersonMix) {
+    const tracks: [TrackKind, TrackMix, Record<string, number>, Record<string, boolean>][] = [
+      ['voice', mix.voice, this.peerGainDb, this.peerMuted],
+      ['soundboard', mix.soundboard, this.peerSoundGainDb, this.peerSoundMuted],
+      ['music', mix.music, this.peerMusicGainDb, this.peerMusicMuted],
+    ];
+    for (const [track, wanted, gains, mutes] of tracks) {
+      if (isDefaultMix(wanted)) continue;
+      gains[identity] = wanted.gainDb;
+      mutes[identity] = wanted.muted;
+      if (wanted.gainDb !== 0)
+        await this.#engine.send({ type: 'setPeerVolume', identity, track, gainDb: wanted.gainDb });
+      if (wanted.muted)
+        await this.#engine.send({ type: 'setPeerMuted', identity, track, muted: true });
+    }
   }
 
   exportLogs(): Promise<string> {

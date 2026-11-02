@@ -9,6 +9,7 @@ import { Gang } from './gang.svelte';
 import type { Session } from './session.svelte';
 import type { Shell } from './shell.svelte';
 import type { AppSettings } from './types/AppSettings';
+import type { PersonMix } from './types/PersonMix';
 import type { PublicConfig } from './types/PublicConfig';
 import type { SettingsView } from './types/SettingsView';
 import type { TransmitMode } from './types/TransmitMode';
@@ -40,6 +41,9 @@ export type OnboardingStep = 'mic' | 'talk';
  * colours — the app settings arrive a moment later over IPC. */
 const THEME_KEY = 'yappa.theme';
 
+/** A slider sends every pixel; the settings file gets the mix this long after the last one. */
+export const REMEMBER_MIX_MS = 300;
+
 export class AppState {
   info = $state<AppInfo | null>(null);
   config = $state<PublicConfig | null>(null);
@@ -61,6 +65,10 @@ export class AppState {
   readonly gang: Gang;
   readonly admin: Admin;
   readonly updater: Updater;
+
+  #rememberTimer: ReturnType<typeof setTimeout> | undefined;
+  /** People whose remembered mix was handed to the engine in this run. */
+  readonly #restored = new Set<string>();
 
   constructor(session: Session, shell: Shell, api: Api) {
     this.session = session;
@@ -151,6 +159,34 @@ export class AppState {
     this.onboarding = null;
     const lobby = this.gang.channels[0];
     if (lobby) await this.gang.join(lobby.id);
+  }
+
+  /**
+   * Volume and mute per person into the app settings, a moment after the last change —
+   * nothing is written while they already say the same.
+   */
+  rememberMixes(mixes: Record<string, PersonMix>) {
+    if (!this.appSettings) return;
+    clearTimeout(this.#rememberTimer);
+    this.#rememberTimer = setTimeout(() => {
+      if (JSON.stringify(this.appSettings?.people ?? {}) === JSON.stringify(mixes)) return;
+      void this.updateAppSettings({ people: mixes }).catch(() => {});
+    }, REMEMBER_MIX_MS);
+  }
+
+  /**
+   * People in the room whose mix the settings remember get it back — once per run; the
+   * engine keeps it per identity after that, also across their reconnects.
+   */
+  restoreMixes(identities: readonly string[]) {
+    const people = this.appSettings?.people;
+    if (!people) return;
+    for (const identity of identities) {
+      if (this.#restored.has(identity)) continue;
+      this.#restored.add(identity);
+      const mix = people[identity];
+      if (mix) void this.session.restoreMix(identity, mix);
+    }
   }
 
   /** Opens „Ich“ at a section — from the palette, the dock, or a help link. A pro section

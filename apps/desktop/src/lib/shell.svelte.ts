@@ -70,6 +70,11 @@ export class Shell {
   });
   banners = $state<Banner[]>([]);
   palette = $state({ open: false, query: '' });
+  /**
+   * How the active module last changed: a jump (`open`) lands the keyboard in the new
+   * module, a step back (`back`) returns it to where it came from. The frame acts on it.
+   */
+  navigation = $state<'open' | 'back'>('open');
 
   /** Modules visited before the active one, newest last — for `Esc`/back. */
   #history: string[] = [];
@@ -114,6 +119,7 @@ export class Shell {
       this.#history = [...this.#history.filter((h) => h !== this.active), this.active].slice(-8);
     }
     this.active = id;
+    this.navigation = 'open';
     this.inspector = { open: this.#inspectorWasOpen.get(id) ?? false, content: null };
   }
 
@@ -125,6 +131,7 @@ export class Shell {
       const history = this.#history;
       this.open(target);
       this.#history = history;
+      this.navigation = 'back';
     }
   }
 
