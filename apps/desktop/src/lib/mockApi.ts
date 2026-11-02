@@ -100,8 +100,9 @@ const UNREACHABLE: ApiError = {
   message: 'Server nicht erreichbar: keine Verbindung zu „mock.yappa.test“. Server aus?',
 };
 
-/** A fixed clock so snapshots and tests do not drift. */
-const T0 = Date.UTC(2026, 9, 23, 19, 0, 0);
+/** The clock of the fixture: the start of this hour, so nothing drifts within a run — and
+ * the open invite (valid 7 days) does not expire a week after the fixture was written. */
+const T0 = Math.floor(Date.now() / 3_600_000) * 3_600_000;
 const at = (minutes: number) => new Date(T0 + minutes * 60_000).toISOString();
 
 /** The code of a `yappa://invite/<code>?server=…` link, or `null`. */
