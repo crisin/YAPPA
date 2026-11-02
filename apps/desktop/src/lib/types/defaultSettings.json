@@ -27,5 +27,10 @@
   "outputGainDb": 0.0,
   "autoLevel": true,
   "soundboardGainDb": 0.0,
-  "appAudioGainDb": 0.0
+  "appAudioGainDb": 0.0,
+  "effect": {
+    "kind": "off",
+    "semitones": -4.0,
+    "amount": 0.5
+  }
 }

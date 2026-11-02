@@ -1356,12 +1356,14 @@ fn the_send_chain_reports_its_stages() {
             "gate",
             "eq",
             "compressor",
+            "effect",
             "limiter"
         ]
     );
     assert!(stages[1].active, "high-pass on by default");
     assert!(stages[2].active, "a denoiser by default");
-    assert!(stages[6].active, "the limiter is always on");
+    assert!(!stages[6].active, "no effect by default (ADR-012)");
+    assert!(stages[7].active, "the limiter is always on");
 }
 
 // ── soundboard (ADR-010) ────────────────────────────────────────────────────────────────

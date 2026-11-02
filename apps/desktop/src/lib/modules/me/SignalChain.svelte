@@ -7,7 +7,9 @@
   import Meter from '../../Meter.svelte';
   import type { CompressorSettings } from '../../types/CompressorSettings';
   import type { DenoiserKind } from '../../types/DenoiserKind';
+  import type { EffectSettings } from '../../types/EffectSettings';
   import type { EqBand } from '../../types/EqBand';
+  import type { VoiceEffect } from '../../types/VoiceEffect';
 
   const app = getApp();
   const { session } = app;
@@ -19,6 +21,7 @@
     { id: 'gate', label: 'Gate' },
     { id: 'eq', label: 'EQ' },
     { id: 'compressor', label: 'Kompressor' },
+    { id: 'effect', label: 'Effekt' },
     { id: 'limiter', label: 'Limiter' },
   ] as const;
   type StageId = (typeof STAGES)[number]['id'];
@@ -52,6 +55,19 @@
     { id: 'off', label: 'Aus', short: 'aus' },
   ];
 
+  // The effect slot (ADR-012): one effect between compressor and limiter, for the evening,
+  // not for the studio. The pitch shifter delays the voice by half its window (15 ms).
+  const effects: { id: VoiceEffect; label: string; short: string }[] = [
+    { id: 'off', label: 'Aus', short: 'aus' },
+    { id: 'pitch', label: 'Stimme höher oder tiefer', short: 'Tonhöhe' },
+    { id: 'robot', label: 'Roboter', short: 'Roboter' },
+    { id: 'hall', label: 'Halle', short: 'Halle' },
+    { id: 'radio', label: 'Funkgerät', short: 'Funk' },
+  ];
+  const semitones = (n: number) =>
+    `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(Math.round(n))} ${Math.abs(Math.round(n)) === 1 ? 'Halbton' : 'Halbtöne'}`;
+  const percent = (x: number) => `${Math.round(x * 100)} %`;
+
   /** A few words for the state under each stage. */
   function stateOf(id: StageId): string {
     if (!settings) return '';
@@ -68,6 +84,10 @@
           : `${settings.eq.length} ${settings.eq.length === 1 ? 'Band' : 'Bänder'}`;
       case 'compressor':
         return settings.compressor.enabled ? ratio(settings.compressor.ratio) : 'aus';
+      case 'effect':
+        return settings.effect.kind === 'pitch'
+          ? semitones(settings.effect.semitones)
+          : (effects.find((e) => e.id === settings.effect.kind)?.short ?? '');
       case 'limiter':
         return '−1 dB';
       default:
@@ -79,6 +99,10 @@
 
   function setCompressor(patch: Partial<CompressorSettings>) {
     if (settings) void session.applySettings({ compressor: { ...settings.compressor, ...patch } });
+  }
+
+  function setEffect(patch: Partial<EffectSettings>) {
+    if (settings) void session.applySettings({ effect: { ...settings.effect, ...patch } });
   }
 
   function setBand(index: number, patch: Partial<EqBand>) {
@@ -281,6 +305,52 @@
       <button class="quiet" onclick={addBand} disabled={settings.eq.length >= 5}>
         Band hinzufügen
       </button>
+    {:else if open === 'effect'}
+      {@const fx = settings.effect}
+      <h2>Effekt <Info term="stimmeffekt" /></h2>
+      <label for="fx">Effekt</label>
+      <select
+        id="fx"
+        value={fx.kind}
+        onchange={(e) => setEffect({ kind: e.currentTarget.value as VoiceEffect })}
+      >
+        {#each effects as fxKind (fxKind.id)}
+          <option value={fxKind.id}>{fxKind.label}</option>
+        {/each}
+      </select>
+      {#if fx.kind === 'pitch'}
+        <label for="fxst">Tonhöhe: {semitones(fx.semitones)}</label>
+        <input
+          id="fxst"
+          type="range"
+          min="-12"
+          max="12"
+          step="1"
+          value={fx.semitones}
+          onchange={(e) => setEffect({ semitones: num(e) })}
+        />
+        <p class="muted">
+          Minus macht tiefer, Plus höher. Kostet etwa 15 ms Latenz und flattert bei großen Sprüngen
+          – gedacht für den Abend, nicht fürs Singen.
+        </p>
+      {:else if fx.kind !== 'off'}
+        <label for="fxam">Stärke: {percent(fx.amount)}</label>
+        <input
+          id="fxam"
+          type="range"
+          min="0"
+          max="1"
+          step="0.05"
+          value={fx.amount}
+          onchange={(e) => setEffect({ amount: num(e) })}
+        />
+      {/if}
+      {#if fx.kind !== 'off'}
+        <p class="muted">
+          Die anderen hören dich so; mit „Mich selbst hören“ hörst du es selbst. Der Limiter
+          dahinter fängt, was der Effekt zu laut macht.
+        </p>
+      {/if}
     {:else if open === 'limiter'}
       <h2>Limiter</h2>
       <p class="muted">
@@ -354,7 +424,7 @@
     {/if}
   </div>
 
-  <p class="muted later">Effekte und Plugins (VST/CLAP) kommen als eigene Stufen in Phase 3.</p>
+  <p class="muted later">Eigene Plugins (CLAP) kommen später in denselben Effekt-Slot.</p>
 </section>
 
 <style>

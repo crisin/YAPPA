@@ -1,5 +1,5 @@
 //! The send chain (planning doc, "Sendekette"): high-pass → denoiser → gate / push-to-talk
-//! → EQ → compressor → limiter, one 10 ms block at a time on the pump thread.
+//! → EQ → compressor → effect → limiter, one 10 ms block at a time on the pump thread.
 //!
 //! The pump is not a real-time thread (it hands blocks to the transport, which encodes), so
 //! the chain may allocate when it is reconfigured — never per block. The denoiser is built
@@ -8,20 +8,24 @@
 use denoise::Denoiser;
 use dsp::{
     Biquad, BiquadKind, Coefficients, Compressor, CompressorParams, Gate, GateParams, Limiter,
+    PitchShifter, Radio, Reverb, Robot,
 };
-use engine_protocol::{CompressorSettings, DenoiserKind, EqBand, Settings, TransmitMode};
+use engine_protocol::{
+    CompressorSettings, DenoiserKind, EffectSettings, EqBand, Settings, TransmitMode, VoiceEffect,
+};
 use transport::{BLOCK, SAMPLE_RATE};
 
 const SR: f32 = SAMPLE_RATE as f32;
 
 /// Stage ids, in order — also the order of [`Chain::levels`].
-pub const STAGES: [&str; 7] = [
+pub const STAGES: [&str; 8] = [
     "input",
     "highpass",
     "denoiser",
     "gate",
     "eq",
     "compressor",
+    "effect",
     "limiter",
 ];
 
@@ -45,6 +49,7 @@ pub struct ChainConfig {
     pub vad_hold_ms: u32,
     pub eq: Vec<EqBand>,
     pub compressor: CompressorSettings,
+    pub effect: EffectSettings,
 }
 
 impl From<&Settings> for ChainConfig {
@@ -57,6 +62,71 @@ impl From<&Settings> for ChainConfig {
             vad_hold_ms: s.vad_hold_ms,
             eq: s.eq.clone(),
             compressor: s.compressor,
+            effect: s.effect,
+        }
+    }
+}
+
+/// The effect slot (ADR-012): one of the `dsp` voice effects, or nothing. Built on the pump
+/// when the kind changes (a few delay lines — allocation at reconfigure time is allowed
+/// here, never per block); a parameter change reaches the running effect without a rebuild,
+/// so a slider drag does not click.
+enum Effect {
+    Off,
+    Pitch(PitchShifter),
+    Robot(Robot),
+    Hall(Reverb),
+    Radio(Radio),
+}
+
+impl Effect {
+    fn new(e: &EffectSettings) -> Self {
+        match e.kind {
+            VoiceEffect::Off => Effect::Off,
+            VoiceEffect::Pitch => Effect::Pitch(PitchShifter::new(SR, e.semitones)),
+            VoiceEffect::Robot => Effect::Robot(Robot::new(SR, e.amount)),
+            VoiceEffect::Hall => Effect::Hall(Reverb::new(SR, e.amount)),
+            VoiceEffect::Radio => Effect::Radio(Radio::new(SR, e.amount)),
+        }
+    }
+
+    fn kind(&self) -> VoiceEffect {
+        match self {
+            Effect::Off => VoiceEffect::Off,
+            Effect::Pitch(_) => VoiceEffect::Pitch,
+            Effect::Robot(_) => VoiceEffect::Robot,
+            Effect::Hall(_) => VoiceEffect::Hall,
+            Effect::Radio(_) => VoiceEffect::Radio,
+        }
+    }
+
+    /// New parameters for the same kind. Returns false when the kind differs — rebuild.
+    fn set(&mut self, e: &EffectSettings) -> bool {
+        match (self, e.kind) {
+            (Effect::Off, VoiceEffect::Off) => {}
+            (Effect::Pitch(p), VoiceEffect::Pitch) => p.set_semitones(e.semitones),
+            (Effect::Robot(r), VoiceEffect::Robot) => r.set_amount(e.amount),
+            (Effect::Hall(h), VoiceEffect::Hall) => h.set_amount(e.amount),
+            (Effect::Radio(r), VoiceEffect::Radio) => r.set_amount(e.amount),
+            _ => return false,
+        }
+        true
+    }
+
+    fn latency_samples(&self) -> usize {
+        match self {
+            Effect::Pitch(p) => p.latency_samples(),
+            _ => 0,
+        }
+    }
+
+    fn process(&mut self, block: &mut [f32]) {
+        match self {
+            Effect::Off => {}
+            Effect::Pitch(p) => p.process(block),
+            Effect::Robot(r) => r.process(block),
+            Effect::Hall(h) => h.process(block),
+            Effect::Radio(r) => r.process(block),
         }
     }
 }
@@ -117,6 +187,7 @@ pub struct Chain {
     gate: Gate,
     eq: Vec<Biquad>,
     compressor: Compressor,
+    effect: Effect,
     limiter: Limiter,
     /// Push-to-talk / always-on gain, faded.
     manual_gain: f32,
@@ -144,6 +215,7 @@ impl Chain {
             gate: Gate::new(SR, gate_params(&config)),
             eq: eq(&config.eq),
             compressor: Compressor::new(SR, compressor_params(&config.compressor)),
+            effect: Effect::new(&config.effect),
             limiter: Limiter::new(SR, LIMITER_CEILING_DB, LIMITER_RELEASE_MS),
             denoiser,
             // Always on starts open; push-to-talk starts closed.
@@ -208,13 +280,17 @@ impl Chain {
         }
         self.compressor
             .set_params(SR, compressor_params(&config.compressor));
+        if !self.effect.set(&config.effect) {
+            self.effect = Effect::new(&config.effect);
+            tracing::info!(effect = ?self.effect.kind(), "voice effect switched");
+        }
         self.config = config;
         swapped
     }
 
-    /// The denoiser's own delay — what the chain adds to the latency.
+    /// The denoiser's delay plus the effect's — what the chain adds to the latency.
     pub fn latency_samples(&self) -> usize {
-        self.denoiser.latency_samples()
+        self.denoiser.latency_samples() + self.effect.latency_samples()
     }
 
     pub fn active(&self, stage: usize) -> bool {
@@ -224,6 +300,7 @@ impl Chain {
             3 => self.open,
             4 => self.config.eq.iter().any(|b| b.gain_db != 0.0),
             5 => self.config.compressor.enabled,
+            6 => self.config.effect.kind != VoiceEffect::Off,
             _ => true,
         }
     }
@@ -266,8 +343,10 @@ impl Chain {
             self.compressor.process(block);
         }
         self.levels[5] = rms(block);
-        self.limiter.process(block);
+        self.effect.process(block);
         self.levels[6] = rms(block);
+        self.limiter.process(block);
+        self.levels[7] = rms(block);
     }
 
     fn fade(&mut self, block: &mut [f32], on: bool) {
@@ -415,15 +494,77 @@ mod tests {
         let mut hot = config(TransmitMode::AlwaysOn);
         hot.compressor.enabled = false; // the compressor alone would tame a steady tone
         let mut chain = Chain::new(hot);
-        assert!(chain.active(6));
+        assert!(chain.active(7));
         let ceiling = dsp::db_to_gain(LIMITER_CEILING_DB);
         for _ in 0..20 {
             let mut b = voice(1.2);
             chain.process(&mut b, false);
             assert!(b.iter().all(|s| s.abs() <= ceiling + 1e-6), "{}", b[100]);
         }
-        assert!(chain.levels[5] > chain.levels[6], "the limiter worked");
-        assert!(chain.levels[6] > 0.5, "and still a loud voice went out");
+        assert!(chain.levels[6] > chain.levels[7], "the limiter worked");
+        assert!(chain.levels[7] > 0.5, "and still a loud voice went out");
+    }
+
+    #[test]
+    fn the_effect_slot_is_off_by_default_and_costs_no_latency() {
+        let chain = Chain::new(config(TransmitMode::AlwaysOn));
+        assert!(!chain.active(6));
+        assert_eq!(chain.latency_samples(), 0);
+        assert!(chain.active(7), "the limiter is always on");
+    }
+
+    #[test]
+    fn a_pitch_effect_adds_its_latency_and_a_parameter_change_keeps_the_instance() {
+        let mut cfg = config(TransmitMode::AlwaysOn);
+        cfg.effect = EffectSettings {
+            kind: VoiceEffect::Pitch,
+            semitones: -5.0,
+            amount: 0.5,
+        };
+        let mut chain = Chain::new(cfg.clone());
+        assert!(chain.active(6));
+        assert_eq!(chain.latency_samples(), 720, "half a 30 ms window");
+        run(&mut chain, 0.2, 5, false);
+        cfg.effect.semitones = 3.0;
+        assert!(!chain.reconfigure(cfg.clone()), "no denoiser swap");
+        match &chain.effect {
+            Effect::Pitch(p) => assert_eq!(p.semitones(), 3.0),
+            _ => panic!("the pitch shifter was rebuilt or replaced"),
+        }
+        cfg.effect.kind = VoiceEffect::Radio;
+        chain.reconfigure(cfg);
+        assert!(matches!(chain.effect, Effect::Radio(_)));
+        assert_eq!(chain.latency_samples(), 0, "only the pitch shifter delays");
+    }
+
+    /// Every effect runs through the full chain without leaving the limiter's ceiling or
+    /// producing anything non-finite — the hall's feedback and the radio's drive included.
+    #[test]
+    fn every_effect_stays_finite_and_under_the_ceiling() {
+        for kind in [
+            VoiceEffect::Pitch,
+            VoiceEffect::Robot,
+            VoiceEffect::Hall,
+            VoiceEffect::Radio,
+        ] {
+            let mut cfg = config(TransmitMode::AlwaysOn);
+            cfg.effect = EffectSettings {
+                kind,
+                semitones: 7.0,
+                amount: 1.0,
+            };
+            let mut chain = Chain::new(cfg);
+            let ceiling = dsp::db_to_gain(LIMITER_CEILING_DB);
+            for _ in 0..50 {
+                let mut b = voice(0.9);
+                chain.process(&mut b, false);
+                assert!(
+                    b.iter().all(|s| s.is_finite() && s.abs() <= ceiling + 1e-6),
+                    "{kind:?}"
+                );
+            }
+            assert!(chain.levels[6] > 0.01, "{kind:?}: the voice went out");
+        }
     }
 
     #[test]
