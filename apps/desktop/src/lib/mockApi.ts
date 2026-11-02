@@ -103,6 +103,9 @@ const UNREACHABLE: ApiError = {
 /** A fixed clock so snapshots and tests do not drift. */
 const T0 = Date.UTC(2026, 9, 23, 19, 0, 0);
 const at = (minutes: number) => new Date(T0 + minutes * 60_000).toISOString();
+/** Expiry dates compare against the real clock in the UI, so they count from today — an
+ * invite fixed at T0 + 7 days was "abgelaufen" from 2026-10-30 on and the admin test with it. */
+const inDays = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString();
 
 /** The code of a `yappa://invite/<code>?server=…` link, or `null`. */
 function linkCode(link: string): string | null {
@@ -128,7 +131,7 @@ export function createMockApi(scene: Scene = DEFAULT_SCENE, engine?: Engine): Ap
       code: 'gang-7f3k',
       createdBy: 'krille',
       createdAt: at(-120),
-      expiresAt: at(60 * 24 * 7),
+      expiresAt: inDays(7),
       usedBy: null,
     },
   ];
@@ -343,7 +346,7 @@ export function createMockApi(scene: Scene = DEFAULT_SCENE, engine?: Engine): Ap
             code: `gang-${String(nextCode++).padStart(4, '0')}`,
             createdBy: myId,
             createdAt: at(0),
-            expiresAt: at(60 * 24 * 7),
+            expiresAt: inDays(7),
             usedBy: null,
           };
           invites.push(invite);
