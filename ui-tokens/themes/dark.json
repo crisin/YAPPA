@@ -19,6 +19,10 @@
     "state-away": "#e3b75c",
     "state-offline": "#4d525b",
     "danger": "#e5736b",
-    "warning": "#e3b75c"
+    "warning": "#e3b75c",
+    "panel": "#1e2127",
+    "panel-edge": "#363a43",
+    "knob": "#2b2f37",
+    "knob-edge": "#474c56"
   }
 }

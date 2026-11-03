@@ -646,13 +646,32 @@ describe('Settings: Einfach und Profi', () => {
     await fireEvent.click(compressor);
     expect(compressor).toHaveAttribute('aria-expanded', 'true');
     expect(compressor).toHaveTextContent('3:1');
-    await fireEvent.click(screen.getByRole('checkbox', { name: /An – gleicht laut und leise an/ }));
+    const ratio = screen.getByRole('slider', { name: 'Verhältnis' });
+    expect(ratio).toHaveAttribute('aria-valuetext', '3:1');
+    await fireEvent.keyDown(ratio, { key: 'ArrowUp' });
+    await waitFor(() => expect(compressor).toHaveTextContent('3,5:1'));
+    await fireEvent.click(
+      within(screen.getByText('Kompressor', { selector: 'h2' }).parentElement!).getByRole(
+        'checkbox',
+        { name: 'An' },
+      ),
+    );
     await waitFor(() => expect(compressor).toHaveTextContent('aus'));
+    expect(ratio).toHaveAttribute('aria-disabled', 'true');
 
     const eq = within(stages).getByRole('button', { name: /^EQ/ });
     await fireEvent.click(eq);
+    expect(screen.getByRole('img', { name: 'EQ-Kurve: flach' })).toBeInTheDocument();
     await fireEvent.click(screen.getByRole('button', { name: 'Band hinzufügen' }));
     await waitFor(() => expect(eq).toHaveTextContent('1 Band'));
+    expect(screen.getByRole('img', { name: 'EQ-Kurve: Band 1 3000 Hz 0 dB' })).toBeInTheDocument();
+    const gain = screen.getByRole('slider', { name: 'Verstärkung' });
+    await fireEvent.keyDown(gain, { key: 'ArrowUp', shiftKey: true });
+    await waitFor(() =>
+      expect(
+        screen.getByRole('img', { name: 'EQ-Kurve: Band 1 3000 Hz +5 dB' }),
+      ).toBeInTheDocument(),
+    );
     expect(await axe(container)).toHaveNoViolations();
   });
 
@@ -664,20 +683,25 @@ describe('Settings: Einfach und Profi', () => {
     expect(effect).toHaveTextContent('aus');
     await fireEvent.click(effect);
     expect(effect).toHaveAttribute('aria-expanded', 'true');
-    const kind = screen.getByRole('combobox', { name: 'Effekt' });
-    await fireEvent.change(kind, { target: { value: 'pitch' } });
+    const kind = screen.getByRole('radiogroup', { name: 'Effekt' });
+    await fireEvent.click(within(kind).getByRole('radio', { name: 'Tonhöhe' }));
     await waitFor(() => expect(effect).toHaveTextContent('−4 Halbtöne'));
-    await fireEvent.change(screen.getByRole('slider', { name: /Tonhöhe/ }), {
-      target: { value: '5' },
-    });
+    // The knob is a slider: Shift+Up turns it ten notches, from −4 to +6, then one down.
+    const pitch = screen.getByRole('slider', { name: 'Tonhöhe' });
+    await fireEvent.keyDown(pitch, { key: 'ArrowUp', shiftKey: true });
+    await fireEvent.keyDown(pitch, { key: 'ArrowDown' });
     await waitFor(() => expect(effect).toHaveTextContent('+5 Halbtöne'));
-    await fireEvent.change(kind, { target: { value: 'radio' } });
+    expect(pitch).toHaveAttribute('aria-valuetext', '+5 Halbtöne');
+    await fireEvent.click(within(kind).getByRole('radio', { name: 'Funkgerät' }));
     await waitFor(() => expect(effect).toHaveTextContent('Funk'));
-    expect(screen.getByRole('slider', { name: /Stärke: 50 %/ })).toBeInTheDocument();
+    expect(screen.getByRole('slider', { name: 'Stärke' })).toHaveAttribute(
+      'aria-valuetext',
+      '50 %',
+    );
     await waitFor(() => expect(within(effect).getByRole('meter')).toHaveAttribute('aria-valuenow'));
-    await fireEvent.change(kind, { target: { value: 'off' } });
+    await fireEvent.click(within(kind).getByRole('radio', { name: 'Aus' }));
     await waitFor(() => expect(effect).toHaveTextContent('aus'));
-    expect(screen.queryByRole('slider', { name: /Stärke/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('slider', { name: 'Stärke' })).not.toBeInTheDocument();
   });
 
   it('hears myself while the Signalkette is open and stops the moment it closes (A5)', async () => {
