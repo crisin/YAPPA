@@ -38,6 +38,18 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 **A · Audio block** (ADR-009, interview 2026-10-23) — before M4; order is the decision
 
+- [ ] Autotune und Harmonizer als Effekte (user 2026-11-03). Problem while gaming: der
+      Spaß-Effekt, den jeder kennt – Stimme rastet auf die Töne einer Skala ein, oder eine
+      zweite Stimme singt in Terz/Quinte mit. Plane: nur die Engine (`dsp`: YIN-Tonhöhen-
+      erkennung über das letzte 21-ms-Fenster, Skalen-Quantisierer mit Grundton + Skala,
+      Nachführ-Tempo; der vorhandene Delay-Line-Shifter bekommt ein stetiges Verhältnis statt
+      fester Halbtöne) plus Protokoll additiv (`effect.key`, `effect.scale`, `effect.retune`,
+      `effect.harmony`) und zwei Programmtasten im Rack; Client/Control/Media bleiben
+      unberührt. Recherche: kein passendes Crate – skatotune (Rust, ISC) ist ein ganzes Plugin,
+      nur auf macOS getestet; snaptune/LyraTune sind AGPL, Autotalent GPL2; die Idee (YIN +
+      pitch-synchrone Resampling-Delay-Line, „Live-Modus“ ohne Lookahead) übernehmen wir.
+      Deliberately not built: formant-erhaltendes PSOLA (Studio-Qualität, 40+ ms Latenz),
+      MIDI-Zielnoten, Vibrato-Erkennung, automatische Tonart-Erkennung.
 
 **M4 · Operations** — auto-update, admin, onboarding, banners (after the audio block, ADR-009)
 
@@ -144,6 +156,9 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] Rack-UI für die Signalkette (2026-11-03): Drehregler (ziehen, Mausrad, Tasten,
+      Doppelklick = Vorgabe, Zahl eintippen), Programmtasten mit LED, Ein-Schalter, EQ als
+      ziehbare Frequenzkurve, LEDs an den Stufen — `lib/rack/` mit Tests
 - [x] UI edges from the review 2026-10-23 (2026-11-03): the keyboard follows the shell —
       a module switch lands on the module's current item (my channel, the open section,
       the checked view), an opened inspector takes the focus and gives it back to its
