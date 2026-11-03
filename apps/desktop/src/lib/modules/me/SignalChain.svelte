@@ -13,6 +13,7 @@
   import type { DenoiserKind } from '../../types/DenoiserKind';
   import type { EffectSettings } from '../../types/EffectSettings';
   import type { EqBand } from '../../types/EqBand';
+  import type { Scale } from '../../types/Scale';
   import type { VoiceEffect } from '../../types/VoiceEffect';
 
   const app = getApp();
@@ -67,7 +68,50 @@
     { id: 'robot', label: 'Roboter', short: 'Roboter' },
     { id: 'hall', label: 'Halle', short: 'Halle' },
     { id: 'radio', label: 'Funkgerät', short: 'Funk' },
+    { id: 'autotune', label: 'Autotune', short: 'Autotune' },
+    { id: 'harmony', label: 'Zweite Stimme', short: '2. Stimme' },
   ];
+  // Autotune and „Zweite Stimme“ share key and scale. German note names: B is „H“, B♭ is „B“.
+  const KEYS = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'B', 'H'] as const;
+  const keys = KEYS.map((label, i) => ({ id: String(i), label }));
+  // `notes`: how many steps make an octave; in a short scale the knob's end is the octave.
+  const scales: { id: Scale; label: string; short: string; notes: number }[] = [
+    { id: 'chromatic', label: 'Chromatisch', short: 'chromatisch', notes: 12 },
+    { id: 'major', label: 'Dur', short: 'Dur', notes: 7 },
+    { id: 'naturalMinor', label: 'Moll', short: 'Moll', notes: 7 },
+    { id: 'harmonicMinor', label: 'Harmonisch Moll', short: 'harm. Moll', notes: 7 },
+    { id: 'pentatonicMajor', label: 'Pentatonik Dur', short: 'Pent. Dur', notes: 5 },
+    { id: 'pentatonicMinor', label: 'Pentatonik Moll', short: 'Pent. Moll', notes: 5 },
+    { id: 'blues', label: 'Blues', short: 'Blues', notes: 6 },
+  ];
+  const scaleOf = (id: Scale) => scales.find((s) => s.id === id) ?? scales[1];
+  /** „C-Dur“, „A-Moll“, „chromatisch“. */
+  const keyScale = (key: number, scale: Scale) =>
+    scale === 'chromatic' ? 'chromatisch' : `${KEYS[key] ?? 'C'}-${scaleOf(scale).short}`;
+  // Interval names hold for seven-note scales; in a pentatonic or blues scale two steps
+  // are not a third, so there only the steps are shown.
+  const INTERVALS = ['Prime', 'Sekunde', 'Terz', 'Quarte', 'Quinte', 'Sexte', 'Septime', 'Oktave'];
+  const sign = (n: number) => (n > 0 ? '+' : n < 0 ? '−' : '±');
+  /** The interval's name: Terz … Oktave in a seven-note scale, else only the octave. */
+  function intervalName(steps: number, scale: Scale): string | null {
+    const n = Math.abs(Math.round(steps));
+    const { notes } = scaleOf(scale);
+    if (n >= notes) return 'Oktave';
+    return notes === 7 ? INTERVALS[n] : null;
+  }
+  /** „+Terz“, „−Quinte“, „+2 Stufen“ — the stage text. */
+  const intervalShort = (steps: number, scale: Scale) => {
+    const n = Math.abs(Math.round(steps));
+    return `${sign(steps)}${intervalName(steps, scale) ?? `${n} ${n === 1 ? 'Stufe' : 'Stufen'}`}`;
+  };
+  /** „+2 · Terz“ for the knob. */
+  const intervalLong = (steps: number, scale: Scale) => {
+    const n = Math.abs(Math.round(steps));
+    const name = intervalName(steps, scale);
+    const base = `${sign(steps)}${n} ${n === 1 ? 'Stufe' : 'Stufen'}`;
+    return name ? `${sign(steps)}${n} · ${name}` : base;
+  };
+  const retune = (v: number) => (v === 0 ? 'hart' : percent(v));
   const semitones = (n: number) =>
     `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(Math.round(n))} ${Math.abs(Math.round(n)) === 1 ? 'Halbton' : 'Halbtöne'}`;
   const signed = (n: number, digits = 0) =>
@@ -95,9 +139,16 @@
       case 'compressor':
         return settings.compressor.enabled ? ratio(settings.compressor.ratio) : 'aus';
       case 'effect':
-        return settings.effect.kind === 'pitch'
-          ? semitones(settings.effect.semitones)
-          : (effects.find((e) => e.id === settings.effect.kind)?.short ?? '');
+        switch (settings.effect.kind) {
+          case 'pitch':
+            return semitones(settings.effect.semitones);
+          case 'autotune':
+            return `Autotune ${keyScale(settings.effect.key, settings.effect.scale)}`;
+          case 'harmony':
+            return intervalShort(settings.effect.harmony, settings.effect.scale);
+          default:
+            return effects.find((e) => e.id === settings.effect.kind)?.short ?? '';
+        }
       case 'limiter':
         return '−1 dB';
       default:
@@ -398,6 +449,71 @@
             Minus macht tiefer, Plus höher. Kostet etwa 15 ms Latenz und flattert bei großen
             Sprüngen – gedacht für den Abend, nicht fürs Singen.
           </p>
+        </div>
+      {:else if fx.kind === 'autotune' || fx.kind === 'harmony'}
+        <ProgramButtons
+          label="Tonart"
+          options={keys}
+          value={String(fx.key)}
+          onchange={(id) => setEffect({ key: Number(id) })}
+        />
+        <ProgramButtons
+          label="Skala"
+          options={scales}
+          value={fx.scale}
+          onchange={(scale) => setEffect({ scale })}
+        />
+        <div class="knobs">
+          {#if fx.kind === 'autotune'}
+            <Knob
+              id="fxrt"
+              label="Tempo"
+              value={fx.retune}
+              min={0}
+              max={1}
+              step={0.05}
+              defaultValue={0.3}
+              size={72}
+              format={retune}
+              onchange={(v) => setEffect({ retune: v })}
+            />
+            <p class="muted hint">
+              Die Stimme rastet auf die Töne von {keyScale(fx.key, fx.scale)} ein. „Tempo“ sagt, wie schnell:
+              „hart“ ist der Radio-Effekt, 100 % gleitet in etwa 200 ms hin. Trifft nur, was einen Ton
+              hat – Singen und lange Vokale, nicht schnelles Reden. Kostet etwa 15 ms Latenz.
+            </p>
+          {:else}
+            <Knob
+              id="fxiv"
+              label="Intervall"
+              value={fx.harmony}
+              min={-7}
+              max={7}
+              step={1}
+              bipolar
+              defaultValue={2}
+              size={72}
+              format={(v) => intervalLong(v, fx.scale)}
+              onchange={(v) => setEffect({ harmony: v })}
+            />
+            <Knob
+              id="fxam"
+              label="Stärke"
+              value={fx.amount}
+              min={0}
+              max={1}
+              step={0.05}
+              defaultValue={0.5}
+              size={72}
+              format={percent}
+              onchange={(v) => setEffect({ amount: v })}
+            />
+            <p class="muted hint">
+              Eine zweite Stimme singt in {keyScale(fx.key, fx.scale)} mit – so viele Stufen über (Plus)
+              oder unter (Minus) deiner. Sie schweigt bei Konsonanten und in Pausen; deine eigene Stimme
+              geht unverzögert raus.
+            </p>
+          {/if}
         </div>
       {:else if fx.kind !== 'off'}
         <div class="knobs">

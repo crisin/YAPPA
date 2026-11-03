@@ -7,11 +7,12 @@
 
 use denoise::Denoiser;
 use dsp::{
-    Biquad, BiquadKind, Coefficients, Compressor, CompressorParams, Gate, GateParams, Limiter,
-    PitchShifter, Radio, Reverb, Robot,
+    Autotune, Biquad, BiquadKind, Coefficients, Compressor, CompressorParams, Gate, GateParams,
+    Harmonizer, Limiter, PitchShifter, Radio, Reverb, Robot,
 };
 use engine_protocol::{
-    CompressorSettings, DenoiserKind, EffectSettings, EqBand, Settings, TransmitMode, VoiceEffect,
+    CompressorSettings, DenoiserKind, EffectSettings, EqBand, Scale, Settings, TransmitMode,
+    VoiceEffect,
 };
 use transport::{BLOCK, SAMPLE_RATE};
 
@@ -77,6 +78,21 @@ enum Effect {
     Robot(Robot),
     Hall(Reverb),
     Radio(Radio),
+    Autotune(Autotune),
+    Harmony(Harmonizer),
+}
+
+/// The protocol's scale to the DSP's — the two crates do not know each other.
+fn scale(s: Scale) -> dsp::Scale {
+    match s {
+        Scale::Chromatic => dsp::Scale::Chromatic,
+        Scale::Major => dsp::Scale::Major,
+        Scale::NaturalMinor => dsp::Scale::NaturalMinor,
+        Scale::HarmonicMinor => dsp::Scale::HarmonicMinor,
+        Scale::PentatonicMajor => dsp::Scale::PentatonicMajor,
+        Scale::PentatonicMinor => dsp::Scale::PentatonicMinor,
+        Scale::Blues => dsp::Scale::Blues,
+    }
 }
 
 impl Effect {
@@ -87,6 +103,17 @@ impl Effect {
             VoiceEffect::Robot => Effect::Robot(Robot::new(SR, e.amount)),
             VoiceEffect::Hall => Effect::Hall(Reverb::new(SR, e.amount)),
             VoiceEffect::Radio => Effect::Radio(Radio::new(SR, e.amount)),
+            VoiceEffect::Autotune => {
+                Effect::Autotune(Autotune::new(SR, e.key, scale(e.scale), e.retune))
+            }
+            VoiceEffect::Harmony => Effect::Harmony(Harmonizer::new(
+                SR,
+                e.key,
+                scale(e.scale),
+                e.harmony as i32,
+                e.amount,
+                e.retune,
+            )),
         }
     }
 
@@ -97,6 +124,8 @@ impl Effect {
             Effect::Robot(_) => VoiceEffect::Robot,
             Effect::Hall(_) => VoiceEffect::Hall,
             Effect::Radio(_) => VoiceEffect::Radio,
+            Effect::Autotune(_) => VoiceEffect::Autotune,
+            Effect::Harmony(_) => VoiceEffect::Harmony,
         }
     }
 
@@ -108,14 +137,30 @@ impl Effect {
             (Effect::Robot(r), VoiceEffect::Robot) => r.set_amount(e.amount),
             (Effect::Hall(h), VoiceEffect::Hall) => h.set_amount(e.amount),
             (Effect::Radio(r), VoiceEffect::Radio) => r.set_amount(e.amount),
+            (Effect::Autotune(a), VoiceEffect::Autotune) => {
+                a.set_key(e.key);
+                a.set_scale(scale(e.scale));
+                a.set_retune(e.retune);
+            }
+            (Effect::Harmony(h), VoiceEffect::Harmony) => {
+                h.set_key(e.key);
+                h.set_scale(scale(e.scale));
+                h.set_interval(e.harmony as i32);
+                h.set_amount(e.amount);
+                h.set_retune(e.retune);
+            }
             _ => return false,
         }
         true
     }
 
+    /// What the effect delays the voice by. The harmonizer's dry voice is not delayed,
+    /// only its second voice lags.
     fn latency_samples(&self) -> usize {
         match self {
             Effect::Pitch(p) => p.latency_samples(),
+            Effect::Autotune(a) => a.latency_samples(),
+            Effect::Harmony(h) => h.latency_samples(),
             _ => 0,
         }
     }
@@ -127,6 +172,8 @@ impl Effect {
             Effect::Robot(r) => r.process(block),
             Effect::Hall(h) => h.process(block),
             Effect::Radio(r) => r.process(block),
+            Effect::Autotune(a) => a.process(block),
+            Effect::Harmony(h) => h.process(block),
         }
     }
 }
@@ -519,7 +566,7 @@ mod tests {
         cfg.effect = EffectSettings {
             kind: VoiceEffect::Pitch,
             semitones: -5.0,
-            amount: 0.5,
+            ..EffectSettings::default()
         };
         let mut chain = Chain::new(cfg.clone());
         assert!(chain.active(6));
@@ -546,12 +593,16 @@ mod tests {
             VoiceEffect::Robot,
             VoiceEffect::Hall,
             VoiceEffect::Radio,
+            VoiceEffect::Autotune,
+            VoiceEffect::Harmony,
         ] {
             let mut cfg = config(TransmitMode::AlwaysOn);
             cfg.effect = EffectSettings {
                 kind,
                 semitones: 7.0,
                 amount: 1.0,
+                retune: 0.0,
+                ..EffectSettings::default()
             };
             let mut chain = Chain::new(cfg);
             let ceiling = dsp::db_to_gain(LIMITER_CEILING_DB);
@@ -564,6 +615,47 @@ mod tests {
                 );
             }
             assert!(chain.levels[6] > 0.01, "{kind:?}: the voice went out");
+        }
+    }
+
+    /// Autotune delays like the pitch shifter it is built on; the harmonizer's dry voice
+    /// goes out undelayed. Key, scale and interval reach the running instance.
+    #[test]
+    fn autotune_and_harmony_report_their_latency_and_take_parameters_live() {
+        let mut cfg = config(TransmitMode::AlwaysOn);
+        cfg.effect = EffectSettings {
+            kind: VoiceEffect::Autotune,
+            ..EffectSettings::default()
+        };
+        let mut chain = Chain::new(cfg.clone());
+        assert!(chain.active(6));
+        assert_eq!(chain.latency_samples(), 720, "the shifter's 15 ms");
+        run(&mut chain, 0.2, 5, false);
+        cfg.effect.key = 7;
+        cfg.effect.scale = Scale::Blues;
+        cfg.effect.retune = 0.0;
+        assert!(!chain.reconfigure(cfg.clone()));
+        match &chain.effect {
+            Effect::Autotune(a) => {
+                assert_eq!(
+                    (a.key(), a.scale(), a.retune()),
+                    (7, dsp::Scale::Blues, 0.0)
+                );
+            }
+            _ => panic!("the autotune was rebuilt or replaced"),
+        }
+        cfg.effect.kind = VoiceEffect::Harmony;
+        cfg.effect.harmony = -4;
+        cfg.effect.amount = 0.8;
+        chain.reconfigure(cfg.clone());
+        assert_eq!(chain.latency_samples(), 0, "the dry voice is not delayed");
+        cfg.effect.harmony = 4;
+        assert!(!chain.reconfigure(cfg));
+        match &chain.effect {
+            Effect::Harmony(h) => {
+                assert_eq!((h.key(), h.interval(), h.amount()), (7, 4, 0.8));
+            }
+            _ => panic!("the harmonizer was rebuilt or replaced"),
         }
     }
 

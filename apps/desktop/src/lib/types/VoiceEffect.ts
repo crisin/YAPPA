@@ -4,4 +4,4 @@
  * A voice effect in the send chain (ADR-012): one slot between the compressor and the
  * limiter, so the limiter still catches what the effect adds. `Off` costs nothing.
  */
-export type VoiceEffect = "off" | "pitch" | "robot" | "hall" | "radio";
+export type VoiceEffect = "off" | "pitch" | "robot" | "hall" | "radio" | "autotune" | "harmony";

@@ -3,8 +3,8 @@
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use dsp::{
-    Biquad, BiquadKind, Leveler, LevelerParams, Limiter, PitchShifter, Radio, Resampler, Reverb,
-    Robot, Varispeed,
+    Autotune, Biquad, BiquadKind, Harmonizer, Leveler, LevelerParams, Limiter, PitchShifter,
+    PitchTracker, Radio, Resampler, Reverb, Robot, Scale, Varispeed,
 };
 use std::hint::black_box;
 
@@ -126,5 +126,42 @@ fn effects(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, eq_chain, limiter, leveler, resampler, varispeed, effects);
+/// Autotune and harmonizer (ADR-012, "Autotune und Harmonizer"): the pitch detector alone,
+/// then each effect on a voice-like tone a quarter tone off the scale — the detector finds
+/// a pitch every block, so this is the full cost, not the silent-path one.
+fn tuning(c: &mut Criterion) {
+    let hz = 440.0 * 2f32.powf(0.45 / 12.0);
+    let voice: Vec<f32> = (0..BLOCK)
+        .map(|i| {
+            let t = i as f32 / SR;
+            (1..=6)
+                .map(|k| (std::f32::consts::TAU * hz * k as f32 * t).sin() / k as f32)
+                .sum::<f32>()
+                * 0.3
+        })
+        .collect();
+    let mut tracker = PitchTracker::new(SR);
+    c.bench_function("pitch tracker (YIN, 24 kHz), one 10 ms block", |b| {
+        b.iter(|| tracker.track(black_box(&voice)))
+    });
+    // The block is refilled every round: processing the previous output over and over
+    // would turn it unvoiced and measure the cheap path.
+    let mut block = voice.clone();
+    let mut autotune = Autotune::new(SR, 0, Scale::Major, 0.3);
+    c.bench_function("effect autotune C major, one 10 ms block", |b| {
+        b.iter(|| {
+            block.copy_from_slice(&voice);
+            autotune.process(black_box(&mut block))
+        })
+    });
+    let mut harmonizer = Harmonizer::new(SR, 0, Scale::Major, 2, 1.0, 0.3);
+    c.bench_function("effect harmonizer +third, one 10 ms block", |b| {
+        b.iter(|| {
+            block.copy_from_slice(&voice);
+            harmonizer.process(black_box(&mut block))
+        })
+    });
+}
+
+criterion_group!(benches, eq_chain, limiter, leveler, resampler, varispeed, effects, tuning);
 criterion_main!(benches);

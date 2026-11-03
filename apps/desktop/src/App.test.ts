@@ -704,6 +704,74 @@ describe('Settings: Einfach und Profi', () => {
     expect(screen.queryByRole('slider', { name: 'Stärke' })).not.toBeInTheDocument();
   });
 
+  it('autotune takes a key and a scale and says so on the stage', async () => {
+    await start();
+    await openMe('Signalkette');
+    const stages = screen.getByRole('list', { name: 'Stufen der Signalkette' });
+    const effect = within(stages).getByRole('button', { name: /^Effekt/ });
+    await fireEvent.click(effect);
+    const kind = screen.getByRole('radiogroup', { name: 'Effekt' });
+    await fireEvent.click(within(kind).getByRole('radio', { name: 'Autotune' }));
+    await waitFor(() => expect(effect).toHaveTextContent('Autotune C-Dur'));
+    const tempo = screen.getByRole('slider', { name: 'Tempo' });
+    expect(tempo).toHaveAttribute('aria-valuetext', '30 %');
+    await fireEvent.click(
+      within(screen.getByRole('radiogroup', { name: 'Tonart' })).getByRole('radio', { name: 'A' }),
+    );
+    await fireEvent.click(
+      within(screen.getByRole('radiogroup', { name: 'Skala' })).getByRole('radio', {
+        name: 'Moll',
+      }),
+    );
+    await waitFor(() => expect(effect).toHaveTextContent('Autotune A-Moll'));
+    // Home turns the knob to the left stop: the hard snap.
+    await fireEvent.keyDown(tempo, { key: 'Home' });
+    await waitFor(() => expect(tempo).toHaveAttribute('aria-valuetext', 'hart'));
+    await fireEvent.click(
+      within(screen.getByRole('radiogroup', { name: 'Skala' })).getByRole('radio', {
+        name: 'Chromatisch',
+      }),
+    );
+    await waitFor(() => expect(effect).toHaveTextContent('Autotune chromatisch'));
+    expect(screen.queryByRole('slider', { name: 'Intervall' })).not.toBeInTheDocument();
+  });
+
+  it('the second voice has an interval named by its scale and a level', async () => {
+    await start();
+    await openMe('Signalkette');
+    const stages = screen.getByRole('list', { name: 'Stufen der Signalkette' });
+    const effect = within(stages).getByRole('button', { name: /^Effekt/ });
+    await fireEvent.click(effect);
+    const kind = screen.getByRole('radiogroup', { name: 'Effekt' });
+    await fireEvent.click(within(kind).getByRole('radio', { name: 'Zweite Stimme' }));
+    await waitFor(() => expect(effect).toHaveTextContent('+Terz'));
+    const interval = screen.getByRole('slider', { name: 'Intervall' });
+    expect(interval).toHaveAttribute('aria-valuetext', '+2 · Terz');
+    await fireEvent.keyDown(interval, { key: 'ArrowUp' });
+    await fireEvent.keyDown(interval, { key: 'ArrowUp' });
+    await waitFor(() => expect(effect).toHaveTextContent('+Quinte'));
+    await fireEvent.keyDown(interval, { key: 'Home' });
+    await waitFor(() => expect(effect).toHaveTextContent('−Oktave'));
+    expect(screen.getByRole('slider', { name: 'Stärke' })).toHaveAttribute(
+      'aria-valuetext',
+      '50 %',
+    );
+    expect(screen.queryByRole('slider', { name: 'Tempo' })).not.toBeInTheDocument();
+    // In a blues scale (six notes) six or more steps are the octave, and two steps are
+    // not a third: only the steps are named.
+    await fireEvent.click(
+      within(screen.getByRole('radiogroup', { name: 'Skala' })).getByRole('radio', {
+        name: 'Blues',
+      }),
+    );
+    await waitFor(() => expect(effect).toHaveTextContent('−Oktave'));
+    expect(interval).toHaveAttribute('aria-valuetext', '−7 · Oktave');
+    await fireEvent.keyDown(interval, { key: 'End' });
+    for (let i = 0; i < 5; i++) await fireEvent.keyDown(interval, { key: 'ArrowDown' });
+    await waitFor(() => expect(effect).toHaveTextContent('+2 Stufen'));
+    expect(interval).toHaveAttribute('aria-valuetext', '+2 Stufen');
+  });
+
   it('hears myself while the Signalkette is open and stops the moment it closes (A5)', async () => {
     const { engine } = await start();
     const seen: boolean[] = [];

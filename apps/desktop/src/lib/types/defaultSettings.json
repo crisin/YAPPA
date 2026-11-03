@@ -31,6 +31,10 @@
   "effect": {
     "kind": "off",
     "semitones": -4.0,
-    "amount": 0.5
+    "amount": 0.5,
+    "key": 0,
+    "scale": "major",
+    "retune": 0.3,
+    "harmony": 2
   }
 }
