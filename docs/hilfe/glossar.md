@@ -364,7 +364,18 @@ Stimme ihre eigene Tonhöhe und legt eine metallische darüber, „Halle“ misc
 eines mittleren Raums dazu, „Funkgerät“ presst die Stimme ins Telefonband und übersteuert sie
 leicht. Der Limiter dahinter fängt, was ein Effekt zu laut macht.
 
-Mehr dazu: [Pitch-Shifting (Wikipedia)](https://de.wikipedia.org/wiki/Pitch_Shifting)
+„Autotune“ zieht die Stimme auf die Töne einer Tonart und Skala, etwa C-Dur: Die App misst
+hundertmal je Sekunde die Tonhöhe und verschiebt die Stimme auf den nächsten erlaubten Ton.
+„Tempo“ sagt, wie schnell – „hart“ rastet sofort ein, der bekannte Radio-Effekt; 100 %
+gleitet in etwa 200 ms hin und klingt wie ein sicherer Sänger. Kostet wie „Höher oder
+tiefer“ etwa 15 ms. „Zweite Stimme“ lässt eine zweite Stimme mitsingen, die in der gewählten
+Skala ein paar Stufen über oder unter deiner liegt (Terz, Quinte, Oktave …); „Stärke“ ist
+ihre Lautstärke. Bei Konsonanten und in Pausen, wo keine Tonhöhe zu hören ist, schweigt sie;
+deine eigene Stimme geht dabei unverzögert raus. Beide treffen nur, was wirklich einen Ton
+hat – Singen und lange Vokale, nicht schnelles Gerede.
+
+Mehr dazu: [Pitch-Shifting (Wikipedia)](https://de.wikipedia.org/wiki/Pitch_Shifting),
+[Auto-Tune (Wikipedia)](https://de.wikipedia.org/wiki/Auto-Tune)
 
 ## Update-Kanal
 

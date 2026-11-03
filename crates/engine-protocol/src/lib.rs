@@ -644,6 +644,28 @@ pub enum VoiceEffect {
     Hall,
     /// Telephone band plus drive: the walkie-talkie.
     Radio,
+    /// The voice snaps to the notes of [`EffectSettings::key`] and [`EffectSettings::scale`],
+    /// as fast as [`EffectSettings::retune`] says.
+    Autotune,
+    /// „Zweite Stimme“: a second voice [`EffectSettings::harmony`] scale steps away is mixed
+    /// in at [`EffectSettings::amount`].
+    Harmony,
+}
+
+/// The scale the autotune snaps to and the harmonizer sings in.
+#[derive(Serialize, Deserialize, TS, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum Scale {
+    /// Every semitone: snaps to the nearest note, the key does not matter.
+    Chromatic,
+    #[default]
+    Major,
+    NaturalMinor,
+    HarmonicMinor,
+    PentatonicMajor,
+    PentatonicMinor,
+    Blues,
 }
 
 #[derive(Serialize, Deserialize, TS, Debug, Clone, Copy, PartialEq)]
@@ -653,8 +675,34 @@ pub struct EffectSettings {
     pub kind: VoiceEffect,
     /// `Pitch`: semitones, −12..=12; negative is deeper.
     pub semitones: f32,
-    /// `Robot`, `Hall`, `Radio`: how strong, 0..=1.
+    /// `Robot`, `Hall`, `Radio`: how strong, 0..=1. `Harmony`: the second voice's level.
     pub amount: f32,
+    /// `Autotune`, `Harmony`: the key as semitones above C (C = 0 … H = 11).
+    #[serde(default = "default_key")]
+    pub key: u8,
+    /// `Autotune`, `Harmony`: the scale in that key.
+    #[serde(default)]
+    pub scale: Scale,
+    /// `Autotune`: how fast the voice is pulled to the note, 0..=1 — 0 snaps at once (the
+    /// hard robotic tune), 1 glides over ≈ 200 ms.
+    #[serde(default = "default_retune")]
+    pub retune: f32,
+    /// `Harmony`: the second voice's interval in scale steps, −7..=7 (2 = a third, 4 = a
+    /// fifth in a seven-note scale; negative = below).
+    #[serde(default = "default_harmony")]
+    pub harmony: i8,
+}
+
+fn default_key() -> u8 {
+    0
+}
+
+fn default_retune() -> f32 {
+    0.3
+}
+
+fn default_harmony() -> i8 {
+    2
 }
 
 impl Default for EffectSettings {
@@ -663,6 +711,10 @@ impl Default for EffectSettings {
             kind: VoiceEffect::Off,
             semitones: -4.0,
             amount: 0.5,
+            key: default_key(),
+            scale: Scale::default(),
+            retune: default_retune(),
+            harmony: default_harmony(),
         }
     }
 }
@@ -813,6 +865,18 @@ impl Settings {
         }
         if !(0.0..=1.0).contains(&self.effect.amount) {
             return Err(format!("effect amount {} out of 0..=1", self.effect.amount));
+        }
+        if self.effect.key > 11 {
+            return Err(format!("effect key {} out of 0..=11", self.effect.key));
+        }
+        if !(0.0..=1.0).contains(&self.effect.retune) {
+            return Err(format!("effect retune {} out of 0..=1", self.effect.retune));
+        }
+        if !(-7..=7).contains(&self.effect.harmony) {
+            return Err(format!(
+                "effect harmony {} out of -7..=7",
+                self.effect.harmony
+            ));
         }
         Ok(())
     }
@@ -1115,13 +1179,16 @@ mod tests {
         assert!(s.validate().is_ok());
         assert_eq!(
             serde_json::to_value(s.effect).unwrap(),
-            serde_json::json!({ "kind": "off", "semitones": -4.0, "amount": 0.5 })
+            serde_json::json!({
+                "kind": "off", "semitones": -4.0, "amount": 0.5,
+                "key": 0, "scale": "major", "retune": 0.3f32, "harmony": 2
+            })
         );
         let too_high = Settings {
             effect: EffectSettings {
                 kind: VoiceEffect::Pitch,
                 semitones: 13.0,
-                amount: 0.5,
+                ..EffectSettings::default()
             },
             ..Settings::default()
         };
@@ -1129,12 +1196,70 @@ mod tests {
         let nan = Settings {
             effect: EffectSettings {
                 kind: VoiceEffect::Hall,
-                semitones: 0.0,
                 amount: f32::NAN,
+                ..EffectSettings::default()
             },
             ..Settings::default()
         };
         assert!(nan.validate().is_err(), "NaN is out of every range");
+    }
+
+    /// A settings file from before the autotune (the four effects of ADR-012 only) loads
+    /// with the tuning fields at their defaults; the new fields are bounded.
+    #[test]
+    fn tuning_fields_default_for_older_files_and_are_bounded() {
+        let json = serde_json::json!({ "kind": "robot", "semitones": 2.0, "amount": 0.7 });
+        let e: EffectSettings = serde_json::from_value(json).unwrap();
+        assert_eq!(
+            e,
+            EffectSettings {
+                kind: VoiceEffect::Robot,
+                semitones: 2.0,
+                amount: 0.7,
+                ..EffectSettings::default()
+            }
+        );
+        assert_eq!(
+            (e.key, e.scale, e.retune, e.harmony),
+            (0, Scale::Major, 0.3, 2)
+        );
+        let json = serde_json::json!({
+            "kind": "harmony", "semitones": 0.0, "amount": 1.0,
+            "key": 9, "scale": "naturalMinor", "retune": 0.0, "harmony": -4
+        });
+        let e: EffectSettings = serde_json::from_value(json).unwrap();
+        assert_eq!(
+            (e.kind, e.key, e.scale, e.harmony),
+            (VoiceEffect::Harmony, 9, Scale::NaturalMinor, -4)
+        );
+        for bad in [
+            EffectSettings {
+                key: 12,
+                ..EffectSettings::default()
+            },
+            EffectSettings {
+                retune: 1.5,
+                ..EffectSettings::default()
+            },
+            EffectSettings {
+                retune: f32::NAN,
+                ..EffectSettings::default()
+            },
+            EffectSettings {
+                harmony: 8,
+                ..EffectSettings::default()
+            },
+            EffectSettings {
+                harmony: -8,
+                ..EffectSettings::default()
+            },
+        ] {
+            let s = Settings {
+                effect: bad,
+                ..Settings::default()
+            };
+            assert!(s.validate().is_err(), "{bad:?}");
+        }
     }
 
     #[test]

@@ -16,6 +16,11 @@ use std::f32::consts::PI;
 const WINDOW_MS: f32 = 30.0;
 /// Semitones the UI may ask for; beyond that the window rate becomes a clear tremolo.
 pub const MAX_SEMITONES: f32 = 12.0;
+/// The bound for a tracker-steered ratio: an octave plus the half scale step a voice may
+/// sit off its nearest note (up to 1.5 semitones), so an octave second voice reaches its
+/// note even when the singer is flat or sharp.
+pub const MIN_RATIO: f32 = 0.46;
+pub const MAX_RATIO: f32 = 2.18;
 
 #[derive(Debug, Clone)]
 pub struct PitchShifter {
@@ -28,6 +33,12 @@ pub struct PitchShifter {
     /// Phase advance per sample: `(1 - ratio) / window`. Zero at unity.
     step: f32,
     semitones: f32,
+    ratio: f32,
+    /// Set by [`set_semitones`](Self::set_semitones) at 0: the signal passes untouched.
+    /// [`set_ratio`](Self::set_ratio) never bypasses, so a ratio that crosses 1.0 while a
+    /// tracker steers it stays continuous instead of jumping between the dry signal and
+    /// the delayed read heads.
+    bypass: bool,
 }
 
 impl PitchShifter {
@@ -42,6 +53,8 @@ impl PitchShifter {
             phase: 0.0,
             step: 0.0,
             semitones: 0.0,
+            ratio: 1.0,
+            bypass: true,
         };
         s.set_semitones(semitones);
         s
@@ -56,12 +69,33 @@ impl PitchShifter {
             0.0
         };
         self.semitones = st;
-        let ratio = 2f32.powf(st / 12.0);
-        self.step = (1.0 - ratio) / self.window;
+        self.ratio = 2f32.powf(st / 12.0);
+        self.step = (1.0 - self.ratio) / self.window;
+        self.bypass = st == 0.0;
+    }
+
+    /// The pitch ratio directly (2.0 = an octave up), for a tracker that steers the shifter
+    /// continuously (autotune, harmonizer). Clamped to [`MIN_RATIO`]..=[`MAX_RATIO`];
+    /// NaN is unity. Unlike [`set_semitones`](Self::set_semitones) at 0, unity here still
+    /// runs through the read heads — see [`Self::bypass`].
+    pub fn set_ratio(&mut self, ratio: f32) {
+        let r = if ratio.is_finite() {
+            ratio.clamp(MIN_RATIO, MAX_RATIO)
+        } else {
+            1.0
+        };
+        self.ratio = r;
+        self.semitones = 12.0 * r.log2();
+        self.step = (1.0 - r) / self.window;
+        self.bypass = false;
     }
 
     pub fn semitones(&self) -> f32 {
         self.semitones
+    }
+
+    pub fn ratio(&self) -> f32 {
+        self.ratio
     }
 
     /// What the shifter delays the voice by on average: half the window.
@@ -90,7 +124,7 @@ impl PitchShifter {
             let x = if s.is_finite() { *s } else { 0.0 };
             self.buf[self.write] = x;
             self.write = (self.write + 1) % len;
-            if self.step == 0.0 {
+            if self.bypass {
                 continue;
             }
             let pa = self.phase;
@@ -192,6 +226,32 @@ mod tests {
             "the first block after unity came from an empty line: {}",
             crate::rms(&block)
         );
+    }
+
+    /// A ratio of exactly 1.0 from `set_ratio` keeps reading through the heads: a tracker
+    /// that drifts through unity must not switch between the dry signal and a 15 ms delayed
+    /// one.
+    #[test]
+    fn a_ratio_of_one_is_not_a_bypass() {
+        let mut ps = PitchShifter::new(SR, 0.0);
+        ps.set_ratio(1.0);
+        assert_eq!(ps.ratio(), 1.0);
+        assert_eq!(ps.semitones(), 0.0);
+        let mut block = tone(440.0, 4_800);
+        let before = block.clone();
+        ps.process(&mut block);
+        assert_ne!(block[2_400..], before[2_400..], "the heads are in the path");
+        ps.set_ratio(1.5);
+        assert!((ps.semitones() - 7.02).abs() < 0.01);
+        ps.set_ratio(f32::NAN);
+        assert_eq!(ps.ratio(), 1.0);
+        ps.set_ratio(9.0);
+        assert_eq!(ps.ratio(), MAX_RATIO);
+        ps.set_semitones(0.0);
+        let mut block = tone(440.0, 480);
+        let before = block.clone();
+        ps.process(&mut block);
+        assert_eq!(block, before, "semitones 0 is the bypass again");
     }
 
     #[test]
