@@ -36,21 +36,6 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 - [ ] PTT in a fullscreen game (user, testabend): does the voice come with the key, does
       the game still get the key? Note anti-cheat games separately → `docs/spikes/s3-ptt.md`
 
-**A · Audio block** (ADR-009, interview 2026-10-23) — before M4; order is the decision
-
-- [ ] Autotune und Harmonizer als Effekte (user 2026-11-03). Problem while gaming: der
-      Spaß-Effekt, den jeder kennt – Stimme rastet auf die Töne einer Skala ein, oder eine
-      zweite Stimme singt in Terz/Quinte mit. Plane: nur die Engine (`dsp`: YIN-Tonhöhen-
-      erkennung über das letzte 21-ms-Fenster, Skalen-Quantisierer mit Grundton + Skala,
-      Nachführ-Tempo; der vorhandene Delay-Line-Shifter bekommt ein stetiges Verhältnis statt
-      fester Halbtöne) plus Protokoll additiv (`effect.key`, `effect.scale`, `effect.retune`,
-      `effect.harmony`) und zwei Programmtasten im Rack; Client/Control/Media bleiben
-      unberührt. Recherche: kein passendes Crate – skatotune (Rust, ISC) ist ein ganzes Plugin,
-      nur auf macOS getestet; snaptune/LyraTune sind AGPL, Autotalent GPL2; die Idee (YIN +
-      pitch-synchrone Resampling-Delay-Line, „Live-Modus“ ohne Lookahead) übernehmen wir.
-      Deliberately not built: formant-erhaltendes PSOLA (Studio-Qualität, 40+ ms Latenz),
-      MIDI-Zielnoten, Vibrato-Erkennung, automatische Tonart-Erkennung.
-
 **M4 · Operations** — auto-update, admin, onboarding, banners (after the audio block, ADR-009)
 
 - [ ] U7 System states (review 2026-10-23): offline state in the dock with „Erneut
@@ -156,6 +141,19 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] Autotune und Zweite Stimme als Effekte (2026-11-03, user-Wunsch vom selben Tag):
+      zwei Programmtasten mehr im Effekt-Rack, dazu Tonart (C … H) und Skala (chromatisch,
+      Dur, Moll, harmonisch Moll, Pentatonik Dur/Moll, Blues); Autotune hat „Tempo“ (0 =
+      hart), Zweite Stimme „Intervall“ (−7 … +7 Stufen, bei siebentönigen Skalen als Terz,
+      Quinte … benannt; in kürzeren Skalen ist das Ende des Reglers die Oktave) und „Stärke“. Engine: YIN-Tonhöhenerkennung in `dsp::PitchTracker`
+      (32-ms-Rückblick auf einer 2:1 dezimierten Kopie, einmal je Block, ohne Lookahead),
+      `dsp::scale` (nächster Skalenton, Intervall in Stufen, Proptests), der Delay-Line-
+      Shifter bekam `set_ratio`, `Autotune` und `Harmonizer` steuern ihn mit geglättetem
+      Verhältnis (Halten bei Konsonanten, dann Rücklauf auf 1,0); Protokoll additiv
+      (`effect.key/scale/retune/harmony`, alte Dateien laden unverändert). Gemessen je
+      10-ms-Block: Erkennung ≈ 16 µs, Autotune und Zweite Stimme je ≈ 27 µs (Budget 500 µs).
+      Bewusst nicht gebaut: formant-erhaltendes PSOLA, MIDI-Zielnoten, automatische
+      Tonart-Erkennung, Vibrato-Behandlung, eine Stereo-Zweitstimme.
 - [x] Rack-UI für die Signalkette (2026-11-03): Drehregler (ziehen, Mausrad, Tasten,
       Doppelklick = Vorgabe, Zahl eintippen), Programmtasten mit LED, Ein-Schalter, EQ als
       ziehbare Frequenzkurve, LEDs an den Stufen — `lib/rack/` mit Tests
