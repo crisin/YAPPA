@@ -1,5 +1,5 @@
-# The gate on every push and PR: `cargo xtask check --ci` on the two target platforms.
-# Dormant until the repo has a GitHub remote. Pinning actions to SHAs is a follow-up.
+# The gate on every push and PR: `cargo xtask check --ci` on the two client platforms, and
+# the control plane on the platform it runs on. Pinning actions to SHAs is a follow-up.
 name: check
 
 on:
@@ -40,3 +40,31 @@ jobs:
         env:
           # insta: fail on snapshot mismatch instead of writing .snap.new files
           CI: true
+
+  # The server only ever runs on Linux, and neither job above builds it there. Without this
+  # a break first shows on the box, during `docker compose up --build`.
+  control-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust toolchain (from rust-toolchain.toml)
+        run: rustup show active-toolchain
+      - uses: Swatinem/rust-cache@v2
+      - name: Control plane tests
+        run: cargo test -p control
+      - name: Docker image
+        run: docker build -f infra/control/Dockerfile -t yappa-control .
+      - name: The image answers its own healthcheck
+        run: |
+          docker run -d --name control --network host \
+            -e LIVEKIT_API_KEY=ci -e LIVEKIT_API_SECRET=ci -e LIVEKIT_WS_URL=wss://ci.invalid \
+            yappa-control
+          sleep 3
+          docker exec control yappa-control health
+          docker exec control yappa-control backup /data/ci.db
+      - name: Compose file is valid
+        working-directory: infra/livekit
+        run: docker compose -f home.yml config --quiet
+        env:
+          LIVEKIT_API_SECRET: ci
+          YAPPA_DOMAIN: ci.invalid
