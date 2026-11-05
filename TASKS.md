@@ -166,6 +166,10 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] CI fix (2026-11-05): `capturing_the_own_process_starts_and_stops_cleanly` waits up to
+      10 s for its packets instead of a fixed 300 ms (2 packets on a Windows runner without
+      a sound card). The macOS job of the same run was cancelled by GitHub (no runner
+      acquired), not by a test.
 - [x] Server prep for the MacBook and the VPS (2026-11-05): `yappa-control backup <file>`
       (`VACUUM INTO` to a temp file, then rename; prints members and channels as the check
       against the wrong database), restore and a nightly systemd timer in
