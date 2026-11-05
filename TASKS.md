@@ -21,6 +21,25 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
       + invites out (`docs/mittesten.md`), collect diagnostics files; write down what broke
 - [ ] Homeserver: first call from outside over the IPv6-only server (a gang member with
       IPv6, phone hotspot is enough); then ask the cable provider for a public IPv4
+- [ ] VPS stage 2 (user 2026-11-03, replaces the M4 line „Infra for three stages“). The box
+      sits behind CGNAT (IPv4 `100.96.…`), so anyone without IPv6 gets neither voice nor
+      the control plane — and WSL2 only runs while the user is logged in. *Problem while
+      gaming:* a gang member on an IPv4-only line is simply locked out, and the server is
+      down whenever the dev PC is. *Planes:* infra only — LiveKit + control + Caddy move to
+      a VPS in Germany, client/control/media separation untouched; the app only sees a new
+      `server=` URL. *Plan:* `infra/livekit/vps.yml` on top of `home.yml` (same services;
+      `livekit.home.yaml` as is — a VPS has a public IPv4 and STUN finds it), host network,
+      `.env` + override only; firewall list (80, 443, TCP 7881, UDP 7882); healthchecks;
+      `updates/` volume and the Caddy route (the VPS becomes the update host, ADR-006
+      revisit trigger); `docs/homeserver.md` gets a VPS part incl. moving `control_data`
+      and what the gang has to do (new invite link or same name via DNS). *Needs from the
+      user first:* provider (≈ 4–6 €/month, 2 vCPU / 4 GB, Germany) and an own domain with
+      A + AAAA records (a MyFRITZ! name cannot move with the server). *Measure:* mouth-to-ear
+      and ping to the VPS from two gang homes before it replaces the home box (budget
+      70–120 ms). *Deliberately not built:* WireGuard hop from the VPS to the home box
+      (doubles the media path and puts the home uplink into it), Cloudflare Tunnel (cannot
+      carry UDP/7881 media), TURN relay tricks for IPv4 → IPv6, a second server/failover
+      (phase 2). Until it lands the public-IPv4 request to the provider stays the quick fix.
 
 **M2 · Login and channels** — invite link, name, lobby, who is where, join by click
 
@@ -45,9 +64,6 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
       page)
 - [ ] Lofi round 2 (user): draw reconnect/offline/update banner and lobby radio against the
       running shell (detail questions follow established patterns, vision section 12)
-- [ ] Infra for three stages (vision section 12): one compose set for LiveKit + control +
-      Caddy, `home.yml` (mini PC) and new `vps.yml` differ only in `.env`/overrides; VPS is
-      the update host; `docs/homeserver.md` gets a VPS part
 - [ ] Optics round (user, after U3): 2–3 token variants on the running shell, then ADR
 
 ## Later
