@@ -20,6 +20,14 @@ services:
       - ./${LIVEKIT_CONFIG_FILE:-livekit.home.yaml}:/etc/livekit.yaml:ro
     network_mode: host
     restart: unless-stopped
+    # The healthchecks only report (`docker compose ps`), nothing restarts on them: a restart
+    # on a false alarm would end the running call.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1:7880"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   # Terminates TLS for the signalling connection (wss://) and fetches the certificate
   # from Let's Encrypt by itself. Needs ports 80 and 443 reachable from the internet.
@@ -36,6 +44,12 @@ services:
       - caddy_config:/config
     network_mode: host
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:2019/config/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   # The control plane (spike S6, ADR-005): invites, channels, tokens, event log. HTTP only;
   # Caddy publishes it under https://$YAPPA_DOMAIN/api/. The first start prints an admin
@@ -57,6 +71,12 @@ services:
       - control_data:/data
     network_mode: host
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "yappa-control", "health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
 volumes:
   control_data:
