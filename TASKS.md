@@ -166,6 +166,13 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] CI fix macOS (2026-11-05, red since 2026-10-26): the stand-in output callbacks of
+      `clips_play_overlapping_out_both_ways_and_the_state_is_reported` and
+      `a_sound_goes_out_on_its_track_and_into_the_own_mix` keep time like a sound card (a
+      late wake-up renders the missed blocks) instead of `sleep(10 ms)`, which overslept
+      on the runner and let the mixer drop the backlog; reproduced locally with 16 ms per
+      block (heard 3398 < 3840), green with a simulated 6 ms oversleep.
+      `a_burst_of_signals_is_one_change_and_stop_ends_it` waits up to 5 s for the count.
 - [x] CI fix (2026-11-05): `capturing_the_own_process_starts_and_stops_cleanly` waits up to
       10 s for its packets instead of a fixed 300 ms (2 packets on a Windows runner without
       a sound card). The macOS job of the same run was cancelled by GitHub (no runner
