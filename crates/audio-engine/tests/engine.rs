@@ -1409,6 +1409,8 @@ fn a_sound_goes_out_on_its_track_and_into_the_own_mix() {
 
     // The output callback, stood in by a thread: drains the own mix in real time until the
     // sound is over (plus a tail — a slow CI runner decodes late) and counts what it heard.
+    // It keeps time like a sound card: a late wake-up renders the missed blocks at once
+    // (a plain sleep oversleeps on a busy macOS runner, and the mixer drops the backlog).
     let speaker = rig.hardware.speaker.clone();
     let over = Arc::new(AtomicBool::new(false));
     let callback = {
@@ -1417,6 +1419,7 @@ fn a_sound_goes_out_on_its_track_and_into_the_own_mix() {
             let mut out = vec![0f32; BLOCK];
             let mut heard = 0;
             let mut tail = 20;
+            let mut next = std::time::Instant::now();
             while tail > 0 {
                 if over.load(Relaxed) {
                     tail -= 1;
@@ -1424,7 +1427,10 @@ fn a_sound_goes_out_on_its_track_and_into_the_own_mix() {
                 out.fill(0.0);
                 speaker.lock().unwrap().as_mut().unwrap().render(&mut out);
                 heard += out.iter().filter(|s| **s > 0.3).count();
-                std::thread::sleep(Duration::from_millis(10));
+                next += Duration::from_millis(10);
+                if let Some(wait) = next.checked_duration_since(std::time::Instant::now()) {
+                    std::thread::sleep(wait);
+                }
             }
             heard
         })

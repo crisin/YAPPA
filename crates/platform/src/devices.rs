@@ -243,18 +243,28 @@ mod tests {
                 seen.fetch_add(1, Relaxed);
             });
         });
+        // Waits for the count instead of a fixed time: a busy macOS runner delivered the
+        // second change after the 120 ms the test used to give it.
+        let reaches = |n: u32| {
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            while calls.load(Relaxed) < n && std::time::Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            calls.load(Relaxed)
+        };
         // One headset: Windows reports state, default (console/multimedia/communications),
         // and the device again — within a few milliseconds.
         for _ in 0..6 {
             tx.send(Signal::Changed).unwrap();
             std::thread::sleep(Duration::from_millis(5));
         }
+        assert_eq!(reaches(1), 1);
+        // Nothing more comes of that burst.
         std::thread::sleep(quiet * 3);
         assert_eq!(calls.load(Relaxed), 1, "one burst, one change");
         // A second, separate event.
         tx.send(Signal::Changed).unwrap();
-        std::thread::sleep(quiet * 3);
-        assert_eq!(calls.load(Relaxed), 2);
+        assert_eq!(reaches(2), 2);
         tx.send(Signal::Stop).unwrap();
         thread.join().unwrap();
     }

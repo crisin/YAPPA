@@ -554,7 +554,10 @@ mod tests {
         let path = temp("loud.wav", &wav(48_000, 1, &loud));
         let name = path.display().to_string();
         // The output callback, stood in by a thread: drains the local ring in real time
-        // until the sounds are over (plus a tail) and counts what it heard.
+        // until the sounds are over (plus a tail) and counts what it heard. It keeps time
+        // like a sound card: a late wake-up renders the missed blocks at once. A plain
+        // `sleep(10 ms)` oversleeps on a busy macOS runner, plays too slowly, and the mixer
+        // rightly drops the backlog — that was the red CI, not the soundboard.
         let over = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let callback = {
             let over = over.clone();
@@ -562,6 +565,7 @@ mod tests {
                 let mut out = vec![0f32; BLOCK];
                 let mut heard = 0;
                 let mut tail = 20;
+                let mut next = Instant::now();
                 while tail > 0 {
                     if over.load(std::sync::atomic::Ordering::Relaxed) {
                         tail -= 1;
@@ -569,7 +573,10 @@ mod tests {
                     out.fill(0.0);
                     rt.render(&mut out);
                     heard += out.iter().filter(|s| s.abs() > 0.5).count();
-                    std::thread::sleep(Duration::from_millis(10));
+                    next += Duration::from_millis(10);
+                    if let Some(wait) = next.checked_duration_since(Instant::now()) {
+                        std::thread::sleep(wait);
+                    }
                 }
                 heard
             })
