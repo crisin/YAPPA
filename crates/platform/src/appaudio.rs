@@ -738,12 +738,17 @@ mod tests {
             |reason| panic!("ended by itself: {reason}"),
         )
         .expect("the own process can be captured");
-        std::thread::sleep(std::time::Duration::from_millis(300));
+        // A silent process still delivers packets (silence, flagged by the engine). How fast
+        // depends on the machine: a CI runner without a sound card gave 2 in 300 ms where a
+        // PC gives 30, so wait for the packets with a generous limit instead of a fixed time.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while packets.load(Relaxed) <= 5 && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
         drop(running);
-        // A silent process still delivers packets (silence, flagged by the engine).
         assert!(
             packets.load(Relaxed) > 5,
-            "{} packets",
+            "{} packets in 10 s",
             packets.load(Relaxed)
         );
     }
