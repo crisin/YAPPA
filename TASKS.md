@@ -21,7 +21,16 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
       + invites out (`docs/mittesten.md`), collect diagnostics files; write down what broke
 - [ ] Homeserver: first call from outside over the IPv6-only server (a gang member with
       IPv6, phone hotspot is enough); then ask the cable provider for a public IPv4
-- [ ] VPS stage 2 (user 2026-11-03, replaces the M4 line „Infra for three stages“). The box
+- [ ] MacBook as the home server (user, 2026-11-05; MacBook Pro 15" 2019, i7, 32 GB, T2):
+      first all of the gang on `test-ipv6.com` and the provider question. If somebody stays
+      locked out, VPS stage 2 comes first and the MacBook is the second box. Finish S0 on
+      macOS before partitioning. Then `docs/homeserver.md` „Variante MacBook“ and „Server
+      umziehen“, never run yet: fix what is wrong there. Accept: reboot and pulled plug
+      without a login, a call from outside, `lk load-test` with 20 + 20, upload on a real
+      evening, 48 h soak. *Problem while gaming:* the server is down whenever the dev PC is.
+      *Planes:* infra only. *Not built:* LUKS (a power cut would wait for a password),
+      a watchdog for an IPv6 prefix change, images from CI.
+- [ ] VPS stage 2 (user 2026-11-03, provider choice: `docs/vps-checkliste.md`; replaces the M4 line „Infra for three stages“). The box
       sits behind CGNAT (IPv4 `100.96.…`), so anyone without IPv6 gets neither voice nor
       the control plane — and WSL2 only runs while the user is logged in. *Problem while
       gaming:* a gang member on an IPv4-only line is simply locked out, and the server is
@@ -83,9 +92,9 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
       instead of dying
 - [ ] Control-plane edges from the review 2026-10-23: cache the presence token and the
       channel tokens (≈ 12 h, vision section 3) so a start without the control plane still
-      has presence; kick revokes the session and a member can be removed; healthcheck in
-      the compose files; voice grant limited to the microphone source; a Linux CI job that
-      builds `crates/control` (+ the Docker image); actions pinned to SHAs
+      has presence; kick revokes the session and a member can be removed; healthchecks in
+      the tunnel compose files (`home.yml` has them); voice grant limited to the microphone
+      source; actions pinned to SHAs
 - [ ] Engine follow-ups (ADR-003, realtime reviews 2026-10-10 and 2026-10-23): drift
       compensation = hold the playout ring at the cushion; resampling for devices that are
       not at 48 kHz; transport events carry a session number; a "nothing arrives" warning
@@ -157,6 +166,18 @@ Phase 1 in four milestones (`docs/01-vision-v1.md`, section 9). Order is depende
 
 ## Done
 
+- [x] Server prep for the MacBook and the VPS (2026-11-05): `yappa-control backup <file>`
+      (`VACUUM INTO` to a temp file, then rename; prints members and channels as the check
+      against the wrong database), restore and a nightly systemd timer in
+      `docs/homeserver.md`, replacing the `docker compose cp` of `yappa.db` that could miss
+      the WAL; `yappa-control health` plus healthchecks in `home.yml`, report only, nothing
+      restarts on them; CI job `control-linux` (tests, image, health and backup in the
+      image, compose config); `docs/homeserver.md` „Variante MacBook mit T2-Chip“ and
+      „Server umziehen“, `docs/vps-checkliste.md`; `task/vps-stage2` merged in. Tests:
+      `crates/control/tests/box_tools.rs`. Verified by hand on a throwaway container under
+      WSL2: health, backup, the documented restore, health failing with the server down.
+      Not verified: the MacBook part and the timer (never run), the CI job (not pushed),
+      the healthchecks through compose (the probes ran inside the live containers).
 - [x] Autotune und Zweite Stimme als Effekte (2026-11-03, user-Wunsch vom selben Tag):
       zwei Programmtasten mehr im Effekt-Rack, dazu Tonart (C … H) und Skala (chromatisch,
       Dur, Moll, harmonisch Moll, Pentatonik Dur/Moll, Blues); Autotune hat „Tempo“ (0 =

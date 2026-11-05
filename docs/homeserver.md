@@ -5,7 +5,10 @@ ist für genau diesen Aufbau geschrieben: FRITZ!Box 6660 Cable, ein Windows-PC, 
 Linux — als VM (Schritt 2) oder als WSL2 ([Variante WSL2](#variante-wsl2-statt-vm)). Erst
 ausprobieren ohne Freigaben? → [Alles nur lokal](#alles-nur-lokal). Läuft auf dem Server
 schon ein Cloudflare Tunnel für andere Apps? →
-[yAPPA hinter einem Cloudflare Tunnel](cloudflare-tunnel.md).
+[yAPPA hinter einem Cloudflare Tunnel](cloudflare-tunnel.md). Ein altes MacBook als Server? →
+[Variante MacBook](#variante-macbook-mit-t2-chip), und danach
+[Server umziehen](#server-umziehen). Lieber einen VPS mieten? →
+[Checkliste VPS-Anbieter](vps-checkliste.md).
 
 > **Stand 2026-10-24:** Einmal komplett durchgelaufen auf dem Entwicklungs-PC (Windows 11,
 > WSL2-Ubuntu, FRITZ!Box 6660 Cable): Freigaben, Let's-Encrypt-Zertifikat über Caddy (die
@@ -203,17 +206,68 @@ docker compose -f home.yml exec control yappa-control policy --min 0.2.0 --kill 
 
 | Was | Befehl (auf der VM, im Ordner `~/yappa/infra/livekit`) |
 | --- | --- |
-| Status | `docker compose -f home.yml ps` |
+| Status | `docker compose -f home.yml ps` — alle drei `healthy`; `unhealthy` startet nichts neu, es sagt nur Bescheid |
 | Logs mitlesen | `docker compose -f home.yml logs -f livekit control` |
 | Neu starten | `docker compose -f home.yml restart` |
 | Stoppen | `docker compose -f home.yml down` (Daten bleiben im Volume) |
 | yAPPA aktualisieren | `git pull && docker compose -f home.yml up -d --build` — nicht während jemand spricht |
 | LiveKit aktualisieren | Version in `home.yml` ändern, dann wie oben |
-| Datenbank sichern | `docker compose -f home.yml cp control:/data/yappa.db ./yappa-backup.db` |
+| Datenbank sichern | siehe [Sichern und Wiederherstellen](#sichern-und-wiederherstellen) |
 | Updates ausliefern | nichts auf der VM: `cargo xtask release <stable\|beta>` auf dem Entwickler-PC lädt zu den GitHub Releases hoch; die VM als zweites Ziel siehe unten |
 
 Alle Container starten nach einem Neustart der VM von selbst (`restart: unless-stopped`).
 Ein Neustart der Control-Plane beendet keinen laufenden Call.
+
+### Sichern und Wiederherstellen
+
+Nur `yappa.db` zu kopieren reicht nicht: Die Datenbank läuft im WAL-Modus, die neuesten
+Änderungen liegen oft noch in einer zweiten Datei. `yappa-control backup` schreibt eine
+vollständige Kopie, auch während der Server läuft:
+
+```bash
+docker compose -f home.yml exec -T control yappa-control backup /data/backup.db
+docker compose -f home.yml cp control:/data/backup.db ./yappa-backup.db
+```
+
+Die Ausgabe nennt Mitglieder und Channels. Steht dort `0 members`, war es die falsche
+Datenbank. Die Kopie gehört zusätzlich auf einen anderen Rechner, die `.env` in den
+Passwortmanager: Ohne das Secret daraus sind die Sitzungen der Gang wertlos.
+
+Zurückspielen, bei gestoppter Control-Plane. Die alten WAL-Dateien müssen dabei weg, sonst
+passen sie nicht zur eingespielten Datenbank:
+
+```bash
+docker compose -f home.yml stop control
+docker compose -f home.yml run --rm --no-deps --user root -v "$PWD/yappa-backup.db:/restore.db:ro" --entrypoint sh control -c 'cp /restore.db /data/yappa.db && rm -f /data/yappa.db-wal /data/yappa.db-shm && chown yappa /data/yappa.db'
+docker compose -f home.yml up -d control
+```
+
+Jede Nacht automatisch, mit einem systemd-Timer auf dem Server. Sieben Tage bleiben liegen
+(`<user>` anpassen):
+
+```ini
+# /etc/systemd/system/yappa-backup.service
+[Service]
+Type=oneshot
+User=<user>
+WorkingDirectory=/home/<user>/yappa/infra/livekit
+ExecStart=/bin/sh -c 'mkdir -p backups && docker compose -f home.yml exec -T control yappa-control backup /data/backup.db && docker compose -f home.yml cp control:/data/backup.db backups/yappa-$(date +%%a).db'
+```
+
+```ini
+# /etc/systemd/system/yappa-backup.timer
+[Timer]
+OnCalendar=05:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now yappa-backup.timer
+```
 
 ### Updates für die App
 
@@ -351,6 +405,132 @@ herunter, sobald kein Terminal mehr offen ist — beides unten abgefangen.
    `192.168.178.xx <YAPPA_DOMAIN>` (die LAN-Adresse des PCs), damit die App auf diesem
    Rechner den Server findet. Andere Geräte im Haus brauchen das nicht.
 7. Ab hier wie ab Schritt 3 (Netzwerkpuffer) — alles in der Distro, `docker compose` genauso.
+
+## Variante: MacBook mit T2-Chip
+
+Für ein MacBook Pro ab 2018 (hier: 15 Zoll, 2019) als Server im Dauerbetrieb, mit Linux direkt
+auf der Hardware. Die Schritte 1, 3 bis 8 von oben gelten danach unverändert, Schritt 2 (die
+VM) ersetzt dieser Abschnitt; statt „VM“ steht dort dann das MacBook.
+
+> **Stand 2026-11-05:** Noch nie durchgelaufen, nur aus der
+> [t2linux-Anleitung](https://wiki.t2linux.org/guides/preinstall/) abgeleitet. Was hakt, bitte
+> hier nachtragen.
+
+Das MacBook behebt, dass der Server am Entwicklungs-PC hängt. Es behebt **nicht** CGNAT: Ohne
+öffentliche IPv4 am Anschluss kommt weiterhin nur rein, wer selbst IPv6 hat. Vorher klären:
+alle aus der Gang öffnen `https://test-ipv6.com` und melden das Ergebnis.
+
+### Vor der Installation (auf macOS)
+
+1. Modell prüfen (`system_profiler SPHardwareDataType`) und Daten sichern.
+2. macOS behalten: Dual Boot, keine automatische Partitionierung, die löscht laut t2linux
+   auch macOS. Offene macOS-Tests der App (`cargo xtask check`, `build`) jetzt erledigen.
+3. Im Festplattendienstprogramm eine **Partition** (kein APFS-Volume) für Linux anlegen. Die
+   Größe lässt sich danach laut t2linux nicht mehr ändern. macOS mit 100 GB reicht für einen
+   Build, der Rest geht an Linux.
+4. Recovery (`Cmd-R` beim Start) → Dienstprogramme → **Startsicherheitsdienstprogramm**:
+   „Keine Sicherheit“ und Starten von externen Medien erlauben.
+
+### Installation
+
+1. Ein T2-taugliches ISO von [t2linux](https://wiki.t2linux.org/) auf einen USB-Stick, möglichst
+   Ubuntu 24.04. Ein normales ISO reicht nicht: Tastatur, Lüfter und WLAN brauchen den T2-Kernel.
+2. Beim Start `Option` halten, das orange **EFI**-Symbol wählen.
+3. Manuell partitionieren: die EFI-Partition nach `/boot/efi`, die neue Partition nach `/`.
+4. **Keine Festplattenverschlüsselung:** Sonst wartet der Server nach jedem Stromausfall auf
+   ein Passwort. Der Preis: Wer das Gerät mitnimmt, kommt an die `.env` und die Datenbank.
+   Im Fall der Fälle das Secret tauschen und alle neu einladen.
+5. Hat das ISO einen Desktop, ihn abschalten: `sudo systemctl set-default multi-user.target`.
+
+### Netzwerk: Kabel, nicht WLAN
+
+USB-C-Ethernet-Adapter direkt an die FRITZ!Box. WLAN bringt Jitter in jede Stimme. Die
+IPv6-Adresse muss stabil bleiben, sonst passt die Interface-ID in der FRITZ!Box nicht mehr
+(Schritt 4), und LiveKit bietet Adressen an, die nicht freigegeben sind:
+
+```yaml
+# /etc/netplan/60-yappa.yaml — enx… ist der Name des Adapters aus `ip link`
+network:
+  version: 2
+  ethernets:
+    enx001122334455:
+      dhcp4: true
+      dhcp6: true
+      ipv6-address-generation: eui64
+      ipv6-privacy: false
+```
+
+```bash
+sudo chmod 600 /etc/netplan/60-yappa.yaml
+sudo netplan apply
+ip -6 addr         # eine 2a…/2001:…-Adresse, deren Ende zur MAC des Adapters passt
+```
+
+Steuert auf deinem ISO NetworkManager das Netz statt netplan, gelten dieselben zwei
+Einstellungen dort (`ipv6.addr-gen-mode eui64`, `ipv6.ip6-privacy 0`).
+
+### Dauerbetrieb
+
+```bash
+# Nicht schlafen, auch nicht zugeklappt
+sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
+sudo mkdir -p /etc/systemd/logind.conf.d
+printf '[Login]\nHandleLidSwitch=ignore\nHandleLidSwitchExternalPower=ignore\n' | sudo tee /etc/systemd/logind.conf.d/yappa.conf
+sudo systemctl restart systemd-logind
+```
+
+Danach prüfen, nicht annehmen:
+
+- **Temperatur und Lüfter:** Das Gerät aufrecht oder aufgeklappt betreiben, nicht flach
+  zugeklappt auf einer Decke. `sudo apt install lm-sensors`, dann `sensors` im Leerlauf und
+  während eines Calls. Dreht der Lüfter unter Last nicht hoch, ist der T2-Kernel nicht aktiv.
+- **Grafikkarte:** Die Radeon lässt sich unter Linux laut t2linux nicht einfach abschalten.
+  Stromverbrauch an einer Messsteckdose ablesen. 20 W im Dauerbetrieb sind bei 0,35 €/kWh rund
+  5 € im Monat, so viel wie ein VPS.
+- **Akku:** Dauerhaft 100 % kann ihn aufblähen. Gibt es
+  `/sys/class/power_supply/BAT0/charge_control_end_threshold`, dort `80` eintragen. Sonst alle
+  paar Wochen nachsehen, ob das Gehäuse sich wölbt. Dafür überbrückt der Akku kurze
+  Stromausfälle.
+- **Neustart:** `sudo reboot`, und einmal den Stecker ziehen. Danach müssen alle drei Container
+  ohne Anmeldung laufen. Einmal auch testen, ob das Gerät nach leerem Akku von selbst startet,
+  sobald wieder Strom da ist.
+
+### Absichern
+
+```bash
+sudo apt install -y ufw unattended-upgrades
+sudo ufw allow from 192.168.178.0/24 to any port 22 proto tcp   # SSH nur aus dem Heimnetz
+sudo ufw allow 80,443,7881/tcp
+sudo ufw allow 7882/udp
+sudo ufw enable
+```
+
+SSH nur mit Schlüssel (`PasswordAuthentication no`) und nie in der FRITZ!Box freigeben.
+Sicherheitsupdates laufen automatisch, Neustarts nicht: Kernel-Updates von Hand und nicht vor
+einem Spieleabend einspielen. Ein T2-Kernel kommt von außerhalb der Distribution und kann nach
+einem Update die Tastatur kosten, nicht aber den Server.
+
+## Server umziehen
+
+Vom alten Server (etwa WSL2) auf einen neuen, ohne dass die Gang neu anfängt:
+
+1. **Neuer Server:** bis einschließlich Schritt 5 aufsetzen, die `.env` vom alten Server
+   übernehmen (dasselbe Secret), aber noch nicht starten.
+2. **Alter Server:** Backup wie unter
+   [Sichern und Wiederherstellen](#sichern-und-wiederherstellen), dann
+   `docker compose -f home.yml down`. Die Datei zum neuen Server kopieren.
+3. **FRITZ!Box:** die vier Freigaben vom alten Gerät löschen, **Übernehmen**, Seite neu laden,
+   dann für das neue Gerät anlegen. Die neue MyFRITZ!-Adresse in die `.env` als `YAPPA_DOMAIN`.
+4. **Neuer Server:** `docker compose -f home.yml up -d --build`, dann das Zurückspielen aus
+   demselben Abschnitt. Prüfen wie in Schritt 6.
+5. **War der alte Server WSL2 auf dem Entwicklungs-PC:** den Eintrag in
+   `C:\Windows\System32\drivers\etc\hosts` entfernen, sonst sucht die App dort weiter den alten
+   Server. Die Aufgabe „yAPPA WSL keep-alive“ deaktivieren.
+
+Ändert sich dabei die Adresse, und das tut sie mit einem neuen MyFRITZ!-Gerätenamen, braucht
+jede Person einen neuen Einladungslink. Mit einer eigenen Domain, die per CNAME auf die
+MyFRITZ!-Adresse zeigt, bleibt der Name gleich und ein späterer Wechsel ist nur eine
+DNS-Änderung. Noch nicht ausprobiert.
 
 ## Alles nur lokal
 
