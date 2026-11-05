@@ -129,6 +129,29 @@ pub async fn delete_session(db: &SqlitePool, hash: &str) -> sqlx::Result<()> {
     Ok(())
 }
 
+/// A consistent copy of the running database at `target`, replacing an older backup there.
+/// `VACUUM INTO` includes what still sits in the WAL, which copying `yappa.db` would miss. It
+/// writes next to the target and renames, so a failed run never leaves half a backup under
+/// the real name.
+pub async fn backup_to(db: &SqlitePool, target: &std::path::Path) -> Result<(), String> {
+    let mut temp = target.as_os_str().to_owned();
+    temp.push(".tmp");
+    let temp = std::path::PathBuf::from(temp);
+    let temp_name = temp.to_str().ok_or("backup path is not valid UTF-8")?;
+    // VACUUM INTO refuses an existing file; this one can only be left from a failed run.
+    match std::fs::remove_file(&temp) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(format!("{temp_name}: {e}")),
+    }
+    sqlx::query("VACUUM INTO ?")
+        .bind(temp_name)
+        .execute(db)
+        .await
+        .map_err(|e| format!("{temp_name}: {e}"))?;
+    std::fs::rename(&temp, target).map_err(|e| format!("{}: {e}", target.display()))
+}
+
 pub async fn count_users(db: &SqlitePool) -> sqlx::Result<i64> {
     sqlx::query_scalar("SELECT COUNT(*) FROM users")
         .fetch_one(db)

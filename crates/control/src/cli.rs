@@ -4,13 +4,17 @@
 use crate::{open_db, router, routes, store, AppState, Config};
 use api_types::{InviteLink, Role, VersionPolicy};
 use std::net::SocketAddr;
-use tokio::net::TcpListener;
+use std::time::Duration;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
 
 pub const USAGE: &str = "\
 usage: yappa-control [serve]
        yappa-control invite [--admin] [--days N]
        yappa-control policy --min <version> [--kill <version>]...
        yappa-control channel [list | add <name>]
+       yappa-control backup <file>
+       yappa-control health
 
 environment: LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_WS_URL, [LIVEKIT_HTTP_URL],
              [YAPPA_LISTEN=127.0.0.1:8090], [YAPPA_DATABASE_URL=sqlite://yappa.db],
@@ -211,6 +215,58 @@ pub async fn channel(args: &[String]) -> Result<(), String> {
         println!("{:>2}  {:<24} {}", c.position, c.name, c.id);
     }
     Ok(())
+}
+
+/// `backup <file>`: safe while the server runs. The counts are the check that this was the
+/// right database — `open_db` creates a missing one, and an empty backup looks like a backup.
+pub async fn backup(args: &[String]) -> Result<(), String> {
+    let [target] = args else {
+        return Err("backup needs exactly one target file".into());
+    };
+    let config = db_only_config();
+    let db = open_db(&config.database_url)
+        .await
+        .map_err(|e| format!("database {}: {e}", config.database_url))?;
+    store::backup_to(&db, std::path::Path::new(target)).await?;
+    let members = store::count_users(&db).await.map_err(|e| e.to_string())?;
+    let channels = store::channels(&db).await.map_err(|e| e.to_string())?.len();
+    println!("{target}: {members} members, {channels} channels");
+    Ok(())
+}
+
+/// `health`, for the container healthcheck: the image has no curl, and this asks the same
+/// route Caddy publishes. Uses `YAPPA_LISTEN` and nothing else.
+pub async fn health() -> Result<(), String> {
+    let listen = std::env::var("YAPPA_LISTEN")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or_else(|| "127.0.0.1:8090".into());
+    let addr: SocketAddr = listen.parse().map_err(|e| format!("YAPPA_LISTEN: {e}"))?;
+    check_health(addr).await
+}
+
+/// Asks `GET /health` at `addr`; fails on anything but a 200 within five seconds.
+pub async fn check_health(addr: SocketAddr) -> Result<(), String> {
+    let ask = async {
+        let mut stream = TcpStream::connect(addr).await?;
+        stream
+            .write_all(b"GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n")
+            .await?;
+        let mut answer = Vec::new();
+        stream.read_to_end(&mut answer).await?;
+        Ok::<_, std::io::Error>(answer)
+    };
+    let answer = tokio::time::timeout(Duration::from_secs(5), ask)
+        .await
+        .map_err(|_| format!("{addr}: no answer within five seconds"))?
+        .map_err(|e| format!("{addr}: {e}"))?;
+    let answer = String::from_utf8_lossy(&answer);
+    let status = answer.lines().next().unwrap_or_default();
+    if status.split_whitespace().nth(1) == Some("200") {
+        Ok(())
+    } else {
+        Err(format!("{addr}: {status}"))
+    }
 }
 
 fn value(args: &[String], flag: &str) -> Option<String> {

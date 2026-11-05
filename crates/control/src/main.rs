@@ -5,6 +5,8 @@
 //!   yappa-control policy --min <version> [--kill <version>]…
 //!   yappa-control channel [list | add <name>]       channels until the admin module exists
 //!                                                 set the minimum version and kill list
+//!   yappa-control backup <file>                   consistent copy of the running database
+//!   yappa-control health                          exit 0 if the API answers (healthcheck)
 //!
 //! Configuration comes from the environment (`infra/livekit/.env`): `LIVEKIT_API_KEY`,
 //! `LIVEKIT_API_SECRET`, `LIVEKIT_WS_URL`, optional `LIVEKIT_HTTP_URL`, `YAPPA_LISTEN`,
@@ -33,6 +35,8 @@ async fn main() -> ExitCode {
         Some("invite") => control::cli::invite(&args[1..]).await,
         Some("policy") => control::cli::policy(&args[1..]).await,
         Some("channel") => control::cli::channel(&args[1..]).await,
+        Some("backup") => control::cli::backup(&args[1..]).await,
+        Some("health") => control::cli::health().await,
         Some("-h" | "--help" | "help") => {
             println!("{}", control::cli::USAGE);
             Ok(())
